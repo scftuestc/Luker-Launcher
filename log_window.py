@@ -371,7 +371,7 @@ class LogWindow(ctk.CTk):
 
             try:
                 self.status_dot.configure(text_color=pulse_color)
-            except:
+            except tk.TclError:
                 pass
 
         self.after(100, self._animate_status_pulse)
@@ -1017,7 +1017,6 @@ class LogWindow(ctk.CTk):
         # 搜索所有匹配项
         self._search_results = []
         start_pos = "1.0"
-        search_lower = search_text.lower()
 
         while True:
             # 不区分大小写搜索
@@ -1051,7 +1050,7 @@ class LogWindow(ctk.CTk):
         try:
             tb.tag_remove('search_highlight', "1.0", "end")
             tb.tag_remove('search_current', "1.0", "end")
-        except:
+        except tk.TclError:
             pass
 
     def _highlight_current_result(self):

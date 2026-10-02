@@ -1,9 +1,8 @@
 import json
-import os
 import re
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable, List
+from typing import Optional, Dict, Callable, List
 import tkinter as tk
 from tkinter import filedialog, messagebox
 

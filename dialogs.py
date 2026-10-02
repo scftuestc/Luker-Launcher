@@ -87,7 +87,7 @@ class TrayMenu(ctk.CTkToplevel):
             hwnd = windll.user32.GetParent(self.winfo_id())
             WindowsBlur.extend_frame(hwnd)
             WindowsBlur.enable_blur(hwnd, 0xEE17110d)
-        except:
+        except Exception:
             pass
 
     def _animate_menu(self):
@@ -573,7 +573,6 @@ class SettingsWindow(ctk.CTkToplevel):
             config.theme_name = theme_id
 
     def _update_theme_cards(self):
-        current_theme = config.theme_name
         self.COLORS = config.get_theme_colors()
 
         self.configure(fg_color=self.COLORS['bg'])

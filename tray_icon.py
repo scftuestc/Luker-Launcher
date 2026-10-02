@@ -1,8 +1,6 @@
 from PIL import Image, ImageDraw
 from typing import Callable, Optional
 from threading import Thread
-import os
-from pathlib import Path
 import ctypes
 from ctypes import wintypes, windll, byref, sizeof, Structure, c_int, WINFUNCTYPE
 import time
@@ -146,8 +144,6 @@ class TrayIcon:
         for i, color in enumerate(colors):
             x = start_x + i * (bar_width + bar_gap)
             y = start_y
-
-            bar_radius = max(1, bar_width // 2)
 
             if bar_width >= 4:
                 draw.ellipse([x, y, x + bar_width, y + bar_width], fill=color)
