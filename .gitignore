@@ -1,0 +1,13 @@
+# Python 运行时缓存
+__pycache__/
+*.pyc
+
+# PyInstaller 打包产生的目录
+build/
+dist/
+
+# 打包生成的 exe 文件
+*.exe
+
+# 路径文件
+launcher_config.json
