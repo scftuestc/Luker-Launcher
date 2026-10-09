@@ -1,51 +1,57 @@
-import time
-from threading import Thread
-from typing import Optional
 import ctypes
+import time
+import urllib.error
+import urllib.request
+import webbrowser
 from ctypes import windll
-
-# 在任何 GUI 初始化之前设置 DPI 感知模式
-# 这确保所有坐标计算使用正确的 DPI 缩放
-def setup_dpi_awareness():
-    try:
-        # Windows 10 1703+ 使用 SetProcessDpiAwarenessContext
-        # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
-        windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
-    except Exception:
-        try:
-            # Windows 8.1+ 使用 SetProcessDpiAwareness
-            # PROCESS_PER_MONITOR_DPI_AWARE = 2
-            windll.shcore.SetProcessDpiAwareness(2)
-        except Exception:
-            try:
-                # Windows Vista+ 使用 SetProcessDPIAware
-                windll.user32.SetProcessDPIAware()
-            except Exception:
-                pass
-
-setup_dpi_awareness()
+from threading import Thread
 
 import customtkinter as ctk
 
 from config import config
-from process_manager import ProcessManager, GCLProcessManager
-from tray_icon import TrayIcon
+from dialogs import SettingsWindow, TrayMenu
 from log_window import LogWindow
-import webbrowser
-from dialogs import TrayMenu, SettingsWindow
+from process_manager import GCLProcessManager, ProcessManager
 from pwa_browser import open_in_browser
+from tray_icon import TrayIcon
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("dark-blue")
+# 轮询与等待时间（秒）
+STATUS_POLL_INTERVAL = 2
+BROWSER_WAIT_TIMEOUT_SECONDS = 30
+BROWSER_WAIT_INTERVAL_SECONDS = 1
+
+
+def setup_dpi_awareness() -> None:
+    """从新到旧逐级尝试设置 DPI 感知，保证高分屏下坐标计算不模糊。
+
+    DPI 感知必须在创建任何窗口之前设置，但只影响之后创建的窗口，
+    所以放在 main() 里调用即可。
+    """
+    try:
+        # Windows 10 1703+ 使用 SetProcessDpiAwarenessContext
+        # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+        windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except (AttributeError, OSError):
+        try:
+            # Windows 8.1+ 使用 SetProcessDpiAwareness
+            # PROCESS_PER_MONITOR_DPI_AWARE = 2
+            windll.shcore.SetProcessDpiAwareness(2)
+        except (AttributeError, OSError):
+            try:
+                # Windows Vista+ 使用 SetProcessDPIAware
+                windll.user32.SetProcessDPIAware()
+            except (AttributeError, OSError):
+                # 极老系统连这也没有，交给系统默认的 DPI 缩放处理
+                pass
 
 
 class LukerLauncher:
-    def __init__(self):
-        self.process_manager: Optional[ProcessManager] = None
-        self.gcl_process_manager: Optional[GCLProcessManager] = None
-        self.tray_icon: Optional[TrayIcon] = None
-        self.log_window: Optional[LogWindow] = None
-        self.tray_menu: Optional[TrayMenu] = None
+    def __init__(self) -> None:
+        self.process_manager: ProcessManager | None = None
+        self.gcl_process_manager: GCLProcessManager | None = None
+        self.tray_icon: TrayIcon | None = None
+        self.log_window: LogWindow | None = None
+        self.tray_menu: TrayMenu | None = None
         self._running = False
 
         # 注册 GCL 配置变更回调
@@ -124,7 +130,7 @@ class LukerLauncher:
         if self.log_window:
             self.log_window.add_gcl_log(line)
 
-    def _on_gcl_config_change(self, enabled: bool, bat_path: Optional[str]) -> None:
+    def _on_gcl_config_change(self, enabled: bool, bat_path: str | None) -> None:
         """GCL 配置变更回调，动态创建或销毁 GCL 进程管理器"""
         if enabled and bat_path:
             # 如果之前没有 GCL 进程管理器，或者路径变了，需要重新创建
@@ -159,7 +165,7 @@ class LukerLauncher:
             gcl_running = self.gcl_process_manager.is_running if self.gcl_process_manager else False
             self.log_window.after(0, lambda: self._show_tray_menu(x, y, is_running, window_visible, gcl_enabled, gcl_running))
 
-    def _show_tray_menu(self, x: int, y: int, is_running: bool, window_visible: bool, gcl_enabled: bool = False, gcl_running: bool = False):
+    def _show_tray_menu(self, x: int, y: int, is_running: bool, window_visible: bool, gcl_enabled: bool = False, gcl_running: bool = False) -> None:
         if self.tray_menu:
             self.tray_menu.update_state(is_running, window_visible, gcl_enabled, gcl_running)
             self.tray_menu.show_at(x, y)
@@ -175,24 +181,39 @@ class LukerLauncher:
     def _status_monitor(self) -> None:
         while self._running:
             self._update_status()
-            time.sleep(2)
+            time.sleep(STATUS_POLL_INTERVAL)
 
     def run(self) -> None:
+        """
+        依次创建四大组件，最后进入 GUI 主循环。
+
+        本方法运行在 GUI 主线程上（由底部的 mainloop() 接管）。
+        线程全景：GUI 主线程 / 托盘消息循环线程 / stdout 读取线程 / 状态监控线程（每 2 秒轮询）。
+        跨线程只有两条合法通道：queue.Queue（传数据）和 widget.after(0, ...)（把执行权交回主线程）。
+        """
+        # 首次运行检查：配置缺失时弹对话框引导用户选择 Luker 路径，
+        # 选不出来就放弃启动。配置读写的实现在 config.py，全局单例。
         if not config.ensure_path_configured():
             print("未配置 Luker 路径，程序退出")
             return
 
+        # 创建主窗口（log_window.py，最大的模块）。
+        # on_hide_callback / on_start / on_stop 都是回调注入
         self.log_window = LogWindow(
             on_hide_callback=lambda: self.tray_icon.set_window_visible(False) if self.tray_icon else None,
             on_start=self._on_start,
             on_stop=self._on_stop
         )
 
-        # 如果开启了 PWA 模式，禁止 Luker 自动打开浏览器（由启动器来打开 PWA）
+        # 创建进程管理器（process_manager.py）。
+        # autorun：PWA 模式下要禁止 Luker 自己开浏览器，改由启动器打开 PWA 窗口。
+        # config.luker_path 是 Luker 的路径。
         autorun = not config.use_pwa_mode
         self.process_manager = ProcessManager(config.luker_path, autorun=autorun)
+        # 注册日志回调。node 子进程每输出一行日志，就会调用 self._on_log 来处理。
         self.process_manager.add_log_callback(self._on_log)
 
+        # 创建托盘弹出菜单（dialogs.py 的 TrayMenu）。
         self.tray_menu = TrayMenu(self.log_window, {
             'show_window': self._on_show_window,
             'hide_window': self._on_hide_window,
@@ -214,6 +235,7 @@ class LukerLauncher:
         else:
             self.log_window.set_gcl_enabled(False)
 
+        # 创建托盘图标
         self.tray_icon = TrayIcon(
             on_show_window=self._on_show_window,
             on_hide_window=self._on_hide_window,
@@ -225,16 +247,20 @@ class LukerLauncher:
             on_show_menu=self._on_show_menu,
         )
 
+        # 设置一个运行标志，表示程序正在运行。
         self._running = True
 
+        # 状态监控线程：每隔 2 秒检查一次进程状态。
         monitor_thread = Thread(target=self._status_monitor, daemon=True)
         monitor_thread.start()
 
+        # 托盘线程在此启动：内部跑 Windows 消息循环 GetMessageW，
+        # 会永久阻塞等消息，所以必须独立线程（run_detached = 分离线程运行）。
         self.tray_icon.run_detached()
 
         self._on_log("[启动器] 正在启动 Luker...")
         self._on_start()
-
+        # 隐藏主窗口，只保留系统托盘图标。
         self.log_window.hide()
         self._on_log("[启动器] 已最小化到系统托盘，单击图标可显示日志窗口")
 
@@ -246,22 +272,19 @@ class LukerLauncher:
         if config.use_pwa_mode:
             self._schedule_auto_open_browser()
 
+        # 进入 Tk GUI 主循环。
         self.log_window.mainloop()
 
     def _schedule_auto_open_browser(self) -> None:
         """延迟打开浏览器，等待 Luker 服务启动"""
         def check_and_open():
-            import urllib.request
-            import urllib.error
-
             url = config.get_server_url()
-            max_attempts = 30  # 最多等待 30 秒
             attempt = 0
 
-            while attempt < max_attempts and self._running:
+            while attempt < BROWSER_WAIT_TIMEOUT_SECONDS and self._running:
                 try:
                     # 尝试连接 Luker
-                    urllib.request.urlopen(url, timeout=1)
+                    urllib.request.urlopen(url, timeout=BROWSER_WAIT_INTERVAL_SECONDS)
                     # 连接成功，打开浏览器
                     self._on_log("[启动器] 检测到 Luker 已启动，正在打开 PWA 浏览器...")
                     self._on_open_browser()
@@ -269,7 +292,7 @@ class LukerLauncher:
                 except (urllib.error.URLError, TimeoutError):
                     # 连接失败，等待后重试
                     attempt += 1
-                    time.sleep(1)
+                    time.sleep(BROWSER_WAIT_INTERVAL_SECONDS)
 
             if self._running:
                 self._on_log("[启动器] 等待 Luker 启动超时，请手动打开浏览器")
@@ -278,7 +301,11 @@ class LukerLauncher:
         Thread(target=check_and_open, daemon=True).start()
 
 
-def main():
+def main() -> None:
+    # import 阶段不碰任何窗口系统，进入 main() 才正式初始化 GUI 相关设置
+    setup_dpi_awareness()
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("dark-blue")
     launcher = LukerLauncher()
     launcher.run()
 
