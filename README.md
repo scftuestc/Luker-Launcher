@@ -6,7 +6,7 @@
 
 从 [Releases](../../releases) 下载最新的 `Luker-Launcher.exe`。
 
-**建议把 exe 放到 Luker 根目录（与 `Start.bat` 同级）。** 启动器会自动识别路径，配置文件 `launcher_config.json` 也会生成在这里；放在其他位置时，首次运行需要手动选择一次 Luker 目录。
+**建议把 exe 放到 Luker 根目录（与 `Start.bat` 同级）。** 启动器会优先自动识别该目录；如果首次运行仍提示选择路径，选中这个目录即可。配置文件 `launcher_config.json` 会生成在 exe 同目录。
 
 双击运行，无需安装。若被 SmartScreen 拦截，点“更多信息” → “仍要运行”。
 
