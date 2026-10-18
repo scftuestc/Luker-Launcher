@@ -1,56 +1,51 @@
 # 🍀 Luker Launcher
 
-一个常驻 Windows 系统托盘的 Luker 启动器：一键启停、查看日志、自动打开页面。
+常驻系统托盘的 Luker 启动器：一键启停、实时日志、自动打开页面。
 
-## 📥 下载与安装
+## 下载
 
-1. 打开 [Releases](../../releases) 页面。
-2. 下载最新版本中的 `Luker-Launcher.exe`。
-3. 双击运行，无需安装。
+从 [Releases](../../releases) 下载最新的 `Luker-Launcher.exe`。
 
-> 如果 Windows 提示“已保护你的电脑”，点击“更多信息” → “仍要运行”。
+**建议把 exe 放到 Luker 根目录（与 `Start.bat` 同级）。** 启动器会自动识别路径，配置文件 `launcher_config.json` 也会生成在这里；放在其他位置时，首次运行需要手动选择一次 Luker 目录。
 
-## 🚀 首次使用
+双击运行，无需安装。若被 SmartScreen 拦截，点“更多信息” → “仍要运行”。
 
-1. 启动后会要求选择 Luker 安装目录（包含 `Start.bat` 的文件夹）。
-2. 选择完成后，启动器会自动启动 Luker，并最小化到系统托盘。
-3. 单击托盘图标显示/隐藏日志窗口，右键打开完整菜单。
+要求：Windows 10 / 11，已安装 Node.js 和 Luker。
 
-使用前请确认：
+## 使用
 
-- Windows 10 / 11
-- 已安装 Node.js，命令行执行 `node -v` 能正常输出版本
-- Luker 目录中包含 `Start.bat` 和 `server.js`
+启动后会自动拉起 Luker 并缩到托盘。
 
-## 🖱️ 常用操作
+- 单击托盘图标：显示 / 隐藏日志窗口
+- 右键托盘图标：启动、停止、重启、打开 Luker 页面、设置、退出
+- 关闭日志窗口只是隐藏到托盘；退出请用托盘菜单
 
-| 操作 | 方法 |
-| --- | --- |
-| 显示 / 隐藏日志 | 单击托盘图标 |
-| 启动 / 停止 / 重启 Luker | 右键托盘菜单 |
-| 打开 Luker 页面 | 右键托盘 → “Luker 页面” |
-| 修改主题、路径、PWA / GCL | 右键托盘 → “设置” |
-| 退出启动器 | 右键托盘 → “退出” |
+Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置。
 
-- 关闭日志窗口只是隐藏到托盘，程序仍在后台运行。
-- Luker 端口会自动读取 `luker_path/config.yaml` 中的 `port`，无需手动填写。
-- 配置保存在 exe 同目录的 `launcher_config.json`。
+## 设置
 
-## ❓ 常见问题
+右键托盘 → 设置：
 
-**托盘里找不到图标？**
-点击任务栏右下角的 `^`，在隐藏图标中查找。
+- 主题切换
+- PWA 模式
+- GCL 联动
+- Luker 安装路径
 
-**提示启动失败或找不到 node？**
-先在 Luker 目录双击 `Start.bat`，确认 Luker 能正常启动；再检查命令行执行 `node -v` 是否正常。
+## 常见问题
 
-**想要 PWA 应用窗口？**
-在设置中开启 PWA 模式，需要安装 Microsoft Edge。未安装 Luker PWA 时会自动回退到 Edge 应用窗口或默认浏览器。
+**PWA 模式是什么？**
+用 Edge 的独立应用窗口打开 Luker，更像桌面客户端，标题栏颜色跟随主题。需要 Edge；如果 Luker 没有安装为 PWA，会回退到 Edge 应用窗口或默认浏览器。
 
-**GCL 怎么启用？**
-在设置中开启 GCL 并选择 GCL 的 `start.bat`，托盘菜单会出现 GCL 的启动/停止项。
+**GCL 是什么？**
+可选的配套服务，通过它自己的 `start.bat` 启动。开启并选中该 bat 后，托盘菜单可以联动启停 GCL，日志窗口也能切换到 GCL 日志。不使用 GCL 就保持关闭。
 
-## 🛠️ 从源码运行 / 打包
+**托盘图标不见了？**
+点任务栏右下角的 `^` 展开隐藏图标。
+
+**启动失败或提示找不到 node？**
+先在 Luker 目录运行 `Start.bat`，确认 Luker 本身能启动；再检查 `node -v` 是否正常。
+
+## 从源码运行 / 打包
 
 ```bash
 pip install -r requirements.txt
@@ -62,6 +57,6 @@ pip install pyinstaller
 pyinstaller launcher.spec
 ```
 
-## 📄 License
+## License
 
 MIT
