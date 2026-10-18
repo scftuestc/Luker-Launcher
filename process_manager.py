@@ -5,7 +5,6 @@ import time
 from pathlib import Path
 from typing import Optional, Callable, List
 from threading import RLock, Thread
-import queue
 import psutil
 
 
@@ -16,7 +15,6 @@ class ProcessManager:
         self.luker_path = Path(luker_path)
         self.autorun = autorun  # 是否让 Luker 自动打开浏览器
         self.process: Optional[subprocess.Popen] = None
-        self.log_queue: queue.Queue = queue.Queue()
         self._log_thread: Optional[Thread] = None
         self._running = False
         self._op_lock = RLock()  # 串行化 start/stop/restart，避免并发操作同一进程
@@ -37,7 +35,6 @@ class ProcessManager:
             self._log_callbacks.remove(callback)
 
     def _emit_log(self, line: str) -> None:
-        self.log_queue.put(line)
         for callback in self._log_callbacks:
             try:
                 callback(line)
@@ -169,15 +166,6 @@ class ProcessManager:
             time.sleep(1)
             return self.start()
 
-    def get_recent_logs(self, count: int = 100) -> List[str]:
-        logs = []
-        while not self.log_queue.empty() and len(logs) < count:
-            try:
-                logs.append(self.log_queue.get_nowait())
-            except queue.Empty:
-                break
-        return logs
-
 
 class GCLProcessManager:
     """GCL 进程管理器，用于管理 GCL 的 start.bat 进程"""
@@ -185,7 +173,6 @@ class GCLProcessManager:
     def __init__(self, bat_path: str):
         self.bat_path = Path(bat_path)
         self.process: Optional[subprocess.Popen] = None
-        self.log_queue: queue.Queue = queue.Queue()
         self._log_thread: Optional[Thread] = None
         self._running = False
         self._op_lock = RLock()  # 串行化 start/stop/restart，避免并发操作同一进程
@@ -206,7 +193,6 @@ class GCLProcessManager:
             self._log_callbacks.remove(callback)
 
     def _emit_log(self, line: str) -> None:
-        self.log_queue.put(line)
         for callback in self._log_callbacks:
             try:
                 callback(line)
@@ -331,12 +317,3 @@ class GCLProcessManager:
             self.stop()
             time.sleep(1)
             return self.start()
-
-    def get_recent_logs(self, count: int = 100) -> List[str]:
-        logs = []
-        while not self.log_queue.empty() and len(logs) < count:
-            try:
-                logs.append(self.log_queue.get_nowait())
-            except queue.Empty:
-                break
-        return logs

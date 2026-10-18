@@ -5,6 +5,7 @@ import os
 import customtkinter as ctk
 import ctypes
 from ctypes import windll, byref, sizeof, c_int
+from collections import deque
 from typing import Dict
 import queue
 import datetime
@@ -16,6 +17,12 @@ from config import APP_VERSION, config
 
 # 每条队列每轮最多处理的日志行数
 MAX_LOG_LINES_PER_CYCLE = 10
+# 每个日志源在内存和日志窗口中保留的最大条数
+MAX_LOG_ENTRIES = 3000
+# 等待渲染的日志队列上限，极端刷屏时丢弃最旧的行
+MAX_LOG_QUEUE_SIZE = 5000
+# 搜索输入防抖时间（毫秒）
+SEARCH_DEBOUNCE_MS = 250
 
 
 class WindowsBlur:
@@ -154,19 +161,22 @@ class LogWindow(ctk.CTk):
 
         # 日志源切换状态：'luker' 或 'gcl'
         self._log_source = 'luker'
-        # 分别存储两个日志源的日志：(时间戳, 日志行)
-        self._luker_logs: list[tuple[datetime.datetime, str]] = []
-        self._gcl_logs: list[tuple[datetime.datetime, str]] = []
+        # 分别存储两个日志源的日志：(时间戳, 日志行)，超出上限自动丢弃最旧的行
+        self._luker_logs: deque[tuple[datetime.datetime, str]] = deque(maxlen=MAX_LOG_ENTRIES)
+        self._gcl_logs: deque[tuple[datetime.datetime, str]] = deque(maxlen=MAX_LOG_ENTRIES)
+        # 日志窗口中每条日志占用的行数，用于裁剪旧日志时同步删除文本
+        self._display_entry_lines: deque[int] = deque()
+        self._display_dirty = False
+        self._search_job = None
 
         self._build_ui()
 
-        self._log_count = 0
         self._auto_scroll = True
         self._is_running = False
         self._last_log_timestamp: datetime.datetime | None = None
 
-        self.log_queue: queue.Queue = queue.Queue()
-        self.gcl_log_queue: queue.Queue = queue.Queue()
+        self.log_queue: queue.Queue = queue.Queue(maxsize=MAX_LOG_QUEUE_SIZE)
+        self.gcl_log_queue: queue.Queue = queue.Queue(maxsize=MAX_LOG_QUEUE_SIZE)
 
         self._process_logs()
 
@@ -348,6 +358,11 @@ class LogWindow(ctk.CTk):
         self._animate_status_pulse()
 
     def _animate_glow(self):
+        # 窗口隐藏时降低刷新频率，避免常驻托盘时空转
+        if not self.winfo_viewable():
+            self.after(500, self._animate_glow)
+            return
+
         self._glow_intensity += 0.03 * self._glow_direction
         if self._glow_intensity >= 1:
             self._glow_direction = -1
@@ -372,6 +387,11 @@ class LogWindow(ctk.CTk):
         self.after(50, self._animate_glow)
 
     def _animate_status_pulse(self):
+        # 窗口隐藏时降低刷新频率
+        if not self.winfo_viewable():
+            self.after(500, self._animate_status_pulse)
+            return
+
         if hasattr(self, 'status_dot') and self._is_running:
             self._animation_phase = (self._animation_phase + 0.1) % (2 * 3.14159)
             alpha = 0.5 + 0.5 * math.sin(self._animation_phase)
@@ -597,7 +617,9 @@ class LogWindow(ctk.CTk):
         except Exception:
             pass
 
-        self.after(200, self._check_window_state)
+        # 隐藏到托盘时降到 1 秒一次，减少空转
+        interval = 300 if self.winfo_viewable() else 1000
+        self.after(interval, self._check_window_state)
 
     def _restore_window(self):
         try:
@@ -820,31 +842,58 @@ class LogWindow(ctk.CTk):
             return 'success'
         return 'dim'
 
+    def _enqueue_log(self, log_queue: queue.Queue, line: str) -> None:
+        """入队；队列满时丢掉最旧的一行，避免极端刷屏时内存无限增长。"""
+        try:
+            log_queue.put_nowait(line)
+        except queue.Full:
+            try:
+                log_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                log_queue.put_nowait(line)
+            except queue.Full:
+                pass
+
     def add_log(self, line: str, source: str = 'luker') -> None:
         """添加日志，source 可以是 'luker' 或 'gcl'"""
         if source == 'gcl':
-            self.gcl_log_queue.put(line)
+            self._enqueue_log(self.gcl_log_queue, line)
         else:
-            self.log_queue.put(line)
+            self._enqueue_log(self.log_queue, line)
 
     def add_gcl_log(self, line: str) -> None:
         """添加 GCL 日志的便捷方法"""
-        self.gcl_log_queue.put(line)
+        self._enqueue_log(self.gcl_log_queue, line)
 
-    def _drain_log_queue(self, log_queue: queue.Queue, log_store: list, source: str) -> None:
-        """从队列取一批日志写入存储；仅当前日志源需要立即渲染。"""
+    def _drain_log_queue(self, log_queue: queue.Queue, log_store: deque, source: str) -> None:
+        """从队列取一批日志写入存储；仅当前日志源且窗口可见时渲染。"""
+        entries = []
         for _ in range(MAX_LOG_LINES_PER_CYCLE):
             try:
                 line = log_queue.get_nowait()
             except queue.Empty:
-                return
+                break
 
             timestamp = datetime.datetime.now()
             log_store.append((timestamp, line))
             if self._log_source == source:
-                self._add_log_line(line, timestamp)
+                entries.append((timestamp, line))
+
+        if not entries:
+            return
+
+        if self.winfo_viewable():
+            self._add_log_lines(entries)
+        else:
+            # 隐藏时只存不渲染，显示时一次性刷新
+            self._display_dirty = True
 
     def _process_logs(self) -> None:
+        if self._display_dirty and self.winfo_viewable():
+            self._refresh_log_display()
+
         # 两个队列各自限额，避免一个日志源刷屏时另一个被饿死
         self._drain_log_queue(self.log_queue, self._luker_logs, 'luker')
         self._drain_log_queue(self.gcl_log_queue, self._gcl_logs, 'gcl')
@@ -852,7 +901,8 @@ class LogWindow(ctk.CTk):
         if not self.log_queue.empty() or not self.gcl_log_queue.empty():
             self.after(10, self._process_logs)
         else:
-            self.after(100, self._process_logs)
+            # 隐藏到托盘时降低轮询频率
+            self.after(100 if self.winfo_viewable() else 500, self._process_logs)
 
     def _toggle_log_source(self) -> None:
         """切换日志源"""
@@ -876,22 +926,33 @@ class LogWindow(ctk.CTk):
 
     def _refresh_log_display(self) -> None:
         """刷新日志显示，根据当前日志源重新加载日志"""
+        if self._search_job is not None:
+            self.after_cancel(self._search_job)
+            self._search_job = None
+
         # 清空当前显示
         tb = self.log_text._textbox
         tb.configure(state="normal")
         tb.delete("1.0", "end")
         tb.configure(state="disabled")
 
-        # 重置计数
-        self._log_count = 0
+        self._display_entry_lines.clear()
         self._last_log_timestamp = None
 
-        # 加载对应日志源的日志
-        logs = self._luker_logs if self._log_source == 'luker' else self._gcl_logs
-        for timestamp, line in logs:
-            self._add_log_line(line, timestamp)
+        # 只重放当前日志源，最多 MAX_LOG_ENTRIES 条
+        logs = list(self._luker_logs if self._log_source == 'luker' else self._gcl_logs)
+        if logs:
+            self._add_log_lines(logs)
+        else:
+            self.count_label.configure(text="📝 0 条日志")
 
-        self.count_label.configure(text=f"📝 {self._log_count} 条日志")
+        # 文本重建后重新应用搜索高亮
+        if self._search_var.get().strip():
+            self._run_search()
+        else:
+            self._clear_search_highlights()
+
+        self._display_dirty = False
 
     def set_gcl_enabled(self, enabled: bool) -> None:
         """设置 GCL 功能是否启用，控制切换按钮的显示"""
@@ -909,35 +970,97 @@ class LogWindow(ctk.CTk):
                 self._title_label.configure(text="Luker 日志")
                 self._refresh_log_display()
 
-    def _add_log_line(self, text: str, timestamp: datetime.datetime | None = None) -> None:
-        """插入一行日志；timestamp 用于重放历史日志，None 表示使用当前时间。"""
-        now = timestamp if timestamp is not None else datetime.datetime.now()
-        ts = now.strftime("%H:%M:%S")
-
-        tag = self._get_tag_for_line(text)
+    def _add_log_lines(self, entries) -> None:
+        """批量插入日志，减少 Text 控件的状态切换和计数刷新次数。"""
+        if not entries:
+            return
 
         tb = self.log_text._textbox
         tb.configure(state="normal")
+        for timestamp, text in entries:
+            self._insert_log_entry(tb, text, timestamp)
+
+        if self._auto_scroll:
+            tb.see("end")
+        tb.configure(state="disabled")
+
+        self._trim_display()
+        self.count_label.configure(text=f"📝 {len(self._display_entry_lines)} 条日志")
+
+    def _insert_log_entry(self, tb, text: str, timestamp: datetime.datetime) -> None:
+        now = timestamp
+        ts = now.strftime("%H:%M:%S")
+        tag = self._get_tag_for_line(text)
+
+        lines_before = int(tb.index("end-1c").split(".")[0])
 
         if self._last_log_timestamp is not None and (now - self._last_log_timestamp).total_seconds() >= 60:
             tb.insert("end", "\n")
-            separator_text = "─" * 40
-            separator = tk.Label(tb, text=separator_text, fg=self.COLORS['accent'],
-                               bg=self._log_card.cget('fg_color')[1] if isinstance(self._log_card.cget('fg_color'), tuple) else self._log_card.cget('fg_color'),
-                               font=(self.MONO_FONT, 10), bd=0, highlightthickness=0)
-            tb.window_create("end", window=separator)
-            tb.insert("end", "\n\n")
+            tb.insert("end", "─" * 40 + "\n", "separator")
 
         self._last_log_timestamp = now
 
         tb.insert("end", f"[{ts}] ", "time")
         tb.insert("end", f"{text}\n", tag)
-        if self._auto_scroll:
-            tb.see("end")
-        tb.configure(state="disabled")
 
-        self._log_count += 1
-        self.count_label.configure(text=f"📝 {self._log_count} 条日志")
+        lines_after = int(tb.index("end-1c").split(".")[0])
+        self._display_entry_lines.append(lines_after - lines_before)
+
+    def _trim_display(self) -> None:
+        """超过上限时从 Text 头部删除最旧的日志，保持界面和内存有界。"""
+        excess = len(self._display_entry_lines) - MAX_LOG_ENTRIES
+        if excess <= 0:
+            return
+
+        removed_lines = 0
+        for _ in range(excess):
+            removed_lines += self._display_entry_lines.popleft()
+
+        if removed_lines <= 0:
+            return
+
+        tb = self.log_text._textbox
+        tb.configure(state="normal")
+        tb.delete("1.0", f"{removed_lines + 1}.0")
+        tb.configure(state="disabled")
+        self._adjust_search_positions(removed_lines)
+
+    def _adjust_search_positions(self, removed_lines: int) -> None:
+        """文本头部被裁剪后，同步平移已保存的搜索结果位置。"""
+        if not self._search_results:
+            return
+
+        adjusted = []
+        for start, end in self._search_results:
+            start_line, start_col = map(int, start.split("."))
+            end_base, sep, end_offset = end.partition("+")
+            end_line, end_col = map(int, end_base.split("."))
+            start_line -= removed_lines
+            end_line -= removed_lines
+            if start_line >= 1:
+                new_end = f"{end_line}.{end_col}"
+                if sep:
+                    new_end += f"+{end_offset}"
+                adjusted.append((f"{start_line}.{start_col}", new_end))
+
+        self._search_results = adjusted
+        if adjusted:
+            if self._search_current_index < 0 or self._search_current_index >= len(adjusted):
+                self._search_current_index = 0
+
+            # 不滚动窗口，只把“当前结果”标记移到仍然有效的位置
+            tb = self.log_text._textbox
+            tb.tag_remove('search_current', "1.0", "end")
+            start, end = adjusted[self._search_current_index]
+            tb.tag_add('search_current', start, end)
+            tb.tag_raise('search_current')
+
+            self._search_count_label.configure(
+                text=f"{self._search_current_index + 1}/{len(adjusted)}"
+            )
+        else:
+            self._search_current_index = -1
+            self._search_count_label.configure(text="0/0")
 
     def clear_logs(self) -> None:
         tb = self.log_text._textbox
@@ -948,15 +1071,12 @@ class LogWindow(ctk.CTk):
         # 同步清空底层存储，否则切换日志源后已清除的内容会重新出现
         self._luker_logs.clear()
         self._gcl_logs.clear()
-        self._log_count = 0
+        self._display_entry_lines.clear()
         self._last_log_timestamp = None
+        self._display_dirty = False
         self.count_label.configure(text="📝 0 条日志")
 
-        self._clear_search_highlights()
-        self._search_results = []
-        self._search_current_index = -1
-        self._search_nav.pack_forget()
-        self._search_var.set("")
+        self._clear_search()
 
     def _toggle_scroll(self):
         self._auto_scroll = not self._auto_scroll
@@ -995,6 +1115,9 @@ class LogWindow(ctk.CTk):
         self.deiconify()
         self.lift()
         self.focus_force()
+        # 隐藏期间只存不渲染，显示时补上
+        if self._display_dirty:
+            self._refresh_log_display()
 
     def hide(self) -> None:
         self.withdraw()
@@ -1005,14 +1128,22 @@ class LogWindow(ctk.CTk):
     # ===== 搜索功能 =====
 
     def _on_search_change(self, *args):
-        """当搜索框内容改变时触发"""
-        search_text = self._search_var.get().strip()
+        """输入时防抖，避免每敲一个字都对全部日志重新搜索。"""
+        if self._search_job is not None:
+            self.after_cancel(self._search_job)
+            self._search_job = None
 
+        if not self._search_var.get().strip():
+            self._clear_search_state()
+            return
+
+        self._search_job = self.after(SEARCH_DEBOUNCE_MS, self._run_search)
+
+    def _run_search(self):
+        self._search_job = None
+        search_text = self._search_var.get().strip()
         if not search_text:
-            self._clear_search_highlights()
-            self._search_nav.pack_forget()
-            self._search_results = []
-            self._search_current_index = -1
+            self._clear_search_state()
             return
 
         # 显示导航按钮
@@ -1020,6 +1151,13 @@ class LogWindow(ctk.CTk):
 
         # 执行搜索
         self._perform_search(search_text)
+
+    def _clear_search_state(self):
+        self._clear_search_highlights()
+        self._search_results = []
+        self._search_current_index = -1
+        self._search_nav.pack_forget()
+        self._search_count_label.configure(text="")
 
     def _perform_search(self, search_text: str):
         """执行搜索并高亮结果"""
@@ -1116,5 +1254,9 @@ class LogWindow(ctk.CTk):
 
     def _clear_search(self):
         """清除搜索"""
+        if self._search_job is not None:
+            self.after_cancel(self._search_job)
+            self._search_job = None
         self._search_var.set("")
+        self._clear_search_state()
         self._search_entry.focus_set()

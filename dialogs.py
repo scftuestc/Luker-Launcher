@@ -37,6 +37,9 @@ class TrayMenu(ctk.CTkToplevel):
 
         self._animation_phase = 0
         self._hover_item = None
+        self._menu_animation_id = None
+        self._menu_animation_active = False
+        self._mouse_poll_id = None
 
         self._build_menu()
 
@@ -44,10 +47,6 @@ class TrayMenu(ctk.CTkToplevel):
 
         self.after(50, self._setup_blur)
         self.after(100, self._setup_no_activate)
-
-        self._animate_menu()
-
-        self._check_mouse_outside()
 
         self.withdraw()
 
@@ -68,6 +67,10 @@ class TrayMenu(ctk.CTkToplevel):
                           self._gcl_enabled, gcl_running)
         self._setup_blur()
 
+        if self.winfo_viewable():
+            self._start_menu_animation()
+            self._start_mouse_poll()
+
     def _setup_no_activate(self):
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
@@ -77,10 +80,14 @@ class TrayMenu(ctk.CTkToplevel):
         except Exception as e:
             print(f"设置无焦点窗口失败: {e}")
 
+    def _start_mouse_poll(self):
+        if self._mouse_poll_id is None:
+            self._mouse_poll_id = self.after(100, self._check_mouse_outside)
+
     def _check_mouse_outside(self):
         """菜单可见时轮询鼠标，左键点击菜单外部则收起。"""
+        self._mouse_poll_id = None
         if not self.winfo_viewable():
-            self.after(200, self._check_mouse_outside)
             return
 
         try:
@@ -99,13 +106,12 @@ class TrayMenu(ctk.CTkToplevel):
                 left_button = windll.user32.GetAsyncKeyState(0x01) & 0x8000
                 if left_button:
                     self.hide()
-                    self.after(200, self._check_mouse_outside)
                     return
 
         except Exception:
             pass
 
-        self.after(100, self._check_mouse_outside)
+        self._mouse_poll_id = self.after(100, self._check_mouse_outside)
 
     def _setup_blur(self):
         try:
@@ -115,7 +121,18 @@ class TrayMenu(ctk.CTkToplevel):
         except Exception:
             pass
 
+    def _start_menu_animation(self):
+        if self._menu_animation_active:
+            return
+        self._menu_animation_active = True
+        self._animate_menu()
+
     def _animate_menu(self):
+        self._menu_animation_id = None
+        if not self.winfo_viewable():
+            self._menu_animation_active = False
+            return
+
         self._animation_phase = (self._animation_phase + 0.05) % 1.0
 
         if hasattr(self, '_menu_logo_bars'):
@@ -130,8 +147,7 @@ class TrayMenu(ctk.CTkToplevel):
                 b = int(b * brightness)
                 bar.configure(fg_color=f"#{r:02x}{g:02x}{b:02x}")
 
-        if self.winfo_viewable():
-            self.after(50, self._animate_menu)
+        self._menu_animation_id = self.after(50, self._animate_menu)
 
     def _build_menu(self):
         main = ctk.CTkFrame(self, fg_color=self.COLORS['card'], corner_radius=16)
@@ -369,9 +385,25 @@ class TrayMenu(ctk.CTkToplevel):
 
         self._setup_no_activate()
 
-        self._animate_menu()
+        self._start_menu_animation()
+        self._start_mouse_poll()
 
     def hide(self):
+        if self._menu_animation_id is not None:
+            try:
+                self.after_cancel(self._menu_animation_id)
+            except Exception:
+                pass
+            self._menu_animation_id = None
+        self._menu_animation_active = False
+
+        if self._mouse_poll_id is not None:
+            try:
+                self.after_cancel(self._mouse_poll_id)
+            except Exception:
+                pass
+            self._mouse_poll_id = None
+
         self.withdraw()
 
 
