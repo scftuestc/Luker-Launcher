@@ -13,6 +13,9 @@ import tkinter.font as tkfont
 
 from config import config
 
+# 每条队列每轮最多处理的日志行数
+MAX_LOG_LINES_PER_CYCLE = 10
+
 
 class WindowsBlur:
     class ACCENT_POLICY(ctypes.Structure):
@@ -146,16 +149,16 @@ class LogWindow(ctk.CTk):
 
         # 日志源切换状态：'luker' 或 'gcl'
         self._log_source = 'luker'
-        # 分别存储两个日志源的日志
-        self._luker_logs: list = []
-        self._gcl_logs: list = []
+        # 分别存储两个日志源的日志：(时间戳, 日志行)
+        self._luker_logs: list[tuple[datetime.datetime, str]] = []
+        self._gcl_logs: list[tuple[datetime.datetime, str]] = []
 
         self._build_ui()
 
         self._log_count = 0
         self._auto_scroll = True
         self._is_running = False
-        self._last_log_timestamp: int = 0
+        self._last_log_timestamp: datetime.datetime | None = None
 
         self.log_queue: queue.Queue = queue.Queue()
         self.gcl_log_queue: queue.Queue = queue.Queue()
@@ -815,31 +818,23 @@ class LogWindow(ctk.CTk):
         """添加 GCL 日志的便捷方法"""
         self.gcl_log_queue.put(line)
 
+    def _drain_log_queue(self, log_queue: queue.Queue, log_store: list, source: str) -> None:
+        """从队列取一批日志写入存储；仅当前日志源需要立即渲染。"""
+        for _ in range(MAX_LOG_LINES_PER_CYCLE):
+            try:
+                line = log_queue.get_nowait()
+            except queue.Empty:
+                return
+
+            timestamp = datetime.datetime.now()
+            log_store.append((timestamp, line))
+            if self._log_source == source:
+                self._add_log_line(line, timestamp)
+
     def _process_logs(self) -> None:
-        processed = 0
-        max_per_cycle = 10
-
-        # 处理 Luker 日志
-        try:
-            while processed < max_per_cycle:
-                line = self.log_queue.get_nowait()
-                self._luker_logs.append(line)
-                if self._log_source == 'luker':
-                    self._add_log_line(line)
-                processed += 1
-        except queue.Empty:
-            pass
-
-        # 处理 GCL 日志
-        try:
-            while processed < max_per_cycle:
-                line = self.gcl_log_queue.get_nowait()
-                self._gcl_logs.append(line)
-                if self._log_source == 'gcl':
-                    self._add_log_line(line)
-                processed += 1
-        except queue.Empty:
-            pass
+        # 两个队列各自限额，避免一个日志源刷屏时另一个被饿死
+        self._drain_log_queue(self.log_queue, self._luker_logs, 'luker')
+        self._drain_log_queue(self.gcl_log_queue, self._gcl_logs, 'gcl')
 
         if not self.log_queue.empty() or not self.gcl_log_queue.empty():
             self.after(10, self._process_logs)
@@ -876,12 +871,12 @@ class LogWindow(ctk.CTk):
 
         # 重置计数
         self._log_count = 0
-        self._last_log_timestamp = 0
+        self._last_log_timestamp = None
 
         # 加载对应日志源的日志
         logs = self._luker_logs if self._log_source == 'luker' else self._gcl_logs
-        for line in logs:
-            self._add_log_line(line)
+        for timestamp, line in logs:
+            self._add_log_line(line, timestamp)
 
         self.count_label.configure(text=f"📝 {self._log_count} 条日志")
 
@@ -901,17 +896,16 @@ class LogWindow(ctk.CTk):
                 self._title_label.configure(text="Luker 日志")
                 self._refresh_log_display()
 
-    def _add_log_line(self, text: str) -> None:
-        now = datetime.datetime.now()
+    def _add_log_line(self, text: str, timestamp: datetime.datetime | None = None) -> None:
+        now = timestamp if timestamp is not None else datetime.datetime.now()
         ts = now.strftime("%H:%M:%S")
-        current_timestamp = int(now.timestamp())
 
         tag = self._get_tag_for_line(text)
 
         tb = self.log_text._textbox
         tb.configure(state="normal")
 
-        if self._last_log_timestamp > 0 and (current_timestamp - self._last_log_timestamp) >= 60:
+        if self._last_log_timestamp is not None and (now - self._last_log_timestamp).total_seconds() >= 60:
             tb.insert("end", "\n")
             separator_text = "─" * 40
             separator = tk.Label(tb, text=separator_text, fg=self.COLORS['accent'],
@@ -920,7 +914,7 @@ class LogWindow(ctk.CTk):
             tb.window_create("end", window=separator)
             tb.insert("end", "\n\n")
 
-        self._last_log_timestamp = current_timestamp
+        self._last_log_timestamp = now
 
         tb.insert("end", f"[{ts}] ", "time")
         tb.insert("end", f"{text}\n", tag)
@@ -936,9 +930,19 @@ class LogWindow(ctk.CTk):
         tb.configure(state="normal")
         tb.delete("1.0", "end")
         tb.configure(state="disabled")
+
+        # 同步清空底层存储，否则切换日志源后已清除的内容会重新出现
+        self._luker_logs.clear()
+        self._gcl_logs.clear()
         self._log_count = 0
-        self._last_log_timestamp = 0
+        self._last_log_timestamp = None
         self.count_label.configure(text="📝 0 条日志")
+
+        self._clear_search_highlights()
+        self._search_results = []
+        self._search_current_index = -1
+        self._search_nav.pack_forget()
+        self._search_var.set("")
 
     def _toggle_scroll(self):
         self._auto_scroll = not self._auto_scroll
