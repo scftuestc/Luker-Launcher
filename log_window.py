@@ -1072,6 +1072,15 @@ class LogWindow(ctk.CTk):
         self._luker_logs.clear()
         self._gcl_logs.clear()
         self._display_entry_lines.clear()
+
+        # 丢弃尚未处理的日志，避免清除后旧日志又冒出来
+        for log_queue in (self.log_queue, self.gcl_log_queue):
+            while True:
+                try:
+                    log_queue.get_nowait()
+                except queue.Empty:
+                    break
+
         self._last_log_timestamp = None
         self._display_dirty = False
         self.count_label.configure(text="📝 0 条日志")
