@@ -21,6 +21,7 @@ from path_dialogs import ensure_luker_path_configured
 from process_manager import GCLProcessManager, ProcessManager
 from pwa_browser import open_in_browser
 from tray_icon import TrayIcon
+import single_instance
 
 logger = logging.getLogger(__name__)
 
@@ -169,12 +170,15 @@ class LukerLauncher:
                 return self.process_manager
 
             self.process_manager = ProcessManager(
-                path, let_luker_open_browser=not config.use_pwa_mode
+                path,
+                let_luker_open_browser=not config.use_pwa_mode,
+                server_port=config.get_server_port(),
             )
             self.process_manager.add_log_callback(self._on_log)
             self._last_status = None
         else:
             self.process_manager.let_luker_open_browser = not config.use_pwa_mode
+            self.process_manager.server_port = config.get_server_port()
 
         return self.process_manager
 
@@ -436,8 +440,22 @@ def main() -> None:
     setup_dpi_awareness()
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("dark-blue")
-    launcher = LukerLauncher()
-    launcher.run()
+
+    # 同一会话只允许一个启动器，避免两个托盘和两个 node 抢同一端口
+    if not single_instance.acquire():
+        windll.user32.MessageBoxW(
+            None,
+            "Luker 启动器已在运行。\n请从系统托盘图标打开。",
+            "Luker 启动器",
+            0x00000040 | 0x00040000,  # MB_ICONINFORMATION | MB_TOPMOST
+        )
+        return
+
+    try:
+        launcher = LukerLauncher()
+        launcher.run()
+    finally:
+        single_instance.release()
 
 
 if __name__ == "__main__":

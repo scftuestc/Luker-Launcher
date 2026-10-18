@@ -1,5 +1,6 @@
 """Luker 与 GCL 子进程的启动、停止和日志读取。"""
 
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -7,6 +8,8 @@ from threading import RLock, Thread
 from typing import Callable, List, Optional, Sequence
 
 import psutil
+
+from win_job import assign_to_job
 
 
 class _ProcessManagerBase:
@@ -35,6 +38,10 @@ class _ProcessManagerBase:
 
     def _startup_error(self) -> Optional[str]:
         """启动前校验，返回错误信息；返回 None 表示可以启动。"""
+        return None
+
+    def _pre_start_error(self) -> Optional[str]:
+        """目标文件检查通过后的额外检查，例如端口是否已被占用。"""
         return None
 
     def _build_command(self) -> Sequence[str]:
@@ -88,7 +95,7 @@ class _ProcessManagerBase:
                 self._emit_log(f"{self._tag('信息')} {self.name} 已经在运行中")
                 return True
 
-            error = self._startup_error()
+            error = self._startup_error() or self._pre_start_error()
             if error:
                 self._emit_log(f"{self._tag('错误')} {error}")
                 return False
@@ -111,6 +118,13 @@ class _ProcessManagerBase:
                     encoding=self._encoding,
                     errors='replace'
                 )
+
+                # 强制结束启动器时由 Job Object 兜底清理子进程
+                if not assign_to_job(process):
+                    self._emit_log(
+                        f"{self._tag('警告')} 无法将子进程加入 Job Object，"
+                        f"强制退出时可能留下孤儿进程"
+                    )
 
                 self.process = process
                 self._running = True
@@ -221,6 +235,22 @@ class ProcessManager(_ProcessManagerBase):
         if not server_js.exists():
             return f"未找到 server.js: {server_js}"
         return None
+
+    def _pre_start_error(self) -> Optional[str]:
+        if self.server_port and self._is_port_in_use(self.server_port):
+            return (
+                f"端口 {self.server_port} 已被占用，可能已有 Luker 在运行；"
+                f"请先关闭它再启动"
+            )
+        return None
+
+    @staticmethod
+    def _is_port_in_use(port: int) -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                return True
+        except OSError:
+            return False
 
     def _build_command(self) -> Sequence[str]:
         # 直接使用 node server.js，而不是通过 Start.bat，
