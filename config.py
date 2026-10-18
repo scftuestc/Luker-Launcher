@@ -116,7 +116,7 @@ PRESET_THEMES = {
 }
 
 DEFAULT_THEME = 'deep_blue'
-APP_VERSION = "1.1"
+APP_VERSION = "1.2"
 
 # Luker 默认端口（与 server.js 的默认配置一致，实际端口以 Luker config.yaml 为准）
 DEFAULT_PORT = 8000
