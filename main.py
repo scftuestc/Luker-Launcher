@@ -154,7 +154,10 @@ class LukerLauncher:
             self.log_window.after(0, self._open_settings_window)
 
     def _on_open_browser(self) -> None:
-        """打开浏览器，根据配置决定使用 PWA 模式还是默认浏览器"""
+        """打开浏览器；PWA 发现可能调用 PowerShell，放到后台避免卡住界面。"""
+        self._run_async(self._open_browser_now)
+
+    def _open_browser_now(self) -> None:
         url = config.get_server_url()
         if config.use_pwa_mode:
             # 使用 PWA 模式打开浏览器，标题栏颜色会自动跟随 Luker 主题
@@ -351,7 +354,8 @@ class LukerLauncher:
 
                 if ready:
                     self._on_log("[启动器] 检测到 Luker 已启动，正在打开 PWA 浏览器...")
-                    self._on_open_browser()
+                    # 当前已在后台线程中，直接打开即可
+                    self._open_browser_now()
                     return
 
                 time.sleep(BROWSER_WAIT_INTERVAL_SECONDS)

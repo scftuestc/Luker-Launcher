@@ -9,7 +9,6 @@ import time
 WM_USER = 0x0400
 WM_TRAYICON = WM_USER + 1
 WM_LBUTTONUP = 0x0202
-WM_LBUTTONDBLCLK = 0x0203
 WM_RBUTTONUP = 0x0205
 WM_DESTROY = 0x0002
 WM_QUIT = 0x0012
@@ -260,7 +259,7 @@ class TrayIcon:
     def _wnd_proc(self, hwnd, msg, wparam, lparam):
         try:
             if msg == WM_TRAYICON:
-                if lparam == WM_LBUTTONDBLCLK or lparam == WM_LBUTTONUP:
+                if lparam == WM_LBUTTONUP:
                     self._toggle_window()
                 elif lparam == WM_RBUTTONUP:
                     if self.on_show_menu:

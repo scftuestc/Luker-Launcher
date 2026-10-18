@@ -404,6 +404,8 @@ class LogWindow(ctk.CTk):
             edge = 'sw'
         elif x > w - margin and y > h - margin:
             edge = 'se'
+        elif y < margin:
+            edge = 'n'
         elif x < margin:
             edge = 'w'
         elif x > w - margin:

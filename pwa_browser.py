@@ -9,10 +9,12 @@
 如果 PWA 未安装，回退到 Edge 的 --app 应用窗口模式，最终回退到默认浏览器。
 """
 
+import ctypes
 import json
 import re
 import subprocess
 import os
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -21,8 +23,12 @@ from config import config
 # Windows APPX 包的默认 Application Id（来自 AppxManifest.xml 的 Application Id）
 DEFAULT_APPX_APP_ID = "App"
 
-# 自动发现结果的缓存（只缓存成功的结果，这样用户在运行期间安装 PWA 后无需重启启动器）
+# 自动发现失败后的重试间隔（秒）。成功结果会一直缓存。
+DISCOVERY_RETRY_SECONDS = 60
+
+# 自动发现结果的缓存
 _discovered_appx: Optional[Tuple[str, str]] = None
+_discovery_checked_at = 0.0
 
 
 def find_edge_path() -> Optional[str]:
@@ -102,9 +108,12 @@ def discover_luker_appx() -> Optional[Tuple[str, str]]:
     Returns:
         (PackageFamilyName, ApplicationId) 元组，未发现时返回 None
     """
-    global _discovered_appx
+    global _discovered_appx, _discovery_checked_at
     if _discovered_appx:
         return _discovered_appx
+    if time.monotonic() - _discovery_checked_at < DISCOVERY_RETRY_SECONDS:
+        return None
+    _discovery_checked_at = time.monotonic()
 
     try:
         result = subprocess.run(
@@ -163,16 +172,17 @@ def open_as_appx(family_name: str, app_id: str = DEFAULT_APPX_APP_ID) -> bool:
     app_uri = f"shell:AppsFolder\\{family_name}!{app_id}"
 
     try:
-        # 使用 explorer.exe 启动应用
-        subprocess.Popen(
-            ["explorer.exe", app_uri],
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        # ShellExecuteW 返回 > 32 表示启动成功；失败时交给调用方回退到其他方式
+        result = ctypes.windll.shell32.ShellExecuteW(
+            None, "open", app_uri, None, None, 1
         )
-        print(f"[PWA] 通过 APPX 启动成功")
-        return True
+        if result > 32:
+            print("[PWA] 通过 APPX 启动成功")
+            return True
+        print(f"[PWA] APPX 启动失败，ShellExecute 返回 {result}")
     except Exception as e:
         print(f"[PWA] APPX 启动失败: {e}")
-        return False
+    return False
 
 
 def open_as_pwa(url: Optional[str] = None) -> bool:
@@ -223,7 +233,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
             f"--app-id={app_id}",
             "--profile-directory=Default",
         ]
-        print(f"[PWA] 使用 --app-id 模式启动")
+        print("[PWA] 使用 --app-id 模式启动")
     else:
         # 4. 如果 PWA 未安装，使用 --app 参数启动（简化的应用窗口模式）
         args = [
@@ -231,7 +241,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
             f"--app={url}",
             "--profile-directory=Default",
         ]
-        print(f"[PWA] 使用 --app 模式启动（PWA 未安装）")
+        print("[PWA] 使用 --app 模式启动（PWA 未安装）")
 
     try:
         subprocess.Popen(
