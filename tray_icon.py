@@ -1,3 +1,5 @@
+"""基于 Win32 Shell_NotifyIcon 的系统托盘图标。"""
+
 from PIL import Image, ImageDraw
 from typing import Callable, Optional
 from threading import Thread
@@ -25,6 +27,7 @@ WNDPROC = WINFUNCTYPE(ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPAR
 
 
 class NOTIFYICONDATA(Structure):
+    # 只声明实际使用的 v1 字段：图标、回调消息和提示文本
     _fields_ = [
         ("cbSize", wintypes.DWORD),
         ("hWnd", wintypes.HWND),
@@ -63,6 +66,8 @@ class MSG(Structure):
 
 
 class TrayIcon:
+    """系统托盘图标；Win32 消息循环运行在独立线程中。"""
+
     def __init__(
         self,
         on_show_window: Callable[[], None],
@@ -259,6 +264,7 @@ class TrayIcon:
     def _wnd_proc(self, hwnd, msg, wparam, lparam):
         try:
             if msg == WM_TRAYICON:
+                # 左键单击切换日志窗口，右键弹出菜单
                 if lparam == WM_LBUTTONUP:
                     self._toggle_window()
                 elif lparam == WM_RBUTTONUP:
@@ -293,7 +299,7 @@ class TrayIcon:
 
     def update_status(self, is_running: bool) -> None:
         if is_running == self._is_running and self._hicon is not None:
-            return
+            return  # 状态没变就不重建图标，避免反复调用 GDI 和 Shell
         self._is_running = is_running
         self._update_icon()
 

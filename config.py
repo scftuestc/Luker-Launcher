@@ -1,3 +1,5 @@
+"""启动器配置读写、主题预设与路径校验。"""
+
 import json
 import re
 import sys
@@ -8,6 +10,7 @@ from tkinter import filedialog, messagebox
 
 
 def get_app_dir() -> Path:
+    """返回程序所在目录，兼容 PyInstaller 打包后的 exe。"""
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).parent
     return Path(__file__).parent
@@ -122,6 +125,8 @@ DEFAULT_GCL_URL = "http://127.0.0.1:7861/"
 
 
 class Config:
+    """launcher_config.json 的读写与主题/GCL 变更通知。"""
+
     CONFIG_FILE = "launcher_config.json"
 
     def __init__(self):
@@ -346,6 +351,7 @@ class Config:
         return start_bat.exists() and server_js.exists()
 
     def select_luker_path(self) -> Optional[str]:
+        """让用户选择 Luker 安装目录并校验，返回有效路径或 None。"""
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
@@ -379,6 +385,7 @@ class Config:
         return None
 
     def ensure_path_configured(self) -> bool:
+        """确保已配置有效的 Luker 路径，否则引导用户选择。"""
         if self.luker_path and self.is_valid_luker_path(self.luker_path):
             return True
 

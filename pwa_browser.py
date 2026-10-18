@@ -26,7 +26,7 @@ DEFAULT_APPX_APP_ID = "App"
 # 自动发现失败后的重试间隔（秒）。成功结果会一直缓存。
 DISCOVERY_RETRY_SECONDS = 60
 
-# 自动发现结果的缓存
+# 自动发现结果的缓存；失败时用 checked_at 做退避，避免反复启动 PowerShell
 _discovered_appx: Optional[Tuple[str, str]] = None
 _discovery_checked_at = 0.0
 
@@ -111,6 +111,7 @@ def discover_luker_appx() -> Optional[Tuple[str, str]]:
     global _discovered_appx, _discovery_checked_at
     if _discovered_appx:
         return _discovered_appx
+    # 上次扫描失败且仍在退避期内，直接返回，避免每次点击都启动 PowerShell
     if time.monotonic() - _discovery_checked_at < DISCOVERY_RETRY_SECONDS:
         return None
     _discovery_checked_at = time.monotonic()

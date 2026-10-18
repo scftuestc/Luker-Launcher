@@ -1,3 +1,5 @@
+"""Luker 启动器入口：创建日志窗口、托盘和进程管理器，并进入 Tk 主循环。"""
+
 import ctypes
 import time
 import urllib.error
@@ -47,6 +49,8 @@ def setup_dpi_awareness() -> None:
 
 
 class LukerLauncher:
+    """协调日志窗口、托盘菜单和两个进程管理器的应用主体。"""
+
     def __init__(self) -> None:
         self.process_manager: ProcessManager | None = None
         self.gcl_process_manager: GCLProcessManager | None = None
@@ -54,9 +58,9 @@ class LukerLauncher:
         self.log_window: LogWindow | None = None
         self.tray_menu: TrayMenu | None = None
         self._running = False
-        self._process_busy = False
-        self._exiting = False
-        self._last_status: bool | None = None
+        self._process_busy = False  # 防止启停/重启操作重入
+        self._exiting = False  # 退出流程只执行一次
+        self._last_status: bool | None = None  # 上一次通知给界面的运行状态
 
         # 注册 GCL 配置变更回调
         config.add_gcl_change_callback(self._on_gcl_config_change)
@@ -92,6 +96,7 @@ class LukerLauncher:
         self._exiting = True
         self._running = False
 
+        # 停止进程可能耗时数秒，放到后台，完成后再结束主循环
         managers = [m for m in (self.process_manager, self.gcl_process_manager) if m]
 
         def worker():
@@ -103,6 +108,7 @@ class LukerLauncher:
         self._run_async(worker)
 
     def _run_async(self, func) -> None:
+        """在守护线程中执行耗时操作，不阻塞 Tk 主循环。"""
         Thread(target=func, daemon=True).start()
 
     def _ensure_process_manager(self) -> ProcessManager | None:
@@ -231,6 +237,7 @@ class LukerLauncher:
         if not self.process_manager:
             return
         is_running = self.process_manager.is_running
+        # 状态未变化时不重复更新图标和标签
         if is_running == self._last_status:
             return
         self._last_status = is_running

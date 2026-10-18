@@ -1,3 +1,4 @@
+"""主日志窗口：日志渲染、搜索、主题和 Windows 毛玻璃效果。"""
 
 import sys
 import os
@@ -18,6 +19,8 @@ MAX_LOG_LINES_PER_CYCLE = 10
 
 
 class WindowsBlur:
+    """Win32 模糊/圆角效果封装；系统不支持时静默降级为普通窗口。"""
+
     class ACCENT_POLICY(ctypes.Structure):
         _fields_ = [
             ("AccentState", c_int),
@@ -107,6 +110,8 @@ def get_mono_font():
 
 
 class LogWindow(ctk.CTk):
+    """Tk 根窗口，负责日志显示、搜索、主题切换和窗口边框交互。"""
+
     def __init__(self, on_hide_callback=None, on_start=None, on_stop=None):
         super().__init__()
 
@@ -390,6 +395,7 @@ class LogWindow(ctk.CTk):
         self.bind('<ButtonRelease-1>', self._end_resize)
 
     def _check_resize_edge(self, e):
+        # 距离窗口边缘 8px 内按方向显示缩放光标
         if e.widget != self:
             self.configure(cursor='')
             self._resize_edge = None
@@ -560,6 +566,7 @@ class LogWindow(ctk.CTk):
         self.geometry(f"+{e.x_root - self._drag_x}+{e.y_root - self._drag_y}")
 
     def _toggle_maximize(self, e):
+        # 双击标题栏暂不提供最大化
         pass
 
     def _on_minimize(self):
@@ -903,6 +910,7 @@ class LogWindow(ctk.CTk):
                 self._refresh_log_display()
 
     def _add_log_line(self, text: str, timestamp: datetime.datetime | None = None) -> None:
+        """插入一行日志；timestamp 用于重放历史日志，None 表示使用当前时间。"""
         now = timestamp if timestamp is not None else datetime.datetime.now()
         ts = now.strftime("%H:%M:%S")
 

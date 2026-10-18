@@ -1,3 +1,5 @@
+"""托盘右键菜单和设置窗口。"""
+
 import customtkinter as ctk
 from ctypes import windll
 from typing import Dict
@@ -9,6 +11,8 @@ from log_window import WindowsBlur, get_ui_font, get_mono_font
 
 
 class TrayMenu(ctk.CTkToplevel):
+    """置顶、不抢焦点的托盘右键菜单。"""
+
     WS_EX_NOACTIVATE = 0x08000000
     WS_EX_TOOLWINDOW = 0x00000080
     GWL_EXSTYLE = -20
@@ -74,6 +78,7 @@ class TrayMenu(ctk.CTkToplevel):
             print(f"设置无焦点窗口失败: {e}")
 
     def _check_mouse_outside(self):
+        """菜单可见时轮询鼠标，左键点击菜单外部则收起。"""
         if not self.winfo_viewable():
             self.after(200, self._check_mouse_outside)
             return
@@ -371,6 +376,8 @@ class TrayMenu(ctk.CTkToplevel):
 
 
 class SettingsWindow(ctk.CTkToplevel):
+    """设置窗口：主题、PWA 模式、GCL 和 Luker 路径。"""
+
     def __init__(self, parent):
         super().__init__(parent)
 

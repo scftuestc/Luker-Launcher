@@ -1,3 +1,5 @@
+"""Luker 与 GCL 子进程的启动、停止和日志读取。"""
+
 import subprocess
 import time
 from pathlib import Path
@@ -8,6 +10,8 @@ import psutil
 
 
 class ProcessManager:
+    """管理 Luker（node server.js）子进程。"""
+
     def __init__(self, luker_path: str, autorun: bool = True):
         self.luker_path = Path(luker_path)
         self.autorun = autorun  # 是否让 Luker 自动打开浏览器
@@ -15,7 +19,7 @@ class ProcessManager:
         self.log_queue: queue.Queue = queue.Queue()
         self._log_thread: Optional[Thread] = None
         self._running = False
-        self._op_lock = RLock()
+        self._op_lock = RLock()  # 串行化 start/stop/restart，避免并发操作同一进程
 
         self._log_callbacks: List[Callable[[str], None]] = []
 
@@ -41,6 +45,7 @@ class ProcessManager:
                 pass
 
     def _read_output(self) -> None:
+        """持续读取子进程输出，直到进程退出或收到停止请求。"""
         if self.process is None:
             return
 
@@ -103,6 +108,7 @@ class ProcessManager:
                 return False
 
     def _kill_process_tree(self, pid: int) -> None:
+        """先终止子进程树，再终止父进程，避免留下孤儿进程。"""
         try:
             parent = psutil.Process(pid)
             children = parent.children(recursive=True)
@@ -182,7 +188,7 @@ class GCLProcessManager:
         self.log_queue: queue.Queue = queue.Queue()
         self._log_thread: Optional[Thread] = None
         self._running = False
-        self._op_lock = RLock()
+        self._op_lock = RLock()  # 串行化 start/stop/restart，避免并发操作同一进程
 
         self._log_callbacks: List[Callable[[str], None]] = []
 
@@ -208,6 +214,7 @@ class GCLProcessManager:
                 pass
 
     def _read_output(self) -> None:
+        """持续读取子进程输出，直到进程退出或收到停止请求。"""
         if self.process is None:
             return
 
@@ -264,6 +271,7 @@ class GCLProcessManager:
                 return False
 
     def _kill_process_tree(self, pid: int) -> None:
+        """先终止子进程树，再终止父进程，避免留下孤儿进程。"""
         try:
             parent = psutil.Process(pid)
             children = parent.children(recursive=True)
