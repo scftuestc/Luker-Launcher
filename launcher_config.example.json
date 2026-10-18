@@ -2,5 +2,6 @@
   "luker_path": "D:/AI/Luker",
   "use_pwa_mode": false,
   "theme": "ocean_cyan",
-  "gcl_enabled": false
+  "gcl_enabled": false,
+  "gcl_url": "http://127.0.0.1:7861/"
 }

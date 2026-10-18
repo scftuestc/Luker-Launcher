@@ -268,7 +268,7 @@ class TrayMenu(ctk.CTkToplevel):
 
     def _on_gcl_browser(self):
         self.hide()
-        webbrowser.open('http://127.0.0.1:7861/')
+        webbrowser.open(config.gcl_url)
 
     def _on_exit(self):
         self.hide()
@@ -714,6 +714,18 @@ class SettingsWindow(ctk.CTkToplevel):
     def _on_gcl_toggle(self):
         """GCL 开关切换回调"""
         enabled = self.gcl_switch.get() == 1
+
+        if enabled:
+            bat_path = config.gcl_bat_path
+            if not bat_path or not config.is_valid_gcl_path(bat_path):
+                selected = config.select_gcl_bat_path()
+                if not selected:
+                    # 用户取消选择，回退开关，避免出现“已启用但没有路径”的状态
+                    self.gcl_switch.deselect()
+                    self._gcl_path_frame.pack_forget()
+                    return
+                self.gcl_path_label.configure(text=selected)
+
         config.gcl_enabled = enabled
 
         if enabled:

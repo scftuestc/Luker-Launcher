@@ -64,7 +64,8 @@ pyinstaller launcher.spec
   "luker_path": "D:/AI/Luker",
   "use_pwa_mode": true,
   "theme": "ocean_cyan",
-  "gcl_enabled": false
+  "gcl_enabled": false,
+  "gcl_url": "http://127.0.0.1:7861/"
 }
 ```
 
@@ -75,6 +76,7 @@ pyinstaller launcher.spec
 | `theme` | 主题名称 |
 | `gcl_enabled` | 是否启用 GCL 功能 |
 | `gcl_bat_path` | GCL 的 start.bat 路径（启用 GCL 时设置） |
+| `gcl_url` | GCL 的本地访问地址，默认 `http://127.0.0.1:7861/` |
 | `pwa_appx_family_name` | （可选）已安装 Luker PWA 的 APPX PackageFamilyName |
 | `pwa_app_id` | （可选）Edge PWA 应用 ID，用于 `--app-id` 启动模式 |
 

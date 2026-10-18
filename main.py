@@ -169,14 +169,14 @@ class LukerLauncher:
             settings_win.focus_force()
 
     def _on_gcl_start(self) -> None:
-        if self.gcl_process_manager:
-            self.gcl_process_manager.start()
-            self._update_status()
+        manager = self.gcl_process_manager
+        if manager:
+            self._run_async(manager.start)
 
     def _on_gcl_stop(self) -> None:
-        if self.gcl_process_manager:
-            self.gcl_process_manager.stop()
-            self._update_status()
+        manager = self.gcl_process_manager
+        if manager:
+            self._run_async(manager.stop)
 
     def _on_gcl_log(self, line: str) -> None:
         if self.log_window:
@@ -184,36 +184,38 @@ class LukerLauncher:
 
     def _on_gcl_config_change(self, enabled: bool, bat_path: str | None) -> None:
         """GCL 配置变更回调，动态创建或销毁 GCL 进程管理器"""
-        if enabled and bat_path:
-            # 如果之前没有 GCL 进程管理器，或者路径变了，需要重新创建
-            if self.gcl_process_manager is None or str(self.gcl_process_manager.bat_path) != bat_path:
-                # 如果有旧的进程管理器且正在运行，先停止
-                if self.gcl_process_manager and self.gcl_process_manager.is_running:
-                    self.gcl_process_manager.stop()
+        active = bool(enabled and bat_path and config.is_valid_gcl_path(bat_path))
 
-                # 创建新的 GCL 进程管理器
+        if active:
+            # 如果之前没有 GCL 进程管理器，或者路径变了，需要重新创建
+            if self.gcl_process_manager is None or Path(self.gcl_process_manager.bat_path) != Path(bat_path):
+                old_manager = self.gcl_process_manager
+                if old_manager and old_manager.is_running:
+                    self._run_async(old_manager.stop)
+
                 self.gcl_process_manager = GCLProcessManager(bat_path)
                 self.gcl_process_manager.add_log_callback(self._on_gcl_log)
 
                 if self.log_window:
                     self.log_window.after(0, lambda: self.log_window.set_gcl_enabled(True))
-                    self._on_log("[启动器] GCL 功能已启用")
+                self._on_log("[启动器] GCL 功能已启用")
         else:
-            # 禁用 GCL
-            if self.gcl_process_manager:
-                if self.gcl_process_manager.is_running:
-                    self.gcl_process_manager.stop()
-                self.gcl_process_manager = None
+            # 禁用 GCL，或在没有有效路径时不创建管理器
+            old_manager = self.gcl_process_manager
+            self.gcl_process_manager = None
+            if old_manager and old_manager.is_running:
+                self._run_async(old_manager.stop)
 
             if self.log_window:
                 self.log_window.after(0, lambda: self.log_window.set_gcl_enabled(False))
+            if old_manager is not None:
                 self._on_log("[启动器] GCL 功能已禁用")
 
     def _on_show_menu(self, x: int, y: int) -> None:
         if self.tray_menu and self.log_window:
             is_running = self.process_manager.is_running if self.process_manager else False
             window_visible = self.log_window.is_visible()
-            gcl_enabled = config.gcl_enabled
+            gcl_enabled = self.gcl_process_manager is not None
             gcl_running = self.gcl_process_manager.is_running if self.gcl_process_manager else False
             self.log_window.after(0, lambda: self._show_tray_menu(x, y, is_running, window_visible, gcl_enabled, gcl_running))
 
@@ -280,8 +282,8 @@ class LukerLauncher:
             'exit': self._on_exit,
         })
 
-        # 初始化 GCL 进程管理器（如果启用且路径已配置）
-        if config.gcl_enabled and config.gcl_bat_path:
+        # 初始化 GCL 进程管理器（如果启用且路径有效）
+        if config.gcl_enabled and config.gcl_bat_path and config.is_valid_gcl_path(config.gcl_bat_path):
             self.gcl_process_manager = GCLProcessManager(config.gcl_bat_path)
             self.gcl_process_manager.add_log_callback(self._on_gcl_log)
             self.log_window.set_gcl_enabled(True)
@@ -318,7 +320,7 @@ class LukerLauncher:
         self._on_log("[启动器] 已最小化到系统托盘，单击图标可显示日志窗口")
 
         # 如果 GCL 已启用，显示提示
-        if config.gcl_enabled:
+        if self.gcl_process_manager:
             self._on_log("[启动器] GCL 功能已启用，可通过右键菜单控制")
 
         # 如果开启了 PWA 模式，等待 Luker 启动后自动打开浏览器

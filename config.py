@@ -116,6 +116,8 @@ DEFAULT_THEME = 'deep_blue'
 
 # Luker 默认端口（与 server.js 的默认配置一致，实际端口以 Luker config.yaml 为准）
 DEFAULT_PORT = 8000
+# GCL 默认访问地址
+DEFAULT_GCL_URL = "http://127.0.0.1:7861/"
 
 
 class Config:
@@ -255,6 +257,11 @@ class Config:
         self._config['gcl_bat_path'] = path
         self._save_config()
         self._notify_gcl_change()
+
+    @property
+    def gcl_url(self) -> str:
+        """GCL 的本地访问地址"""
+        return self._config.get('gcl_url', DEFAULT_GCL_URL)
 
     def is_valid_gcl_path(self, path: str) -> bool:
         """验证 GCL bat 路径是否有效"""

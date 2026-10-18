@@ -236,6 +236,8 @@ class GCLProcessManager:
                 startupinfo.wShowWindow = subprocess.SW_HIDE
 
                 # 使用 cmd /c 来运行 bat 文件
+                # bat 的输出由 cmd 按系统 ANSI 代码页编码（中文系统为 CP936），
+                # 不能用 utf-8 解码，否则中文日志会变成乱码
                 self.process = subprocess.Popen(
                     ["cmd", "/c", str(self.bat_path)],
                     cwd=str(self.bat_path.parent),
@@ -246,7 +248,7 @@ class GCLProcessManager:
                     bufsize=1,
                     startupinfo=startupinfo,
                     creationflags=subprocess.CREATE_NO_WINDOW,
-                    encoding='utf-8',
+                    encoding='mbcs',
                     errors='replace'
                 )
 
