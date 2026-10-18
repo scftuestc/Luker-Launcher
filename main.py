@@ -53,6 +53,9 @@ class LukerLauncher:
         self.log_window: LogWindow | None = None
         self.tray_menu: TrayMenu | None = None
         self._running = False
+        self._process_busy = False
+        self._exiting = False
+        self._last_status: bool | None = None
 
         # 注册 GCL 配置变更回调
         config.add_gcl_change_callback(self._on_gcl_config_change)
@@ -74,28 +77,53 @@ class LukerLauncher:
             self.log_window.add_log(line)
 
     def _on_start(self) -> None:
-        if self.process_manager:
-            self.process_manager.start()
-            self._update_status()
+        self._do_process_action(lambda manager: manager.start())
 
     def _on_stop(self) -> None:
-        if self.process_manager:
-            self.process_manager.stop()
-            self._update_status()
+        self._do_process_action(lambda manager: manager.stop())
 
     def _on_restart(self) -> None:
-        if self.process_manager:
-            self.process_manager.restart()
-            self._update_status()
+        self._do_process_action(lambda manager: manager.restart())
 
     def _on_exit(self) -> None:
+        if self._exiting:
+            return
+        self._exiting = True
         self._running = False
-        if self.process_manager:
-            self.process_manager.stop()
-        if self.gcl_process_manager:
-            self.gcl_process_manager.stop()
-        if self.log_window:
-            self.log_window.after(0, self.log_window.quit)
+
+        managers = [m for m in (self.process_manager, self.gcl_process_manager) if m]
+
+        def worker():
+            for manager in managers:
+                manager.stop()
+            if self.log_window:
+                self.log_window.after(0, self.log_window.quit)
+
+        self._run_async(worker)
+
+    def _run_async(self, func) -> None:
+        Thread(target=func, daemon=True).start()
+
+    def _do_process_action(self, action) -> None:
+        """在后台线程执行进程操作，避免停止/重启时阻塞界面。"""
+        if self._process_busy or self._exiting or not self.process_manager:
+            return
+
+        manager = self.process_manager
+        self._process_busy = True
+
+        def worker():
+            try:
+                action(manager)
+            finally:
+                if self.log_window:
+                    self.log_window.after(0, self._finish_process_action)
+
+        self._run_async(worker)
+
+    def _finish_process_action(self) -> None:
+        self._process_busy = False
+        self._update_status()
 
     def _on_settings(self) -> None:
         if self.log_window:
@@ -171,12 +199,16 @@ class LukerLauncher:
             self.tray_menu.show_at(x, y)
 
     def _update_status(self) -> None:
-        if self.process_manager:
-            is_running = self.process_manager.is_running
-            if self.tray_icon:
-                self.tray_icon.update_status(is_running)
-            if self.log_window:
-                self.log_window.after(0, lambda: self.log_window.update_status(is_running))
+        if not self.process_manager:
+            return
+        is_running = self.process_manager.is_running
+        if is_running == self._last_status:
+            return
+        self._last_status = is_running
+        if self.tray_icon:
+            self.tray_icon.update_status(is_running)
+        if self.log_window:
+            self.log_window.after(0, lambda: self.log_window.update_status(is_running))
 
     def _status_monitor(self) -> None:
         while self._running:

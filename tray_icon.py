@@ -293,6 +293,8 @@ class TrayIcon:
             windll.shell32.Shell_NotifyIconW(NIM_MODIFY, byref(self._nid))
 
     def update_status(self, is_running: bool) -> None:
+        if is_running == self._is_running and self._hicon is not None:
+            return
         self._is_running = is_running
         self._update_icon()
 

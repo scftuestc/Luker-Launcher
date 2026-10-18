@@ -2,7 +2,7 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Optional, Callable, List
-from threading import Thread
+from threading import RLock, Thread
 import queue
 import psutil
 
@@ -15,6 +15,7 @@ class ProcessManager:
         self.log_queue: queue.Queue = queue.Queue()
         self._log_thread: Optional[Thread] = None
         self._running = False
+        self._op_lock = RLock()
 
         self._log_callbacks: List[Callable[[str], None]] = []
 
@@ -53,52 +54,53 @@ class ProcessManager:
             self._emit_log(f"[错误] 读取输出失败: {e}")
 
     def start(self) -> bool:
-        if self.is_running:
-            self._emit_log("[信息] Luker 已经在运行中")
-            return True
+        with self._op_lock:
+            if self.is_running:
+                self._emit_log("[信息] Luker 已经在运行中")
+                return True
 
-        server_js = self.luker_path / "server.js"
-        if not server_js.exists():
-            self._emit_log(f"[错误] 未找到 server.js: {server_js}")
-            return False
+            server_js = self.luker_path / "server.js"
+            if not server_js.exists():
+                self._emit_log(f"[错误] 未找到 server.js: {server_js}")
+                return False
 
-        try:
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
+            try:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
 
-            # 构建启动命令
-            # 直接使用 node server.js，而不是通过 Start.bat
-            # 这样可以传递 --browserLaunchEnabled 参数来控制是否自动打开浏览器
-            cmd = ["node", "server.js"]
-            if not self.autorun:
-                cmd.append("--browserLaunchEnabled")
-                cmd.append("false")
+                # 构建启动命令
+                # 直接使用 node server.js，而不是通过 Start.bat
+                # 这样可以传递 --browserLaunchEnabled 参数来控制是否自动打开浏览器
+                cmd = ["node", "server.js"]
+                if not self.autorun:
+                    cmd.append("--browserLaunchEnabled")
+                    cmd.append("false")
 
-            self.process = subprocess.Popen(
-                cmd,
-                cwd=str(self.luker_path),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                startupinfo=startupinfo,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                encoding='utf-8',
-                errors='replace'
-            )
+                self.process = subprocess.Popen(
+                    cmd,
+                    cwd=str(self.luker_path),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                    startupinfo=startupinfo,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    encoding='utf-8',
+                    errors='replace'
+                )
 
-            self._running = True
-            self._log_thread = Thread(target=self._read_output, daemon=True)
-            self._log_thread.start()
+                self._running = True
+                self._log_thread = Thread(target=self._read_output, daemon=True)
+                self._log_thread.start()
 
-            self._emit_log("[信息] Luker 启动中...")
-            return True
+                self._emit_log("[信息] Luker 启动中...")
+                return True
 
-        except Exception as e:
-            self._emit_log(f"[错误] 启动失败: {e}")
-            return False
+            except Exception as e:
+                self._emit_log(f"[错误] 启动失败: {e}")
+                return False
 
     def _kill_process_tree(self, pid: int) -> None:
         try:
@@ -133,31 +135,33 @@ class ProcessManager:
             self._emit_log(f"[警告] 杀死进程树时出错: {e}")
 
     def stop(self) -> bool:
-        if not self.is_running:
-            self._emit_log("[信息] Luker 未在运行")
-            return True
+        with self._op_lock:
+            if not self.is_running:
+                self._emit_log("[信息] Luker 未在运行")
+                return True
 
-        try:
-            self._running = False
+            try:
+                self._running = False
 
-            if self.process:
-                pid = self.process.pid
-                self._emit_log(f"[信息] 正在停止 Luker 进程 (PID: {pid})...")
-                self._kill_process_tree(pid)
+                if self.process:
+                    pid = self.process.pid
+                    self._emit_log(f"[信息] 正在停止 Luker 进程 (PID: {pid})...")
+                    self._kill_process_tree(pid)
 
-            self._emit_log("[信息] Luker 已停止")
-            self.process = None
-            return True
+                self._emit_log("[信息] Luker 已停止")
+                self.process = None
+                return True
 
-        except Exception as e:
-            self._emit_log(f"[错误] 停止失败: {e}")
-            return False
+            except Exception as e:
+                self._emit_log(f"[错误] 停止失败: {e}")
+                return False
 
     def restart(self) -> bool:
-        self._emit_log("[信息] 正在重启 Luker...")
-        self.stop()
-        time.sleep(1)
-        return self.start()
+        with self._op_lock:
+            self._emit_log("[信息] 正在重启 Luker...")
+            self.stop()
+            time.sleep(1)
+            return self.start()
 
     def get_recent_logs(self, count: int = 100) -> List[str]:
         logs = []
@@ -178,6 +182,7 @@ class GCLProcessManager:
         self.log_queue: queue.Queue = queue.Queue()
         self._log_thread: Optional[Thread] = None
         self._running = False
+        self._op_lock = RLock()
 
         self._log_callbacks: List[Callable[[str], None]] = []
 
@@ -216,44 +221,45 @@ class GCLProcessManager:
             self._emit_log(f"[GCL 错误] 读取输出失败: {e}")
 
     def start(self) -> bool:
-        if self.is_running:
-            self._emit_log("[GCL 信息] GCL 已经在运行中")
-            return True
+        with self._op_lock:
+            if self.is_running:
+                self._emit_log("[GCL 信息] GCL 已经在运行中")
+                return True
 
-        if not self.bat_path.exists():
-            self._emit_log(f"[GCL 错误] 未找到 bat 文件: {self.bat_path}")
-            return False
+            if not self.bat_path.exists():
+                self._emit_log(f"[GCL 错误] 未找到 bat 文件: {self.bat_path}")
+                return False
 
-        try:
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
+            try:
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
 
-            # 使用 cmd /c 来运行 bat 文件
-            self.process = subprocess.Popen(
-                ["cmd", "/c", str(self.bat_path)],
-                cwd=str(self.bat_path.parent),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                startupinfo=startupinfo,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                encoding='utf-8',
-                errors='replace'
-            )
+                # 使用 cmd /c 来运行 bat 文件
+                self.process = subprocess.Popen(
+                    ["cmd", "/c", str(self.bat_path)],
+                    cwd=str(self.bat_path.parent),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                    startupinfo=startupinfo,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    encoding='utf-8',
+                    errors='replace'
+                )
 
-            self._running = True
-            self._log_thread = Thread(target=self._read_output, daemon=True)
-            self._log_thread.start()
+                self._running = True
+                self._log_thread = Thread(target=self._read_output, daemon=True)
+                self._log_thread.start()
 
-            self._emit_log("[GCL 信息] GCL 启动中...")
-            return True
+                self._emit_log("[GCL 信息] GCL 启动中...")
+                return True
 
-        except Exception as e:
-            self._emit_log(f"[GCL 错误] 启动失败: {e}")
-            return False
+            except Exception as e:
+                self._emit_log(f"[GCL 错误] 启动失败: {e}")
+                return False
 
     def _kill_process_tree(self, pid: int) -> None:
         try:
@@ -288,31 +294,33 @@ class GCLProcessManager:
             self._emit_log(f"[GCL 警告] 杀死进程树时出错: {e}")
 
     def stop(self) -> bool:
-        if not self.is_running:
-            self._emit_log("[GCL 信息] GCL 未在运行")
-            return True
+        with self._op_lock:
+            if not self.is_running:
+                self._emit_log("[GCL 信息] GCL 未在运行")
+                return True
 
-        try:
-            self._running = False
+            try:
+                self._running = False
 
-            if self.process:
-                pid = self.process.pid
-                self._emit_log(f"[GCL 信息] 正在停止 GCL 进程 (PID: {pid})...")
-                self._kill_process_tree(pid)
+                if self.process:
+                    pid = self.process.pid
+                    self._emit_log(f"[GCL 信息] 正在停止 GCL 进程 (PID: {pid})...")
+                    self._kill_process_tree(pid)
 
-            self._emit_log("[GCL 信息] GCL 已停止")
-            self.process = None
-            return True
+                self._emit_log("[GCL 信息] GCL 已停止")
+                self.process = None
+                return True
 
-        except Exception as e:
-            self._emit_log(f"[GCL 错误] 停止失败: {e}")
-            return False
+            except Exception as e:
+                self._emit_log(f"[GCL 错误] 停止失败: {e}")
+                return False
 
     def restart(self) -> bool:
-        self._emit_log("[GCL 信息] 正在重启 GCL...")
-        self.stop()
-        time.sleep(1)
-        return self.start()
+        with self._op_lock:
+            self._emit_log("[GCL 信息] 正在重启 GCL...")
+            self.stop()
+            time.sleep(1)
+            return self.start()
 
     def get_recent_logs(self, count: int = 100) -> List[str]:
         logs = []
