@@ -1,109 +1,66 @@
-# 🍀 Luker 启动器 Luker Launcher
+# 🍀 Luker Launcher
 
-一个简洁的 [Luker](https://github.com/) 启动器，让你优雅地管理 Luker 进程。
-（由 SillyTavern-Launcher 改造而来）
+一个常驻 Windows 系统托盘的 Luker 启动器：一键启停、查看日志、自动打开页面。
 
-## ✨ 功能
+## 📥 下载与安装
 
-- **系统托盘运行** - 最小化到托盘，不占用任务栏
-- **一键启停** - 启动、停止、重启 Luker
-- **实时日志** - 毛玻璃效果的日志窗口，支持自动滚动与搜索
-- **日志分隔线** - 超过 1 分钟的日志自动插入分隔线，复制时不会被选中
-- **多彩主题** - 内置 6 款主题配色，点击即可切换
-- **进程管理** - 自动管理 Luker 进程树，干净退出
-- **PWA 模式** - 以 PWA 应用窗口打开 Luker，标题栏颜色跟随主题
-- **GCL 联动** - 可选的 GCL 进程管理与日志切换
-- **端口自适应** - 自动读取 Luker `config.yaml` 中的 `port` 配置
+1. 打开 [Releases](../../releases) 页面。
+2. 下载最新版本中的 `Luker-Launcher.exe`。
+3. 双击运行，无需安装。
 
-## 📦 安装
+> 如果 Windows 提示“已保护你的电脑”，点击“更多信息” → “仍要运行”。
 
-### 直接使用
+## 🚀 首次使用
 
-运行 `打包.bat` 生成 `Luker-Launcher.exe`，双击运行即可。
+1. 启动后会要求选择 Luker 安装目录（包含 `Start.bat` 的文件夹）。
+2. 选择完成后，启动器会自动启动 Luker，并最小化到系统托盘。
+3. 单击托盘图标显示/隐藏日志窗口，右键打开完整菜单。
 
-### 从源码运行
+使用前请确认：
+
+- Windows 10 / 11
+- 已安装 Node.js，命令行执行 `node -v` 能正常输出版本
+- Luker 目录中包含 `Start.bat` 和 `server.js`
+
+## 🖱️ 常用操作
+
+| 操作 | 方法 |
+| --- | --- |
+| 显示 / 隐藏日志 | 单击托盘图标 |
+| 启动 / 停止 / 重启 Luker | 右键托盘菜单 |
+| 打开 Luker 页面 | 右键托盘 → “Luker 页面” |
+| 修改主题、路径、PWA / GCL | 右键托盘 → “设置” |
+| 退出启动器 | 右键托盘 → “退出” |
+
+- 关闭日志窗口只是隐藏到托盘，程序仍在后台运行。
+- Luker 端口会自动读取 `luker_path/config.yaml` 中的 `port`，无需手动填写。
+- 配置保存在 exe 同目录的 `launcher_config.json`。
+
+## ❓ 常见问题
+
+**托盘里找不到图标？**
+点击任务栏右下角的 `^`，在隐藏图标中查找。
+
+**提示启动失败或找不到 node？**
+先在 Luker 目录双击 `Start.bat`，确认 Luker 能正常启动；再检查命令行执行 `node -v` 是否正常。
+
+**想要 PWA 应用窗口？**
+在设置中开启 PWA 模式，需要安装 Microsoft Edge。未安装 Luker PWA 时会自动回退到 Edge 应用窗口或默认浏览器。
+
+**GCL 怎么启用？**
+在设置中开启 GCL 并选择 GCL 的 `start.bat`，托盘菜单会出现 GCL 的启动/停止项。
+
+## 🛠️ 从源码运行 / 打包
 
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-### 打包为 exe
-
 ```bash
 pip install pyinstaller
 pyinstaller launcher.spec
 ```
-
-或者直接运行 `打包.bat`。
-
-## 🎨 主题
-
-| 主题   | 预览               |
-| ------ | ------------------ |
-| 🌊 深蓝 | 默认主题，深蓝夜空 |
-| 🔮 紫夜 | 紫罗兰之夜         |
-| 🌲 森林 | 森林绿意           |
-| 🌅 暖橙 | 暖橙黄昏           |
-| 🌴 海洋 | 深海青碧           |
-| 🌸 玫瑰 | 玫瑰粉黛           |
-
-## 🖱️ 使用
-
-1. 首次运行会要求选择 Luker 安装目录（包含 `Start.bat` 的文件夹）
-2. 启动后自动最小化到系统托盘
-3. 单击托盘图标：显示/隐藏日志窗口
-4. 右键托盘图标：打开菜单（启停 Luker、打开页面、设置、退出）
-
-## ⚙️ 配置
-
-配置文件 `launcher_config.json` 保存在程序同目录下：
-
-```json
-{
-  "luker_path": "D:/AI/Luker",
-  "use_pwa_mode": true,
-  "theme": "ocean_cyan",
-  "gcl_enabled": false,
-  "gcl_url": "http://127.0.0.1:7861/"
-}
-```
-
-| 键 | 说明 |
-| --- | --- |
-| `luker_path` | Luker 安装目录 |
-| `use_pwa_mode` | 是否使用 PWA 模式打开浏览器 |
-| `theme` | 主题名称 |
-| `gcl_enabled` | 是否启用 GCL 功能 |
-| `gcl_bat_path` | GCL 的 start.bat 路径（启用 GCL 时设置） |
-| `gcl_url` | GCL 的本地访问地址，默认 `http://127.0.0.1:7861/` |
-| `pwa_appx_family_name` | （可选）已安装 Luker PWA 的 APPX PackageFamilyName |
-| `pwa_app_id` | （可选）Edge PWA 应用 ID，用于 `--app-id` 启动模式 |
-
-启动器会自动读取 `luker_path/config.yaml` 中的顶层 `port` 配置作为访问端口
-（例如 `port: 59733`），修改端口后无需改动启动器配置。
-
-## 🌐 PWA 模式说明
-
-开启 PWA 模式后，启动器会禁止 Luker 自动打开浏览器
-（通过 `--browserLaunchEnabled false` 参数），改为由启动器以 PWA 方式打开：
-
-1. **已安装 PWA（推荐）**：在 Edge 中打开 Luker 页面，菜单 → 应用 →
-   「将 Luker 安装为应用」。安装后启动器会通过 APPX 自动发现并以
-   标题栏颜色跟随主题的方式启动，无需额外配置。
-2. **未安装 PWA**：回退到 Edge `--app` 应用窗口模式。
-3. **无 Edge**：回退到系统默认浏览器。
-
-自动发现失败时，可手动配置 `pwa_appx_family_name`：
-PowerShell 执行 `Get-AppxPackage -Name '127.0.0.1-*'` 找到 DisplayName 为
-Luker 的包，把其 `PackageFamilyName` 填入配置即可。
-
-## 📋 依赖
-
-- customtkinter - 现代化 UI
-- Pillow - 图标处理
-- psutil - 进程管理
-- pywin32 - Windows API
 
 ## 📄 License
 
