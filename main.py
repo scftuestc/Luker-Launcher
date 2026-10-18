@@ -1,6 +1,8 @@
 """Luker 启动器入口：创建日志窗口、托盘和进程管理器，并进入 Tk 主循环。"""
 
 import ctypes
+import logging
+import queue
 import time
 import urllib.error
 import urllib.request
@@ -8,6 +10,7 @@ import webbrowser
 from ctypes import windll
 from pathlib import Path
 from threading import Thread
+from typing import Callable
 
 import customtkinter as ctk
 
@@ -19,10 +22,14 @@ from process_manager import GCLProcessManager, ProcessManager
 from pwa_browser import open_in_browser
 from tray_icon import TrayIcon
 
+logger = logging.getLogger(__name__)
+
 # 轮询与等待时间（秒）
 STATUS_POLL_INTERVAL = 2
 BROWSER_WAIT_TIMEOUT_SECONDS = 30
 BROWSER_WAIT_INTERVAL_SECONDS = 1
+# 后台线程投递的 UI 操作由主线程按此间隔取走
+UI_QUEUE_POLL_MS = 50
 
 
 def setup_dpi_awareness() -> None:
@@ -62,19 +69,51 @@ class LukerLauncher:
         self._process_busy = False  # 防止启停/重启操作重入
         self._exiting = False  # 退出流程只执行一次
         self._last_status: bool | None = None  # 上一次通知给界面的运行状态
+        # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
+        self._ui_queue: queue.Queue[Callable[[], None]] = queue.Queue()
+        self._ui_active = False
 
         # 注册 GCL 配置变更回调
         config.add_gcl_change_callback(self._on_gcl_config_change)
 
+    def _post_ui(self, callback: Callable[[], None]) -> None:
+        """从任意线程投递 UI 操作，由 Tk 主线程取出执行。"""
+        self._ui_queue.put(callback)
+
+    def _pump_ui_queue(self) -> None:
+        if not self._ui_active:
+            return
+
+        try:
+            while self._ui_active:
+                try:
+                    callback = self._ui_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+                try:
+                    callback()
+                except Exception:
+                    logger.exception("界面操作执行失败")
+        finally:
+            if self._ui_active and self.log_window:
+                self.log_window.after(UI_QUEUE_POLL_MS, self._pump_ui_queue)
+
     def _on_show_window(self) -> None:
+        self._post_ui(self._show_window)
+
+    def _show_window(self) -> None:
         if self.log_window:
-            self.log_window.after(0, self.log_window.show)
+            self.log_window.show()
         if self.tray_icon:
             self.tray_icon.set_window_visible(True)
 
     def _on_hide_window(self) -> None:
+        self._post_ui(self._hide_window)
+
+    def _hide_window(self) -> None:
         if self.log_window:
-            self.log_window.after(0, self.log_window.hide)
+            self.log_window.hide()
         if self.tray_icon:
             self.tray_icon.set_window_visible(False)
 
@@ -103,10 +142,16 @@ class LukerLauncher:
         def worker():
             for manager in managers:
                 manager.stop()
-            if self.log_window:
-                self.log_window.after(0, self.log_window.quit)
+            self._post_ui(self._finish_exit)
 
         self._run_async(worker)
+
+    def _finish_exit(self) -> None:
+        self._ui_active = False
+        if self.tray_icon:
+            self.tray_icon.stop()
+        if self.log_window:
+            self.log_window.quit()
 
     def _run_async(self, func) -> None:
         """在守护线程中执行耗时操作，不阻塞 Tk 主循环。"""
@@ -149,8 +194,7 @@ class LukerLauncher:
             try:
                 action(manager)
             finally:
-                if self.log_window:
-                    self.log_window.after(0, self._finish_process_action)
+                self._post_ui(self._finish_process_action)
 
         self._run_async(worker)
 
@@ -159,8 +203,7 @@ class LukerLauncher:
         self._update_status()
 
     def _on_settings(self) -> None:
-        if self.log_window:
-            self.log_window.after(0, self._open_settings_window)
+        self._post_ui(self._open_settings_window)
 
     def _on_open_browser(self) -> None:
         """打开浏览器；PWA 发现可能调用 PowerShell，放到后台避免卡住界面。"""
@@ -209,7 +252,7 @@ class LukerLauncher:
                 self.gcl_process_manager.add_log_callback(self._on_gcl_log)
 
                 if self.log_window:
-                    self.log_window.after(0, lambda: self.log_window.set_gcl_enabled(True))
+                    self._post_ui(lambda: self.log_window.set_gcl_enabled(True))
                 self._on_log("[启动器] GCL 功能已启用")
         else:
             # 禁用 GCL，或在没有有效路径时不创建管理器
@@ -219,22 +262,24 @@ class LukerLauncher:
                 self._run_async(old_manager.stop)
 
             if self.log_window:
-                self.log_window.after(0, lambda: self.log_window.set_gcl_enabled(False))
+                self._post_ui(lambda: self.log_window.set_gcl_enabled(False))
             if old_manager is not None:
                 self._on_log("[启动器] GCL 功能已禁用")
 
     def _on_show_menu(self, x: int, y: int) -> None:
-        if self.tray_menu and self.log_window:
-            is_running = self.process_manager.is_running if self.process_manager else False
-            window_visible = self.log_window.is_visible()
-            gcl_enabled = self.gcl_process_manager is not None
-            gcl_running = self.gcl_process_manager.is_running if self.gcl_process_manager else False
-            self.log_window.after(0, lambda: self._show_tray_menu(x, y, is_running, window_visible, gcl_enabled, gcl_running))
+        # 托盘线程只传坐标，状态读取和菜单显示都回到主线程
+        self._post_ui(lambda: self._show_tray_menu(x, y))
 
-    def _show_tray_menu(self, x: int, y: int, is_running: bool, window_visible: bool, gcl_enabled: bool = False, gcl_running: bool = False) -> None:
-        if self.tray_menu:
-            self.tray_menu.update_state(is_running, window_visible, gcl_enabled, gcl_running)
-            self.tray_menu.show_at(x, y)
+    def _show_tray_menu(self, x: int, y: int) -> None:
+        if not (self.tray_menu and self.log_window):
+            return
+
+        is_running = self.process_manager.is_running if self.process_manager else False
+        window_visible = self.log_window.is_visible()
+        gcl_enabled = self.gcl_process_manager is not None
+        gcl_running = self.gcl_process_manager.is_running if self.gcl_process_manager else False
+        self.tray_menu.update_state(is_running, window_visible, gcl_enabled, gcl_running)
+        self.tray_menu.show_at(x, y)
 
     def _update_status(self) -> None:
         if not self.process_manager:
@@ -247,20 +292,25 @@ class LukerLauncher:
         if self.tray_icon:
             self.tray_icon.update_status(is_running)
         if self.log_window:
-            self.log_window.after(0, lambda: self.log_window.update_status(is_running))
+            self.log_window.update_status(is_running)
 
-    def _status_monitor(self) -> None:
-        while self._running:
-            self._update_status()
-            time.sleep(STATUS_POLL_INTERVAL)
+    def _schedule_status_poll(self) -> None:
+        """在 Tk 主线程按固定间隔检查进程状态，不再单独占用监控线程。"""
+        if not self._running:
+            return
+
+        self._update_status()
+        if self.log_window:
+            self.log_window.after(STATUS_POLL_INTERVAL * 1000, self._schedule_status_poll)
 
     def run(self) -> None:
         """
         依次创建四大组件，最后进入 GUI 主循环。
 
         本方法运行在 GUI 主线程上（由底部的 mainloop() 接管）。
-        线程全景：GUI 主线程 / 托盘消息循环线程 / stdout 读取线程 / 状态监控线程（每 2 秒轮询）。
-        跨线程只有两条合法通道：queue.Queue（传数据）和 widget.after(0, ...)（把执行权交回主线程）。
+        线程全景：GUI 主线程 / 托盘消息循环线程 / stdout 读取线程 / 浏览器等待线程。
+        所有跨线程 UI 操作都通过 _ui_queue 投递，由主线程的 _pump_ui_queue 执行；
+        进程状态也在主线程用 after 定时检查。
         """
         # 首次运行检查：配置缺失时弹对话框引导用户选择 Luker 路径，
         # 选不出来就放弃启动。配置读写的实现在 config.py，全局单例。
@@ -276,9 +326,13 @@ class LukerLauncher:
             on_stop=self._on_stop
         )
 
+        # 启动主线程 UI 队列泵，之后后台线程可以安全地请求界面操作
+        self._ui_active = True
+        self._pump_ui_queue()
+
         # 创建进程管理器（process_manager.py）。
-        # autorun：PWA 模式下要禁止 Luker 自己开浏览器，改由启动器打开 PWA 窗口。
-        # 这里通过 _ensure_process_manager 创建，设置里修改路径后可自动重建。
+        # let_luker_open_browser：PWA 模式下要禁止 Luker 自己开浏览器，
+        # 改由启动器打开 PWA 窗口。设置里修改路径后可自动重建。
         self._ensure_process_manager()
 
         # 创建托盘弹出菜单（dialogs.py 的 TrayMenu）。
@@ -303,28 +357,22 @@ class LukerLauncher:
         else:
             self.log_window.set_gcl_enabled(False)
 
-        # 创建托盘图标
+        # 创建托盘图标；启动/停止/重启等操作都通过右键菜单完成
         self.tray_icon = TrayIcon(
             on_show_window=self._on_show_window,
             on_hide_window=self._on_hide_window,
-            on_start=self._on_start,
-            on_stop=self._on_stop,
-            on_restart=self._on_restart,
-            on_exit=self._on_exit,
-            on_settings=self._on_settings,
             on_show_menu=self._on_show_menu,
         )
 
-        # 设置一个运行标志，表示程序正在运行。
+        # 设置运行标志，供自动打开浏览器和状态轮询使用
         self._running = True
-
-        # 状态监控线程：每隔 2 秒检查一次进程状态。
-        monitor_thread = Thread(target=self._status_monitor, daemon=True)
-        monitor_thread.start()
 
         # 托盘线程在此启动：内部跑 Windows 消息循环 GetMessageW，
         # 会永久阻塞等消息，所以必须独立线程（run_detached = 分离线程运行）。
         self.tray_icon.run_detached()
+
+        # 状态检查改为 Tk 主线程的 after 定时任务
+        self._schedule_status_poll()
 
         self._on_log("[启动器] 正在启动 Luker...")
         self._on_start()
@@ -342,6 +390,12 @@ class LukerLauncher:
 
         # 进入 Tk GUI 主循环。
         self.log_window.mainloop()
+
+        # 主循环退出后做最后清理；正常退出时 _finish_exit 已处理过，这里是幂等的
+        self._ui_active = False
+        self._running = False
+        if self.tray_icon:
+            self.tray_icon.stop()
 
     def _schedule_auto_open_browser(self) -> None:
         """延迟打开浏览器，等待 Luker 服务启动"""

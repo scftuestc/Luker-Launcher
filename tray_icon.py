@@ -1,19 +1,19 @@
 """基于 Win32 Shell_NotifyIcon 的系统托盘图标。"""
 
-from PIL import Image, ImageDraw
-from typing import Callable, Optional
-from threading import Thread
 import ctypes
-from ctypes import wintypes, windll, byref, sizeof, Structure, c_int, WINFUNCTYPE
-import time
+from ctypes import byref, c_int, sizeof, windll, wintypes, Structure, WINFUNCTYPE
+from threading import Event, Lock, Thread, current_thread
+from typing import Callable, Optional
 
+from PIL import Image, ImageDraw
 
 WM_USER = 0x0400
 WM_TRAYICON = WM_USER + 1
+WM_TRAY_STATUS = WM_USER + 2
+WM_CLOSE = 0x0010
 WM_LBUTTONUP = 0x0202
 WM_RBUTTONUP = 0x0205
 WM_DESTROY = 0x0002
-WM_QUIT = 0x0012
 
 NIM_ADD = 0x00
 NIM_MODIFY = 0x01
@@ -23,7 +23,7 @@ NIF_MESSAGE = 0x01
 NIF_ICON = 0x02
 NIF_TIP = 0x04
 
-WNDPROC = WINFUNCTYPE(ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+WNDPROC = WINFUNCTYPE(wintypes.LPARAM, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
 
 
 class NOTIFYICONDATA(Structure):
@@ -65,36 +65,53 @@ class MSG(Structure):
     ]
 
 
+# 显式声明 64 位参数/返回值类型，避免 ctypes 默认按 32 位 int 转换
+_user32 = windll.user32
+_user32.DefWindowProcW.argtypes = [
+    wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
+]
+_user32.DefWindowProcW.restype = wintypes.LPARAM
+_user32.CreateWindowExW.restype = wintypes.HWND
+_user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
+_user32.RegisterClassW.restype = wintypes.WORD
+_user32.GetMessageW.argtypes = [
+    ctypes.POINTER(MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT
+]
+_user32.GetMessageW.restype = c_int
+_user32.TranslateMessage.argtypes = [ctypes.POINTER(MSG)]
+_user32.DispatchMessageW.argtypes = [ctypes.POINTER(MSG)]
+_user32.DispatchMessageW.restype = wintypes.LPARAM
+_user32.PostMessageW.argtypes = [
+    wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
+]
+_user32.PostMessageW.restype = wintypes.BOOL
+_user32.DestroyWindow.argtypes = [wintypes.HWND]
+_user32.DestroyWindow.restype = wintypes.BOOL
+_user32.PostQuitMessage.argtypes = [c_int]
+
+
 class TrayIcon:
-    """系统托盘图标；Win32 消息循环运行在独立线程中。"""
+    """系统托盘图标；Win32 消息循环和所有图标/窗口操作都跑在托盘线程中。"""
 
     def __init__(
         self,
         on_show_window: Callable[[], None],
         on_hide_window: Callable[[], None],
-        on_start: Callable[[], None],
-        on_stop: Callable[[], None],
-        on_restart: Callable[[], None],
-        on_exit: Callable[[], None],
-        on_settings: Optional[Callable[[], None]] = None,
         on_show_menu: Optional[Callable[[int, int], None]] = None,
     ):
         self.on_show_window = on_show_window
         self.on_hide_window = on_hide_window
-        self.on_start = on_start
-        self.on_stop = on_stop
-        self.on_restart = on_restart
-        self.on_exit = on_exit
-        self.on_settings = on_settings
         self.on_show_menu = on_show_menu
 
         self._window_visible = False
         self._is_running = False
+        self._state_lock = Lock()
         self._thread: Optional[Thread] = None
         self._hwnd = None
         self._running = False
         self._hicon = None
         self._nid = None
+        self._ready = Event()
 
         self._wndproc_ref = None
 
@@ -271,7 +288,14 @@ class TrayIcon:
                     if self.on_show_menu:
                         x, y = self._get_cursor_pos()
                         self.on_show_menu(x, y)
+            elif msg == WM_TRAY_STATUS:
+                self._update_icon()
+            elif msg == WM_CLOSE:
+                self._remove_icon()
+                windll.user32.DestroyWindow(hwnd)
+                return 0
             elif msg == WM_DESTROY:
+                self._hwnd = None
                 windll.user32.PostQuitMessage(0)
                 return 0
         except Exception as e:
@@ -288,103 +312,132 @@ class TrayIcon:
             self._window_visible = True
 
     def _update_icon(self) -> None:
-        if self._hwnd and self._nid:
-            if self._hicon:
-                windll.user32.DestroyIcon(self._hicon)
+        """在托盘线程中替换 HICON；新图标生效后再释放旧图标。"""
+        if not (self._hwnd and self._nid):
+            return
 
-            self._hicon = self._image_to_hicon(self._create_icon_image())
-            self._nid.hIcon = self._hicon
+        new_icon = self._image_to_hicon(self._create_icon_image())
+        old_icon = self._hicon
+        self._hicon = new_icon
+        self._nid.hIcon = new_icon
 
-            windll.shell32.Shell_NotifyIconW(NIM_MODIFY, byref(self._nid))
+        windll.shell32.Shell_NotifyIconW(NIM_MODIFY, byref(self._nid))
+
+        if old_icon:
+            windll.user32.DestroyIcon(old_icon)
+
+    def _remove_icon(self) -> None:
+        """从通知区域移除图标并释放 GDI 句柄（只能由托盘线程调用）。"""
+        if self._nid:
+            windll.shell32.Shell_NotifyIconW(NIM_DELETE, byref(self._nid))
+            self._nid = None
+
+        if self._hicon:
+            windll.user32.DestroyIcon(self._hicon)
+            self._hicon = None
 
     def update_status(self, is_running: bool) -> None:
-        if is_running == self._is_running and self._hicon is not None:
-            return  # 状态没变就不重建图标，避免反复调用 GDI 和 Shell
-        self._is_running = is_running
-        self._update_icon()
+        """更新运行状态；实际图标操作通过消息转交给托盘线程。"""
+        with self._state_lock:
+            if is_running == self._is_running:
+                return  # 状态没变就不重建图标，避免反复调用 GDI 和 Shell
+            self._is_running = is_running
+
+        hwnd = self._hwnd
+        if hwnd and self._running:
+            windll.user32.PostMessageW(hwnd, WM_TRAY_STATUS, 0, 0)
 
     def set_window_visible(self, visible: bool) -> None:
         self._window_visible = visible
 
     def run(self) -> None:
         self._running = True
+        try:
+            hinstance = windll.kernel32.GetModuleHandleW(None)
 
-        hinstance = windll.kernel32.GetModuleHandleW(None)
+            self._wndproc_ref = WNDPROC(self._wnd_proc)
 
-        self._wndproc_ref = WNDPROC(self._wnd_proc)
+            class_name = "LukerTrayClass"
+            wc = WNDCLASSW()
+            wc.style = 0
+            wc.lpfnWndProc = self._wndproc_ref
+            wc.cbClsExtra = 0
+            wc.cbWndExtra = 0
+            wc.hInstance = hinstance
+            wc.hIcon = None
+            wc.hCursor = None
+            wc.hbrBackground = None
+            wc.lpszMenuName = None
+            wc.lpszClassName = class_name
 
-        class_name = "LukerTrayClass"
-        wc = WNDCLASSW()
-        wc.style = 0
-        wc.lpfnWndProc = self._wndproc_ref
-        wc.cbClsExtra = 0
-        wc.cbWndExtra = 0
-        wc.hInstance = hinstance
-        wc.hIcon = None
-        wc.hCursor = None
-        wc.hbrBackground = None
-        wc.lpszMenuName = None
-        wc.lpszClassName = class_name
+            atom = windll.user32.RegisterClassW(byref(wc))
+            if not atom:
+                print(f"注册窗口类失败: {ctypes.get_last_error()}")
+                return
 
-        atom = windll.user32.RegisterClassW(byref(wc))
-        if not atom:
-            print(f"注册窗口类失败: {ctypes.get_last_error()}")
-            return
+            self._hwnd = windll.user32.CreateWindowExW(
+                0,
+                class_name,
+                "Luker Tray",
+                0,
+                0, 0, 0, 0,
+                None,
+                None,
+                hinstance,
+                None
+            )
 
-        self._hwnd = windll.user32.CreateWindowExW(
-            0,
-            class_name,
-            "Luker Tray",
-            0,
-            0, 0, 0, 0,
-            None,
-            None,
-            hinstance,
-            None
-        )
+            if not self._hwnd:
+                print(f"创建窗口失败: {ctypes.get_last_error()}")
+                return
 
-        if not self._hwnd:
-            print(f"创建窗口失败: {ctypes.get_last_error()}")
-            return
+            self._hicon = self._image_to_hicon(self._create_icon_image())
 
-        self._hicon = self._image_to_hicon(self._create_icon_image())
+            self._nid = NOTIFYICONDATA()
+            self._nid.cbSize = sizeof(NOTIFYICONDATA)
+            self._nid.hWnd = self._hwnd
+            self._nid.uID = 1
+            self._nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP
+            self._nid.uCallbackMessage = WM_TRAYICON
+            self._nid.hIcon = self._hicon
+            self._nid.szTip = "Luker 启动器"
 
-        self._nid = NOTIFYICONDATA()
-        self._nid.cbSize = sizeof(NOTIFYICONDATA)
-        self._nid.hWnd = self._hwnd
-        self._nid.uID = 1
-        self._nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP
-        self._nid.uCallbackMessage = WM_TRAYICON
-        self._nid.hIcon = self._hicon
-        self._nid.szTip = "Luker 启动器"
+            result = windll.shell32.Shell_NotifyIconW(NIM_ADD, byref(self._nid))
+            if not result:
+                print(f"添加托盘图标失败: {ctypes.get_last_error()}")
 
-        result = windll.shell32.Shell_NotifyIconW(NIM_ADD, byref(self._nid))
-        if not result:
-            print(f"添加托盘图标失败: {ctypes.get_last_error()}")
+            self._ready.set()
 
-        msg = MSG()
-        while self._running:
-            ret = windll.user32.GetMessageW(byref(msg), None, 0, 0)
-            if ret == 0 or ret == -1:
-                break
-            windll.user32.TranslateMessage(byref(msg))
-            windll.user32.DispatchMessageW(byref(msg))
+            msg = MSG()
+            while self._running:
+                ret = windll.user32.GetMessageW(byref(msg), None, 0, 0)
+                if ret == 0 or ret == -1:
+                    break
+                windll.user32.TranslateMessage(byref(msg))
+                windll.user32.DispatchMessageW(byref(msg))
+        finally:
+            self._ready.set()
+            self._running = False
+            self._remove_icon()
+            if self._hwnd:
+                windll.user32.DestroyWindow(self._hwnd)
+                self._hwnd = None
 
     def run_detached(self) -> None:
-        self._thread = Thread(target=self.run, daemon=True)
+        self._thread = Thread(target=self.run, daemon=True, name="TrayMessageLoop")
         self._thread.start()
-        time.sleep(0.1)
+        # 等窗口和图标创建完成，避免首次右键菜单时 hwnd 还不存在
+        self._ready.wait(timeout=2)
 
     def stop(self) -> None:
-        self._running = False
+        """请求托盘线程清理图标并退出消息循环（可从任意线程调用）。"""
+        hwnd = self._hwnd
+        if hwnd:
+            windll.user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+        else:
+            self._running = False
 
-        if self._nid and self._hwnd:
-            windll.shell32.Shell_NotifyIconW(NIM_DELETE, byref(self._nid))
-
-        if self._hicon:
-            windll.user32.DestroyIcon(self._hicon)
-            self._hicon = None
-
-        if self._hwnd:
-            windll.user32.DestroyWindow(self._hwnd)
-            self._hwnd = None
+        thread = self._thread
+        if thread and thread.is_alive() and thread is not current_thread():
+            thread.join(timeout=2)
+        self._thread = None
