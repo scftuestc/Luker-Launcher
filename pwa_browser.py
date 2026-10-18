@@ -11,6 +11,7 @@
 
 import ctypes
 import json
+import logging
 import re
 import subprocess
 import os
@@ -19,6 +20,8 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from config import config
+
+logger = logging.getLogger(__name__)
 
 # Windows APPX 包的默认 Application Id（来自 AppxManifest.xml 的 Application Id）
 DEFAULT_APPX_APP_ID = "App"
@@ -154,11 +157,11 @@ def discover_luker_appx() -> Optional[Tuple[str, str]]:
             app_id = app_id_match.group(1) if app_id_match else DEFAULT_APPX_APP_ID
 
             _discovered_appx = (family_name, app_id)
-            print(f"[PWA] 自动发现 Luker APPX 包: {family_name}")
+            logger.info("自动发现 Luker APPX 包: %s", family_name)
             return _discovered_appx
 
     except Exception as e:
-        print(f"[PWA] 自动发现 APPX 包失败: {e}")
+        logger.warning("自动发现 APPX 包失败: %s", e)
 
     return None
 
@@ -178,11 +181,11 @@ def open_as_appx(family_name: str, app_id: str = DEFAULT_APPX_APP_ID) -> bool:
             None, "open", app_uri, None, None, 1
         )
         if result > 32:
-            print("[PWA] 通过 APPX 启动成功")
+            logger.info("通过 APPX 启动成功")
             return True
-        print(f"[PWA] APPX 启动失败，ShellExecute 返回 {result}")
+        logger.warning("APPX 启动失败，ShellExecute 返回 %s", result)
     except Exception as e:
-        print(f"[PWA] APPX 启动失败: {e}")
+        logger.warning("APPX 启动失败: %s", e)
     return False
 
 
@@ -205,12 +208,12 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
     configured_family = config.pwa_appx_family_name
     if configured_family:
         if is_appx_installed(configured_family):
-            print("[PWA] 使用配置文件中指定的 APPX 包")
+            logger.info("使用配置文件中指定的 APPX 包")
             if open_as_appx(configured_family):
                 return True
-            print("[PWA] 配置的 APPX 启动失败，尝试其他方式")
+            logger.warning("配置的 APPX 启动失败，尝试其他方式")
         else:
-            print(f"[PWA] 配置的 APPX 包未安装: {configured_family}")
+            logger.warning("配置的 APPX 包未安装: %s", configured_family)
 
     # 2. 自动发现已安装的 Luker APPX 包
     discovered = discover_luker_appx()
@@ -218,12 +221,12 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
         family_name, app_id = discovered
         if open_as_appx(family_name, app_id):
             return True
-        print("[PWA] 自动发现的 APPX 启动失败，尝试其他方式")
+        logger.warning("自动发现的 APPX 启动失败，尝试其他方式")
 
     edge_path = find_edge_path()
 
     if not edge_path:
-        print("[PWA] 未找到 Edge 浏览器")
+        logger.warning("未找到 Edge 浏览器")
         return False
 
     # 3. 如果配置了 Edge PWA App ID 且已安装，使用 --app-id 参数启动
@@ -234,7 +237,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
             f"--app-id={app_id}",
             "--profile-directory=Default",
         ]
-        print("[PWA] 使用 --app-id 模式启动")
+        logger.info("使用 --app-id 模式启动")
     else:
         # 4. 如果 PWA 未安装，使用 --app 参数启动（简化的应用窗口模式）
         args = [
@@ -242,7 +245,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
             f"--app={url}",
             "--profile-directory=Default",
         ]
-        print("[PWA] 使用 --app 模式启动（PWA 未安装）")
+        logger.info("使用 --app 模式启动（PWA 未安装）")
 
     try:
         subprocess.Popen(
@@ -253,7 +256,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
         )
         return True
     except Exception as e:
-        print(f"[PWA] 启动失败: {e}")
+        logger.warning("启动失败: %s", e)
         return False
 
 
@@ -273,7 +276,7 @@ def open_in_browser(url: Optional[str] = None, prefer_pwa: bool = True) -> bool:
     if prefer_pwa:
         if open_as_pwa(url):
             return True
-        print("[PWA] 回退到默认浏览器")
+        logger.info("回退到默认浏览器")
 
     # 回退到默认浏览器
     import webbrowser
@@ -281,14 +284,15 @@ def open_in_browser(url: Optional[str] = None, prefer_pwa: bool = True) -> bool:
         webbrowser.open(url)
         return True
     except Exception as e:
-        print(f"[浏览器] 启动失败: {e}")
+        logger.warning("浏览器启动失败: %s", e)
         return False
 
 
 if __name__ == "__main__":
     # 测试
-    print(f"Edge 路径: {find_edge_path()}")
-    print(f"Luker 地址: {config.get_server_url()}")
-    print(f"APPX 自动发现: {discover_luker_appx()}")
-    print("正在启动...")
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Edge 路径: %s", find_edge_path())
+    logger.info("Luker 地址: %s", config.get_server_url())
+    logger.info("APPX 自动发现: %s", discover_luker_appx())
+    logger.info("正在启动...")
     open_in_browser()

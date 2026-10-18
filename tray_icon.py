@@ -1,11 +1,14 @@
 """基于 Win32 Shell_NotifyIcon 的系统托盘图标。"""
 
 import ctypes
+import logging
 from ctypes import byref, c_int, sizeof, windll, wintypes, Structure, WINFUNCTYPE
 from threading import Event, Lock, Thread, current_thread
 from typing import Callable, Optional
 
 from PIL import Image, ImageDraw
+
+logger = logging.getLogger(__name__)
 
 WM_USER = 0x0400
 WM_TRAYICON = WM_USER + 1
@@ -274,8 +277,8 @@ class TrayIcon:
             logical_y = int(pt.y / scale)
 
             return (logical_x, logical_y)
-        except Exception as e:
-            print(f"获取 DPI 缩放失败: {e}")
+        except Exception:
+            logger.warning("获取 DPI 缩放失败", exc_info=True)
             return (pt.x, pt.y)
 
     def _wnd_proc(self, hwnd, msg, wparam, lparam):
@@ -298,8 +301,8 @@ class TrayIcon:
                 self._hwnd = None
                 windll.user32.PostQuitMessage(0)
                 return 0
-        except Exception as e:
-            print(f"托盘消息处理错误: {e}")
+        except Exception:
+            logger.exception("托盘消息处理失败")
 
         return windll.user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
@@ -372,7 +375,7 @@ class TrayIcon:
 
             atom = windll.user32.RegisterClassW(byref(wc))
             if not atom:
-                print(f"注册窗口类失败: {ctypes.get_last_error()}")
+                logger.error("注册窗口类失败: %s", ctypes.get_last_error())
                 return
 
             self._hwnd = windll.user32.CreateWindowExW(
@@ -388,7 +391,7 @@ class TrayIcon:
             )
 
             if not self._hwnd:
-                print(f"创建窗口失败: {ctypes.get_last_error()}")
+                logger.error("创建窗口失败: %s", ctypes.get_last_error())
                 return
 
             self._hicon = self._image_to_hicon(self._create_icon_image())
@@ -404,7 +407,7 @@ class TrayIcon:
 
             result = windll.shell32.Shell_NotifyIconW(NIM_ADD, byref(self._nid))
             if not result:
-                print(f"添加托盘图标失败: {ctypes.get_last_error()}")
+                logger.error("添加托盘图标失败: %s", ctypes.get_last_error())
 
             self._ready.set()
 

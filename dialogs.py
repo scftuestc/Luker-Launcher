@@ -1,15 +1,19 @@
 """托盘右键菜单和设置窗口。"""
 
-import customtkinter as ctk
-from ctypes import windll
-from typing import Dict
+import logging
 import math
 import webbrowser
+from ctypes import windll
+from typing import Dict
+
+import customtkinter as ctk
 
 from config import config
 from path_dialogs import select_gcl_bat_path, select_luker_path
 from theme import PRESET_THEMES
 from win_utils import apply_blur, get_mono_font, get_ui_font
+
+logger = logging.getLogger(__name__)
 
 
 class TrayMenu(ctk.CTkToplevel):
@@ -79,8 +83,8 @@ class TrayMenu(ctk.CTkToplevel):
             ex_style = windll.user32.GetWindowLongW(hwnd, self.GWL_EXSTYLE)
             new_style = ex_style | self.WS_EX_NOACTIVATE | self.WS_EX_TOOLWINDOW
             windll.user32.SetWindowLongW(hwnd, self.GWL_EXSTYLE, new_style)
-        except Exception as e:
-            print(f"设置无焦点窗口失败: {e}")
+        except Exception:
+            logger.warning("设置无焦点窗口失败", exc_info=True)
 
     def _start_mouse_poll(self):
         if self._mouse_poll_id is None:
@@ -458,8 +462,8 @@ class SettingsWindow(ctk.CTkToplevel):
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
             apply_blur(hwnd, self.COLORS['bg'], alpha=0xEE)
-        except Exception as e:
-            print(f"设置窗口毛玻璃错误: {e}")
+        except Exception:
+            logger.warning("设置窗口毛玻璃失败", exc_info=True)
 
     def _on_theme_change(self, new_colors: Dict[str, str]) -> None:
         if self._destroyed:

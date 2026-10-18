@@ -14,14 +14,15 @@ from typing import Callable
 
 import customtkinter as ctk
 
-from config import config
+import app_logging
+import single_instance
+from config import APP_VERSION, config
 from dialogs import SettingsWindow, TrayMenu
 from log_window import LogWindow
 from path_dialogs import ensure_luker_path_configured
 from process_manager import GCLProcessManager, ProcessManager
 from pwa_browser import open_in_browser
 from tray_icon import TrayIcon
-import single_instance
 
 logger = logging.getLogger(__name__)
 
@@ -319,7 +320,7 @@ class LukerLauncher:
         # 首次运行检查：配置缺失时弹对话框引导用户选择 Luker 路径，
         # 选不出来就放弃启动。配置读写的实现在 config.py，全局单例。
         if not ensure_luker_path_configured():
-            print("未配置 Luker 路径，程序退出")
+            logger.error("未配置 Luker 路径，程序退出")
             return
 
         # 创建主窗口（log_window.py，最大的模块）。
@@ -329,6 +330,8 @@ class LukerLauncher:
             on_start=self._on_start,
             on_stop=self._on_stop
         )
+        # 内部警告/错误同时送进日志窗口（回调只是入队，线程安全）
+        app_logging.add_ui_log_sink(self._on_log)
 
         # 启动主线程 UI 队列泵，之后后台线程可以安全地请求界面操作
         self._ui_active = True
@@ -437,6 +440,9 @@ class LukerLauncher:
 
 def main() -> None:
     # import 阶段不碰任何窗口系统，进入 main() 才正式初始化 GUI 相关设置
+    app_logging.setup_logging()
+    logger.info("Luker Launcher v%s 启动", APP_VERSION)
+
     setup_dpi_awareness()
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("dark-blue")

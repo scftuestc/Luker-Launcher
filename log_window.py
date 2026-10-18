@@ -1,6 +1,7 @@
 """主日志窗口：日志渲染、搜索和主题切换。"""
 
 import datetime
+import logging
 import math
 import os
 import queue
@@ -15,6 +16,8 @@ from config import APP_VERSION, config
 from log_store import MAX_LOG_ENTRIES, LogStore
 from win_utils import apply_blur, get_mono_font, get_ui_font
 
+logger = logging.getLogger(__name__)
+
 # 每条队列每轮最多处理的日志行数
 MAX_LOG_LINES_PER_CYCLE = 10
 # 等待渲染的日志队列上限，极端刷屏时丢弃最旧的行
@@ -28,6 +31,10 @@ class LogWindow(ctk.CTk):
 
     def __init__(self, on_hide_callback=None, on_start=None, on_stop=None):
         super().__init__()
+
+        # Tk 回调里的未捕获异常默认只打印到不可见的 stderr，
+        # 交给 logging 写入文件（并在日志窗口显示警告/错误）
+        self.report_callback_exception = self._report_callback_exception
 
         self.on_hide_callback = on_hide_callback
         self.on_start_callback = on_start
@@ -93,6 +100,9 @@ class LogWindow(ctk.CTk):
 
         self._start_animations()
 
+    def _report_callback_exception(self, exc, val, tb) -> None:
+        logger.error("界面回调异常", exc_info=(exc, val, tb))
+
     def _set_window_icon(self):
         try:
             icon_path = os.path.join(os.path.dirname(__file__), 'icon.ico')
@@ -108,8 +118,8 @@ class LogWindow(ctk.CTk):
                     self._icon_photo = photo
                 else:
                     self._create_dynamic_icon()
-        except Exception as e:
-            print(f"设置窗口图标失败: {e}")
+        except Exception:
+            logger.warning("设置窗口图标失败", exc_info=True)
 
     def _create_dynamic_icon(self):
         try:
@@ -144,8 +154,8 @@ class LogWindow(ctk.CTk):
             self.iconphoto(True, photo)
             self._icon_photo = photo
 
-        except Exception as e:
-            print(f"动态生成图标失败: {e}")
+        except Exception:
+            logger.warning("动态生成图标失败", exc_info=True)
 
     def _setup_blur(self):
         hwnd = windll.user32.GetParent(self.winfo_id())
@@ -250,8 +260,8 @@ class LogWindow(ctk.CTk):
 
             self.update_status(self._is_running)
 
-        except Exception as e:
-            print(f"应用主题时出错: {e}")
+        except Exception:
+            logger.exception("应用主题时出错")
 
     def _start_animations(self):
         self._animate_glow()
@@ -495,8 +505,8 @@ class LogWindow(ctk.CTk):
             SW_MINIMIZE = 6
             windll.user32.ShowWindow(hwnd, SW_MINIMIZE)
             self._minimized = True
-        except Exception as e:
-            print(f"最小化窗口失败: {e}")
+        except Exception:
+            logger.warning("最小化窗口失败", exc_info=True)
 
     def _on_map(self, event):
         if hasattr(self, '_minimized') and self._minimized:
