@@ -122,11 +122,13 @@ class LukerLauncher:
                 # 运行中不热切换，避免意外中断正在工作的进程
                 return self.process_manager
 
-            self.process_manager = ProcessManager(path, autorun=not config.use_pwa_mode)
+            self.process_manager = ProcessManager(
+                path, let_luker_open_browser=not config.use_pwa_mode
+            )
             self.process_manager.add_log_callback(self._on_log)
             self._last_status = None
         else:
-            self.process_manager.autorun = not config.use_pwa_mode
+            self.process_manager.let_luker_open_browser = not config.use_pwa_mode
 
         return self.process_manager
 
