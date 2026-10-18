@@ -43,7 +43,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 点任务栏右下角的 `^` 展开隐藏图标。
 
 **启动失败或提示找不到 node？**
-先在 Luker 目录运行 `Start.bat`，确认 Luker 本身能启动；再检查 `node -v` 是否正常。
+先在 Luker 目录运行 `Start.bat`，确认 Luker 本身能启动；再检查 `node -v` 是否正常。如果仍然失败，查看 exe 同目录的 `launcher.log`，里面有详细错误信息。
 
 ## 从源码运行 / 打包
 
@@ -55,6 +55,12 @@ python main.py
 ```bash
 pip install pyinstaller
 pyinstaller launcher.spec
+```
+
+运行测试：
+
+```bash
+python -m unittest discover -s tests
 ```
 
 ## License
