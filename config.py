@@ -1,12 +1,16 @@
-"""启动器配置读写、主题预设与路径校验。"""
+"""启动器配置读写与路径校验。"""
 
 import json
+import logging
+import os
 import re
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Callable, List
-import tkinter as tk
-from tkinter import filedialog, messagebox
+from typing import Callable, Dict, List, Optional
+
+from theme import DEFAULT_THEME, PRESET_THEMES, get_theme_colors as _get_theme_colors
+
+logger = logging.getLogger(__name__)
 
 
 def get_app_dir() -> Path:
@@ -16,106 +20,6 @@ def get_app_dir() -> Path:
     return Path(__file__).parent
 
 
-PRESET_THEMES = {
-    'deep_blue': {
-        'name': '深蓝夜空',
-        'bg': '#0d1117',
-        'card': '#161b22',
-        'card_hover': '#21262d',
-        'border': '#30363d',
-        'text': '#f0f6fc',
-        'text_dim': '#8b949e',
-        'text_muted': '#6e7681',
-        'accent': '#22d3ee',
-        'accent_blue': '#58a6ff',
-        'success': '#3fb950',
-        'error': '#f85149',
-        'warning': '#d29922',
-        'info': '#58a6ff',
-    },
-    'purple_night': {
-        'name': '紫罗兰夜',
-        'bg': '#13111c',
-        'card': '#1a1625',
-        'card_hover': '#252131',
-        'border': '#3d3654',
-        'text': '#f4f0ff',
-        'text_dim': '#a599c9',
-        'text_muted': '#7a6c9a',
-        'accent': '#c084fc',
-        'accent_blue': '#a78bfa',
-        'success': '#4ade80',
-        'error': '#f87171',
-        'warning': '#fbbf24',
-        'info': '#a78bfa',
-    },
-    'forest_green': {
-        'name': '森林绿意',
-        'bg': '#0f1610',
-        'card': '#161f18',
-        'card_hover': '#1e2a21',
-        'border': '#2d4033',
-        'text': '#e8f5e9',
-        'text_dim': '#9cbc9e',
-        'text_muted': '#6a8a6c',
-        'accent': '#4ade80',
-        'accent_blue': '#34d399',
-        'success': '#22c55e',
-        'error': '#ef4444',
-        'warning': '#eab308',
-        'info': '#34d399',
-    },
-    'warm_orange': {
-        'name': '暖橙黄昏',
-        'bg': '#171310',
-        'card': '#211c17',
-        'card_hover': '#2c251e',
-        'border': '#44392d',
-        'text': '#fef3e2',
-        'text_dim': '#c9a982',
-        'text_muted': '#9a7d5a',
-        'accent': '#fb923c',
-        'accent_blue': '#f59e0b',
-        'success': '#84cc16',
-        'error': '#ef4444',
-        'warning': '#f59e0b',
-        'info': '#fb923c',
-    },
-    'ocean_cyan': {
-        'name': '深海青碧',
-        'bg': '#0c1415',
-        'card': '#121e1f',
-        'card_hover': '#1a2a2c',
-        'border': '#2a4245',
-        'text': '#e0f7fa',
-        'text_dim': '#80cbc4',
-        'text_muted': '#4db6ac',
-        'accent': '#22d3ee',
-        'accent_blue': '#06b6d4',
-        'success': '#2dd4bf',
-        'error': '#f87171',
-        'warning': '#fbbf24',
-        'info': '#22d3ee',
-    },
-    'rose_pink': {
-        'name': '玫瑰粉黛',
-        'bg': '#18101a',
-        'card': '#231a25',
-        'card_hover': '#2f2432',
-        'border': '#4a3850',
-        'text': '#fdf2f8',
-        'text_dim': '#d8a9c4',
-        'text_muted': '#a87d94',
-        'accent': '#f472b6',
-        'accent_blue': '#ec4899',
-        'success': '#4ade80',
-        'error': '#fb7185',
-        'warning': '#fbbf24',
-        'info': '#f472b6',
-    },
-}
-
-DEFAULT_THEME = 'deep_blue'
 APP_VERSION = "1.2"
 
 # Luker 默认端口（与 server.js 的默认配置一致，实际端口以 Luker config.yaml 为准）
@@ -123,30 +27,88 @@ DEFAULT_PORT = 8000
 # GCL 默认访问地址
 DEFAULT_GCL_URL = "http://127.0.0.1:7861/"
 
+# 配置文件允许的键和类型；读取时统一过滤，避免手改配置导致运行时类型错误
+_STRING_KEYS = (
+    "luker_path",
+    "sillytavern_path",
+    "gcl_bat_path",
+    "gcl_url",
+    "pwa_app_id",
+    "pwa_appx_family_name",
+)
+_BOOL_KEYS = ("use_pwa_mode", "gcl_enabled")
+
 
 class Config:
     """launcher_config.json 的读写与主题/GCL 变更通知。"""
 
     CONFIG_FILE = "launcher_config.json"
 
-    def __init__(self):
-        self.config_path = get_app_dir() / self.CONFIG_FILE
+    def __init__(self, config_path: Optional[Path] = None):
+        self.config_path = (
+            Path(config_path) if config_path is not None
+            else get_app_dir() / self.CONFIG_FILE
+        )
         self._config = self._load_config()
         self._theme_change_callbacks: List[Callable[[Dict[str, str]], None]] = []
         self._gcl_change_callbacks: List[Callable[[bool, Optional[str]], None]] = []
 
     def _load_config(self) -> dict:
-        if self.config_path.exists():
-            try:
-                with open(self.config_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, IOError):
-                return {}
-        return {}
+        if not self.config_path.exists():
+            return {}
 
-    def _save_config(self) -> None:
-        with open(self.config_path, 'w', encoding='utf-8') as f:
-            json.dump(self._config, f, ensure_ascii=False, indent=2)
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("读取配置失败，使用默认配置: %s", e)
+            return {}
+
+        if not isinstance(data, dict):
+            logger.warning("配置文件内容不是对象，使用默认配置")
+            return {}
+
+        return self._normalize(data)
+
+    @staticmethod
+    def _normalize(data: dict) -> dict:
+        """只保留已知键，并丢弃类型不正确的值。"""
+        normalized: dict = {}
+
+        for key in _STRING_KEYS:
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                normalized[key] = value.strip()
+
+        for key in _BOOL_KEYS:
+            value = data.get(key)
+            if isinstance(value, bool):
+                normalized[key] = value
+
+        theme = data.get('theme')
+        if isinstance(theme, str) and theme in PRESET_THEMES:
+            normalized['theme'] = theme
+
+        return normalized
+
+    def _save_config(self) -> bool:
+        """原子写入配置，避免写到一半崩溃时留下损坏的 JSON。"""
+        temp_path = self.config_path.with_name(self.config_path.name + ".tmp")
+        try:
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(self._config, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, self.config_path)
+            return True
+        except OSError as e:
+            logger.error("保存配置失败: %s", e)
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return False
 
     def add_theme_change_callback(self, callback: Callable[[Dict[str, str]], None]) -> None:
         self._theme_change_callbacks.append(callback)
@@ -160,8 +122,8 @@ class Config:
         for callback in self._theme_change_callbacks:
             try:
                 callback(theme)
-            except Exception as e:
-                print(f"主题回调错误: {e}")
+            except Exception:
+                logger.exception("主题回调执行失败")
 
     def add_gcl_change_callback(self, callback: Callable[[bool, Optional[str]], None]) -> None:
         """添加 GCL 配置变更回调"""
@@ -179,8 +141,8 @@ class Config:
         for callback in self._gcl_change_callbacks:
             try:
                 callback(enabled, path)
-            except Exception as e:
-                print(f"GCL 配置回调错误: {e}")
+            except Exception:
+                logger.exception("GCL 配置回调执行失败")
 
     @property
     def theme_name(self) -> str:
@@ -194,10 +156,7 @@ class Config:
             self._notify_theme_change()
 
     def get_theme_colors(self) -> Dict[str, str]:
-        theme_name = self.theme_name
-        if theme_name in PRESET_THEMES:
-            return PRESET_THEMES[theme_name].copy()
-        return PRESET_THEMES[DEFAULT_THEME].copy()
+        return _get_theme_colors(self.theme_name)
 
     def get_all_themes(self) -> Dict[str, Dict[str, str]]:
         return PRESET_THEMES.copy()
@@ -205,11 +164,11 @@ class Config:
     @property
     def use_pwa_mode(self) -> bool:
         """是否使用 PWA 模式打开浏览器（标题栏颜色跟随 Luker 主题）"""
-        return self._config.get('use_pwa_mode', False)  # 默认关闭
+        return bool(self._config.get('use_pwa_mode', False))
 
     @use_pwa_mode.setter
     def use_pwa_mode(self, value: bool) -> None:
-        self._config['use_pwa_mode'] = value
+        self._config['use_pwa_mode'] = bool(value)
         self._save_config()
 
     @property
@@ -245,11 +204,11 @@ class Config:
     @property
     def gcl_enabled(self) -> bool:
         """是否启用 GCL 功能"""
-        return self._config.get('gcl_enabled', False)  # 默认关闭
+        return bool(self._config.get('gcl_enabled', False))
 
     @gcl_enabled.setter
     def gcl_enabled(self, value: bool) -> None:
-        self._config['gcl_enabled'] = value
+        self._config['gcl_enabled'] = bool(value)
         self._save_config()
         self._notify_gcl_change()
 
@@ -269,40 +228,12 @@ class Config:
         """GCL 的本地访问地址"""
         return self._config.get('gcl_url', DEFAULT_GCL_URL)
 
-    def is_valid_gcl_path(self, path: str) -> bool:
+    def is_valid_gcl_path(self, path: Optional[str]) -> bool:
         """验证 GCL bat 路径是否有效"""
+        if not path:
+            return False
         p = Path(path)
         return p.exists() and p.suffix.lower() == '.bat'
-
-    def select_gcl_bat_path(self) -> Optional[str]:
-        """选择 GCL 的 start.bat 文件"""
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-
-        from tkinter import filedialog as fd
-        path = fd.askopenfilename(
-            title="选择 GCL 的 start.bat 文件",
-            filetypes=[("批处理文件", "*.bat"), ("所有文件", "*.*")]
-        )
-
-        root.destroy()
-
-        if path:
-            if self.is_valid_gcl_path(path):
-                self.gcl_bat_path = path
-                return path
-            else:
-                root = tk.Tk()
-                root.withdraw()
-                messagebox.showerror(
-                    "错误",
-                    f"所选文件不是有效的批处理文件！\n\n"
-                    f"选择的路径: {path}"
-                )
-                root.destroy()
-                return None
-        return None
 
     @property
     def luker_path(self) -> Optional[str]:
@@ -327,76 +258,35 @@ class Config:
 
     def get_server_port(self) -> int:
         """从 Luker 的 config.yaml 读取服务端口，读取失败时返回默认端口"""
-        if self.luker_path:
-            config_yaml = Path(self.luker_path) / "config.yaml"
-            try:
-                text = config_yaml.read_text(encoding='utf-8')
-                # 只匹配顶层的 port 配置（行首无缩进），
-                # 忽略 browserLaunch.port 等缩进的嵌套配置项
-                match = re.search(r'^port:\s*(\d+)', text, re.MULTILINE)
-                if match:
-                    return int(match.group(1))
-            except Exception:
-                pass
+        if not self.luker_path:
+            return DEFAULT_PORT
+
+        config_yaml = Path(self.luker_path) / "config.yaml"
+        try:
+            text = config_yaml.read_text(encoding='utf-8')
+        except OSError:
+            return DEFAULT_PORT
+
+        # 只匹配顶层的 port 配置（行首无缩进），
+        # 忽略 browserLaunch.port 等缩进的嵌套配置项
+        match = re.search(r'^port:\s*["\']?(\d+)["\']?\s*(?:#.*)?$', text, re.MULTILINE)
+        if match:
+            port = int(match.group(1))
+            if 1 <= port <= 65535:
+                return port
         return DEFAULT_PORT
 
     def get_server_url(self) -> str:
         """获取 Luker 的本地访问地址"""
         return f"http://127.0.0.1:{self.get_server_port()}"
 
-    def is_valid_luker_path(self, path: str) -> bool:
+    def is_valid_luker_path(self, path: Optional[str]) -> bool:
+        if not path:
+            return False
         p = Path(path)
         start_bat = p / "Start.bat"
         server_js = p / "server.js"
         return start_bat.exists() and server_js.exists()
-
-    def select_luker_path(self) -> Optional[str]:
-        """让用户选择 Luker 安装目录并校验，返回有效路径或 None。"""
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-
-        messagebox.showinfo(
-            "Luker 启动器",
-            "请选择 Luker 的安装目录\n（包含 Start.bat 的文件夹）"
-        )
-
-        path = filedialog.askdirectory(
-            title="选择 Luker 安装目录"
-        )
-
-        root.destroy()
-
-        if path:
-            if self.is_valid_luker_path(path):
-                self.luker_path = path
-                return path
-            else:
-                root = tk.Tk()
-                root.withdraw()
-                messagebox.showerror(
-                    "错误",
-                    f"所选目录不是有效的 Luker 安装目录！\n"
-                    f"未找到 Start.bat 或 server.js 文件。\n\n"
-                    f"选择的路径: {path}"
-                )
-                root.destroy()
-                return None
-        return None
-
-    def ensure_path_configured(self) -> bool:
-        """确保已配置有效的 Luker 路径，否则引导用户选择。"""
-        if self.luker_path and self.is_valid_luker_path(self.luker_path):
-            return True
-
-        # 启动器放在 Luker 根目录时直接识别，省去首次选择路径
-        app_dir = str(get_app_dir())
-        if self.is_valid_luker_path(app_dir):
-            self.luker_path = app_dir
-            return True
-
-        path = self.select_luker_path()
-        return path is not None
 
 
 config = Config()

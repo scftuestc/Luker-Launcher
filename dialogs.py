@@ -6,8 +6,10 @@ from typing import Dict
 import math
 import webbrowser
 
-from config import config, PRESET_THEMES
-from log_window import WindowsBlur, get_ui_font, get_mono_font
+from config import config
+from path_dialogs import select_gcl_bat_path, select_luker_path
+from theme import PRESET_THEMES
+from win_utils import apply_blur, get_mono_font, get_ui_font
 
 
 class TrayMenu(ctk.CTkToplevel):
@@ -116,8 +118,7 @@ class TrayMenu(ctk.CTkToplevel):
     def _setup_blur(self):
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
-            WindowsBlur.extend_frame(hwnd)
-            WindowsBlur.enable_blur(hwnd, 0xEE17110d)
+            apply_blur(hwnd, self.COLORS['bg'], alpha=0xEE)
         except Exception:
             pass
 
@@ -456,13 +457,7 @@ class SettingsWindow(ctk.CTkToplevel):
     def _setup_blur(self):
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
-            WindowsBlur.extend_frame(hwnd)
-            bg = self.COLORS['bg']
-            r = int(bg[1:3], 16)
-            g = int(bg[3:5], 16)
-            b = int(bg[5:7], 16)
-            blur_color = 0xEE000000 | (b << 16) | (g << 8) | r
-            WindowsBlur.enable_blur(hwnd, blur_color)
+            apply_blur(hwnd, self.COLORS['bg'], alpha=0xEE)
         except Exception as e:
             print(f"设置窗口毛玻璃错误: {e}")
 
@@ -554,20 +549,12 @@ class SettingsWindow(ctk.CTkToplevel):
         self.theme_cards = {}
         current_theme = config.theme_name
 
-        theme_info = {
-            'deep_blue': {'name': '深蓝', 'icon': '🌊'},
-            'purple_night': {'name': '紫夜', 'icon': '🔮'},
-            'forest_green': {'name': '森林', 'icon': '🌲'},
-            'warm_orange': {'name': '暖橙', 'icon': '🌅'},
-            'ocean_cyan': {'name': '海洋', 'icon': '🌴'},
-            'rose_pink': {'name': '玫瑰', 'icon': '🌸'},
-        }
-
         row = 0
         col = 0
         for theme_id, colors in PRESET_THEMES.items():
-            info = theme_info.get(theme_id, {'name': theme_id, 'icon': '🎨'})
-            card = self._create_theme_card(grid, theme_id, colors, info, current_theme == theme_id)
+            card = self._create_theme_card(
+                grid, theme_id, colors, current_theme == theme_id
+            )
             card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
             self.theme_cards[theme_id] = card
 
@@ -579,7 +566,7 @@ class SettingsWindow(ctk.CTkToplevel):
         for i in range(3):
             grid.columnconfigure(i, weight=1)
 
-    def _create_theme_card(self, parent, theme_id, colors, info, is_selected):
+    def _create_theme_card(self, parent, theme_id, colors, is_selected):
         card = ctk.CTkFrame(
             parent,
             fg_color=colors['card'],
@@ -600,7 +587,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         name_label = ctk.CTkLabel(
             inner,
-            text=f"{info['icon']} {info['name']}",
+            text=f"{colors['icon']} {colors['short_name']}",
             font=ctk.CTkFont(family=self.UI_FONT, size=13, weight="bold"),
             text_color=colors['text']
         )
@@ -783,7 +770,7 @@ class SettingsWindow(ctk.CTkToplevel):
         if enabled:
             bat_path = config.gcl_bat_path
             if not bat_path or not config.is_valid_gcl_path(bat_path):
-                selected = config.select_gcl_bat_path()
+                selected = select_gcl_bat_path(self)
                 if not selected:
                     # 用户取消选择，回退开关，避免出现“已启用但没有路径”的状态
                     self.gcl_switch.deselect()
@@ -800,7 +787,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _select_gcl_path(self):
         """选择 GCL bat 路径"""
-        path = config.select_gcl_bat_path()
+        path = select_gcl_bat_path(self)
         if path:
             self.gcl_path_label.configure(text=path)
 
@@ -845,7 +832,7 @@ class SettingsWindow(ctk.CTkToplevel):
         ).pack(side="right")
 
     def _select_path(self):
-        path = config.select_luker_path()
+        path = select_luker_path(self)
         if path:
             self.path_label.configure(text=path)
 

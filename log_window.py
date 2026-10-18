@@ -1,119 +1,26 @@
-"""主日志窗口：日志渲染、搜索、主题和 Windows 毛玻璃效果。"""
+"""主日志窗口：日志渲染、搜索和主题切换。"""
 
-import sys
-import os
-import customtkinter as ctk
-import ctypes
-from ctypes import windll, byref, sizeof, c_int
-from collections import deque
-from typing import Dict
-import queue
 import datetime
 import math
+import os
+import queue
 import tkinter as tk
-import tkinter.font as tkfont
+from collections import deque
+from ctypes import windll
+from typing import Dict
+
+import customtkinter as ctk
 
 from config import APP_VERSION, config
+from log_store import MAX_LOG_ENTRIES, LogStore
+from win_utils import apply_blur, get_mono_font, get_ui_font
 
 # 每条队列每轮最多处理的日志行数
 MAX_LOG_LINES_PER_CYCLE = 10
-# 每个日志源在内存和日志窗口中保留的最大条数
-MAX_LOG_ENTRIES = 3000
 # 等待渲染的日志队列上限，极端刷屏时丢弃最旧的行
 MAX_LOG_QUEUE_SIZE = 5000
 # 搜索输入防抖时间（毫秒）
 SEARCH_DEBOUNCE_MS = 250
-
-
-class WindowsBlur:
-    """Win32 模糊/圆角效果封装；系统不支持时静默降级为普通窗口。"""
-
-    class ACCENT_POLICY(ctypes.Structure):
-        _fields_ = [
-            ("AccentState", c_int),
-            ("AccentFlags", c_int),
-            ("GradientColor", ctypes.c_uint),
-            ("AnimationId", c_int),
-        ]
-
-    class WINDOWCOMPOSITIONATTRIBDATA(ctypes.Structure):
-        _fields_ = [
-            ("Attrib", c_int),
-            ("pvData", ctypes.c_void_p),
-            ("cbData", ctypes.c_size_t),
-        ]
-
-    class MARGINS(ctypes.Structure):
-        _fields_ = [
-            ("cxLeftWidth", c_int),
-            ("cxRightWidth", c_int),
-            ("cyTopHeight", c_int),
-            ("cyBottomHeight", c_int),
-        ]
-
-    @staticmethod
-    def enable_blur(hwnd, color=0xCC000000):
-        user32 = windll.user32
-        dwmapi = windll.dwmapi
-        build = sys.getwindowsversion().build
-
-        try:
-            value = c_int(1)
-            dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(value), sizeof(value))
-
-            if build >= 22000:
-                corner = c_int(2)
-                dwmapi.DwmSetWindowAttribute(hwnd, 33, byref(corner), sizeof(corner))
-
-            accent = WindowsBlur.ACCENT_POLICY()
-            accent.AccentState = 4
-            accent.AccentFlags = 2
-            accent.GradientColor = color
-
-            data = WindowsBlur.WINDOWCOMPOSITIONATTRIBDATA()
-            data.Attrib = 19
-            data.pvData = ctypes.cast(ctypes.pointer(accent), ctypes.c_void_p)
-            data.cbData = sizeof(accent)
-
-            user32.SetWindowCompositionAttribute(hwnd, byref(data))
-
-        except Exception as e:
-            print(f"毛玻璃错误: {e}")
-
-    @staticmethod
-    def extend_frame(hwnd):
-        margins = WindowsBlur.MARGINS(-1, -1, -1, -1)
-        windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(margins))
-
-
-def get_ui_font():
-    source_han_fonts = [
-        'Source Han Sans SC',
-        'Source Han Sans CN',
-        'Noto Sans SC',
-        'Noto Sans CJK SC',
-        'Source Han Sans',
-    ]
-    available = tkfont.families()
-    for font in source_han_fonts:
-        if font in available:
-            return font
-    return 'Microsoft YaHei'
-
-
-def get_mono_font():
-    mono_fonts = [
-        'Source Han Mono SC',
-        'Noto Sans Mono CJK SC',
-        'Sarasa Mono SC',
-        'Consolas',
-        'Cascadia Code',
-    ]
-    available = tkfont.families()
-    for font in mono_fonts:
-        if font in available:
-            return font
-    return 'Consolas'
 
 
 class LogWindow(ctk.CTk):
@@ -161,9 +68,9 @@ class LogWindow(ctk.CTk):
 
         # 日志源切换状态：'luker' 或 'gcl'
         self._log_source = 'luker'
-        # 分别存储两个日志源的日志：(时间戳, 日志行)，超出上限自动丢弃最旧的行
-        self._luker_logs: deque[tuple[datetime.datetime, str]] = deque(maxlen=MAX_LOG_ENTRIES)
-        self._gcl_logs: deque[tuple[datetime.datetime, str]] = deque(maxlen=MAX_LOG_ENTRIES)
+        # 分别存储两个日志源的历史记录，容量由 LogStore 统一限制
+        self._luker_store = LogStore()
+        self._gcl_store = LogStore()
         # 日志窗口中每条日志占用的行数，用于裁剪旧日志时同步删除文本
         self._display_entry_lines: deque[int] = deque()
         self._display_dirty = False
@@ -242,14 +149,7 @@ class LogWindow(ctk.CTk):
 
     def _setup_blur(self):
         hwnd = windll.user32.GetParent(self.winfo_id())
-        WindowsBlur.extend_frame(hwnd)
-        bg = self.COLORS['bg']
-        r = int(bg[1:3], 16)
-        g = int(bg[3:5], 16)
-        b = int(bg[5:7], 16)
-        blur_color = 0xDD000000 | (b << 16) | (g << 8) | r
-        WindowsBlur.enable_blur(hwnd, blur_color)
-
+        apply_blur(hwnd, self.COLORS['bg'], alpha=0xDD)
         self.update()
 
     def _on_theme_change(self, new_colors: Dict[str, str]) -> None:
@@ -867,7 +767,7 @@ class LogWindow(ctk.CTk):
         """添加 GCL 日志的便捷方法"""
         self._enqueue_log(self.gcl_log_queue, line)
 
-    def _drain_log_queue(self, log_queue: queue.Queue, log_store: deque, source: str) -> None:
+    def _drain_log_queue(self, log_queue: queue.Queue, log_store: LogStore, source: str) -> None:
         """从队列取一批日志写入存储；仅当前日志源且窗口可见时渲染。"""
         entries = []
         for _ in range(MAX_LOG_LINES_PER_CYCLE):
@@ -876,10 +776,9 @@ class LogWindow(ctk.CTk):
             except queue.Empty:
                 break
 
-            timestamp = datetime.datetime.now()
-            log_store.append((timestamp, line))
+            entry = log_store.append(line)
             if self._log_source == source:
-                entries.append((timestamp, line))
+                entries.append(entry)
 
         if not entries:
             return
@@ -895,8 +794,8 @@ class LogWindow(ctk.CTk):
             self._refresh_log_display()
 
         # 两个队列各自限额，避免一个日志源刷屏时另一个被饿死
-        self._drain_log_queue(self.log_queue, self._luker_logs, 'luker')
-        self._drain_log_queue(self.gcl_log_queue, self._gcl_logs, 'gcl')
+        self._drain_log_queue(self.log_queue, self._luker_store, 'luker')
+        self._drain_log_queue(self.gcl_log_queue, self._gcl_store, 'gcl')
 
         if not self.log_queue.empty() or not self.gcl_log_queue.empty():
             self.after(10, self._process_logs)
@@ -939,8 +838,9 @@ class LogWindow(ctk.CTk):
         self._display_entry_lines.clear()
         self._last_log_timestamp = None
 
-        # 只重放当前日志源，最多 MAX_LOG_ENTRIES 条
-        logs = list(self._luker_logs if self._log_source == 'luker' else self._gcl_logs)
+        # 只重放当前日志源，容量由 LogStore 限制
+        store = self._luker_store if self._log_source == 'luker' else self._gcl_store
+        logs = store.snapshot()
         if logs:
             self._add_log_lines(logs)
         else:
@@ -977,8 +877,8 @@ class LogWindow(ctk.CTk):
 
         tb = self.log_text._textbox
         tb.configure(state="normal")
-        for timestamp, text in entries:
-            self._insert_log_entry(tb, text, timestamp)
+        for entry in entries:
+            self._insert_log_entry(tb, entry.text, entry.timestamp)
 
         if self._auto_scroll:
             tb.see("end")
@@ -1069,8 +969,8 @@ class LogWindow(ctk.CTk):
         tb.configure(state="disabled")
 
         # 同步清空底层存储，否则切换日志源后已清除的内容会重新出现
-        self._luker_logs.clear()
-        self._gcl_logs.clear()
+        self._luker_store.clear()
+        self._gcl_store.clear()
         self._display_entry_lines.clear()
 
         # 丢弃尚未处理的日志，避免清除后旧日志又冒出来

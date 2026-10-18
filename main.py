@@ -14,6 +14,7 @@ import customtkinter as ctk
 from config import config
 from dialogs import SettingsWindow, TrayMenu
 from log_window import LogWindow
+from path_dialogs import ensure_luker_path_configured
 from process_manager import GCLProcessManager, ProcessManager
 from pwa_browser import open_in_browser
 from tray_icon import TrayIcon
@@ -263,7 +264,7 @@ class LukerLauncher:
         """
         # 首次运行检查：配置缺失时弹对话框引导用户选择 Luker 路径，
         # 选不出来就放弃启动。配置读写的实现在 config.py，全局单例。
-        if not config.ensure_path_configured():
+        if not ensure_luker_path_configured():
             print("未配置 Luker 路径，程序退出")
             return
 
