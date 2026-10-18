@@ -11,7 +11,7 @@ import math
 import tkinter as tk
 import tkinter.font as tkfont
 
-from config import config
+from config import APP_VERSION, config
 
 # 每条队列每轮最多处理的日志行数
 MAX_LOG_LINES_PER_CYCLE = 10
@@ -251,6 +251,10 @@ class LogWindow(ctk.CTk):
                 self._titlebar.configure(fg_color=self.COLORS['card'])
             if hasattr(self, '_title_label'):
                 self._title_label.configure(text_color=self.COLORS['text'])
+            if hasattr(self, '_log_source_btn'):
+                self._log_source_btn.configure(
+                    fg_color=self.COLORS['warning'] if self._log_source == 'gcl' else self.COLORS['accent']
+                )
             if hasattr(self, '_min_btn'):
                 self._min_btn.configure(
                     hover_color=self.COLORS['card_hover'],
@@ -789,7 +793,7 @@ class LogWindow(ctk.CTk):
         self.count_label.pack(side="left", padx=16, pady=10)
 
         self._version_label = ctk.CTkLabel(
-            self._statusbar, text="v1.0.0",
+            self._statusbar, text=f"v{APP_VERSION}",
             font=ctk.CTkFont(family=self.UI_FONT, size=13),
             text_color=self.COLORS['text_muted']
         )

@@ -19,6 +19,7 @@ class TrayMenu(ctk.CTkToplevel):
         self.callbacks = callbacks
         self._is_running = False
         self._window_visible = False
+        self._gcl_enabled = False
 
         self.COLORS = config.get_theme_colors()
 
@@ -35,6 +36,8 @@ class TrayMenu(ctk.CTkToplevel):
 
         self._build_menu()
 
+        config.add_theme_change_callback(self._on_theme_change)
+
         self.after(50, self._setup_blur)
         self.after(100, self._setup_no_activate)
 
@@ -43,6 +46,23 @@ class TrayMenu(ctk.CTkToplevel):
         self._check_mouse_outside()
 
         self.withdraw()
+
+    def _on_theme_change(self, new_colors: Dict[str, str]) -> None:
+        """主题变化时重建菜单，保证托盘菜单与新主题一致。"""
+        if not self.winfo_exists():
+            return
+
+        self.COLORS = new_colors
+        self.configure(fg_color=self.COLORS['bg'])
+
+        for child in self.winfo_children():
+            child.destroy()
+
+        gcl_running = self._gcl_running
+        self._build_menu()
+        self.update_state(self._is_running, self._window_visible,
+                          self._gcl_enabled, gcl_running)
+        self._setup_blur()
 
     def _setup_no_activate(self):
         try:
@@ -277,6 +297,7 @@ class TrayMenu(ctk.CTkToplevel):
     def update_state(self, is_running: bool, window_visible: bool, gcl_enabled: bool = False, gcl_running: bool = False):
         self._is_running = is_running
         self._window_visible = window_visible
+        self._gcl_enabled = gcl_enabled
 
         # 更新日志窗口按钮
         window_text = "隐藏日志窗口" if window_visible else "显示日志窗口"
@@ -391,6 +412,7 @@ class SettingsWindow(ctk.CTkToplevel):
     def _on_destroy(self, event):
         if event.widget == self:
             self._destroyed = True
+            config.remove_theme_change_callback(self._on_theme_change)
 
     def _setup_blur(self):
         try:
@@ -408,11 +430,9 @@ class SettingsWindow(ctk.CTkToplevel):
     def _on_theme_change(self, new_colors: Dict[str, str]) -> None:
         if self._destroyed:
             return
-        try:
-            self.COLORS = new_colors
-            self._update_theme_cards()
-        except Exception:
-            pass
+        self.COLORS = new_colors
+        # 延后重建，避免在主题卡片的点击回调里销毁当前控件
+        self.after(0, self._rebuild_ui)
 
     def _build_ui(self):
         main = ctk.CTkFrame(self, fg_color="transparent")
@@ -572,9 +592,15 @@ class SettingsWindow(ctk.CTkToplevel):
         if theme_id in PRESET_THEMES:
             config.theme_name = theme_id
 
-    def _update_theme_cards(self):
-        self.COLORS = config.get_theme_colors()
+    def _rebuild_ui(self):
+        """按当前主题重建整个设置界面，让卡片、文字和选中状态一起刷新。"""
+        if self._destroyed or not self.winfo_exists():
+            return
 
+        for child in self.winfo_children():
+            child.destroy()
+
+        self._build_ui()
         self.configure(fg_color=self.COLORS['bg'])
         self._setup_blur()
 
