@@ -389,6 +389,12 @@ class Config:
         if self.luker_path and self.is_valid_luker_path(self.luker_path):
             return True
 
+        # 启动器放在 Luker 根目录时直接识别，省去首次选择路径
+        app_dir = str(get_app_dir())
+        if self.is_valid_luker_path(app_dir):
+            self.luker_path = app_dir
+            return True
+
         path = self.select_luker_path()
         return path is not None
 
