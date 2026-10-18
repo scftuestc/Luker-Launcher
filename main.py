@@ -4,6 +4,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 from ctypes import windll
+from pathlib import Path
 from threading import Thread
 
 import customtkinter as ctk
@@ -104,12 +105,35 @@ class LukerLauncher:
     def _run_async(self, func) -> None:
         Thread(target=func, daemon=True).start()
 
+    def _ensure_process_manager(self) -> ProcessManager | None:
+        """确保进程管理器与当前配置的 Luker 路径保持一致。"""
+        if not config.luker_path:
+            return None
+
+        path = config.luker_path
+        if self.process_manager is None or str(self.process_manager.luker_path) != str(Path(path)):
+            if self.process_manager and self.process_manager.is_running:
+                # 运行中不热切换，避免意外中断正在工作的进程
+                return self.process_manager
+
+            self.process_manager = ProcessManager(path, autorun=not config.use_pwa_mode)
+            self.process_manager.add_log_callback(self._on_log)
+            self._last_status = None
+        else:
+            self.process_manager.autorun = not config.use_pwa_mode
+
+        return self.process_manager
+
     def _do_process_action(self, action) -> None:
         """在后台线程执行进程操作，避免停止/重启时阻塞界面。"""
-        if self._process_busy or self._exiting or not self.process_manager:
+        if self._process_busy or self._exiting:
             return
 
-        manager = self.process_manager
+        manager = self._ensure_process_manager()
+        if manager is None:
+            self._on_log("[错误] 未配置 Luker 路径")
+            return
+
         self._process_busy = True
 
         def worker():
@@ -239,11 +263,8 @@ class LukerLauncher:
 
         # 创建进程管理器（process_manager.py）。
         # autorun：PWA 模式下要禁止 Luker 自己开浏览器，改由启动器打开 PWA 窗口。
-        # config.luker_path 是 Luker 的路径。
-        autorun = not config.use_pwa_mode
-        self.process_manager = ProcessManager(config.luker_path, autorun=autorun)
-        # 注册日志回调。node 子进程每输出一行日志，就会调用 self._on_log 来处理。
-        self.process_manager.add_log_callback(self._on_log)
+        # 这里通过 _ensure_process_manager 创建，设置里修改路径后可自动重建。
+        self._ensure_process_manager()
 
         # 创建托盘弹出菜单（dialogs.py 的 TrayMenu）。
         self.tray_menu = TrayMenu(self.log_window, {
@@ -311,20 +332,27 @@ class LukerLauncher:
         """延迟打开浏览器，等待 Luker 服务启动"""
         def check_and_open():
             url = config.get_server_url()
-            attempt = 0
+            deadline = time.monotonic() + BROWSER_WAIT_TIMEOUT_SECONDS
 
-            while attempt < BROWSER_WAIT_TIMEOUT_SECONDS and self._running:
+            while self._running and time.monotonic() < deadline:
+                ready = False
                 try:
-                    # 尝试连接 Luker
-                    urllib.request.urlopen(url, timeout=BROWSER_WAIT_INTERVAL_SECONDS)
-                    # 连接成功，打开浏览器
+                    # 尝试连接 Luker，响应由 with 负责关闭
+                    with urllib.request.urlopen(url, timeout=BROWSER_WAIT_INTERVAL_SECONDS):
+                        ready = True
+                except urllib.error.HTTPError as e:
+                    # 服务已响应，只是返回了 4xx/5xx，同样说明已经就绪
+                    e.close()
+                    ready = True
+                except (urllib.error.URLError, TimeoutError, OSError):
+                    ready = False
+
+                if ready:
                     self._on_log("[启动器] 检测到 Luker 已启动，正在打开 PWA 浏览器...")
                     self._on_open_browser()
                     return
-                except (urllib.error.URLError, TimeoutError):
-                    # 连接失败，等待后重试
-                    attempt += 1
-                    time.sleep(BROWSER_WAIT_INTERVAL_SECONDS)
+
+                time.sleep(BROWSER_WAIT_INTERVAL_SECONDS)
 
             if self._running:
                 self._on_log("[启动器] 等待 Luker 启动超时，请手动打开浏览器")
