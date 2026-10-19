@@ -72,6 +72,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.bind('<Destroy>', self._on_destroy)
 
     def _on_configure(self, event: tk.Event) -> None:
+        # 合并拖动过程中连续的 Configure 事件，空闲时只检查一次显示器
         if event.widget == self:
             self.after_idle(self._fit_to_current_monitor)
 

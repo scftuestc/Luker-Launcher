@@ -179,6 +179,7 @@ class LukerLauncher:
                 )
                 manager.add_log_callback(self._on_log)
                 self._post_ui(lambda: self._adopt_process_manager(manager))
+                # 先切换 UI 持有的管理器，再启动；退出过程中不再拉起新进程
                 if not self._exiting:
                     manager.start()
                     if self._exiting and manager.is_running:

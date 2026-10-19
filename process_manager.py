@@ -248,10 +248,12 @@ class _ProcessManagerBase:
                     except subprocess.TimeoutExpired:
                         tree_ok = False
 
+                # 关闭管道可唤醒仍阻塞在 readline 的读取线程
                 self._close_process_pipes(process)
                 self._join_log_thread()
 
                 if process.poll() is None:
+                    # 父进程仍存活时保留引用，用户可以再次尝试停止
                     tree_ok = False
                     self._emit_log(f"{self._tag('警告')} {self.name} 父进程仍未退出")
                 else:

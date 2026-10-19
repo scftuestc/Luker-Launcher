@@ -370,6 +370,7 @@ class LogWindow(ctk.CTk):
         self.bind('<Configure>', self._on_configure)
 
     def _on_configure(self, event: tk.Event) -> None:
+        # 合并拖动过程中连续的 Configure 事件，空闲时只检查一次显示器
         if event.widget == self:
             self.after_idle(self._fit_to_current_monitor)
 
@@ -391,6 +392,7 @@ class LogWindow(ctk.CTk):
 
         self._monitor_signature = signature
         scale = sync_window_scaling(self, monitor.scale)
+        # 使用保存的逻辑尺寸，避免 CTk 自动缩放后的物理尺寸被重复缩小
         logical_width, logical_height = fit_logical_window_size(
             max(self._min_logical_width, self._logical_width),
             max(self._min_logical_height, self._logical_height),
