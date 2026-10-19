@@ -204,7 +204,6 @@ class LogWindow(ctk.CTk):
                     text_color=self.COLORS['text']
                 )
 
-            # 搜索框主题更新
             if hasattr(self, '_search_frame'):
                 self._search_frame.configure(fg_color=self.COLORS['card'])
             if hasattr(self, '_search_entry'):
@@ -463,8 +462,6 @@ class LogWindow(ctk.CTk):
             corner_radius=8,
             command=self._toggle_log_source
         )
-        # 初始隐藏，只有 GCL 启用时才显示
-        # self._log_source_btn.pack(side="left", padx=2)
 
         self._min_btn = ctk.CTkButton(
             right, text="─", width=40, height=32,
@@ -575,7 +572,7 @@ class LogWindow(ctk.CTk):
         )
         self.scroll_btn.pack(side="left", padx=(0, 8))
 
-        # 搜索框
+        # 搜索框与结果导航
         self._search_frame = ctk.CTkFrame(left, fg_color=self.COLORS['card'], corner_radius=10)
         self._search_frame.pack(side="left")
 
@@ -605,7 +602,6 @@ class LogWindow(ctk.CTk):
         )
         self._search_entry.pack(side="left")
 
-        # 搜索结果计数和导航
         self._search_nav = ctk.CTkFrame(search_inner, fg_color="transparent")
         self._search_nav.pack(side="left", padx=(4, 0))
 
@@ -650,10 +646,9 @@ class LogWindow(ctk.CTk):
         )
         self._search_clear_btn.pack(side="left", padx=1)
 
-        # 初始化搜索状态
         self._search_results = []
         self._search_current_index = -1
-        self._search_nav.pack_forget()  # 初始隐藏导航按钮
+        self._search_nav.pack_forget()
 
         right = ctk.CTkFrame(self._toolbar, fg_color="transparent")
         right.pack(side="right")
@@ -739,6 +734,7 @@ class LogWindow(ctk.CTk):
         self._version_label.pack(side="right", padx=16, pady=10)
 
     def _get_tag_for_line(self, line: str) -> str:
+        """按日志内容选择颜色标签。"""
         line_lower = line.lower()
         if '[错误]' in line or 'error' in line_lower or 'fail' in line_lower:
             return 'error'
@@ -830,7 +826,6 @@ class LogWindow(ctk.CTk):
             )
             self._title_label.configure(text="Luker 日志")
 
-        # 切换日志显示
         self._refresh_log_display()
 
     def _refresh_log_display(self) -> None:
@@ -839,7 +834,6 @@ class LogWindow(ctk.CTk):
             self.after_cancel(self._search_job)
             self._search_job = None
 
-        # 清空当前显示
         tb = self.log_text._textbox
         tb.configure(state="normal")
         tb.delete("1.0", "end")
@@ -898,6 +892,7 @@ class LogWindow(ctk.CTk):
         self.count_label.configure(text=f"📝 {len(self._display_entry_lines)} 条日志")
 
     def _insert_log_entry(self, tb, text: str, timestamp: datetime.datetime) -> None:
+        """插入一条日志，并记录它占用的行数供裁剪时同步删除。"""
         now = timestamp
         ts = now.strftime("%H:%M:%S")
         tag = self._get_tag_for_line(text)
@@ -1059,16 +1054,15 @@ class LogWindow(ctk.CTk):
         self._search_job = self.after(SEARCH_DEBOUNCE_MS, self._run_search)
 
     def _run_search(self):
+        """执行搜索并显示结果导航。"""
         self._search_job = None
         search_text = self._search_var.get().strip()
         if not search_text:
             self._clear_search_state()
             return
 
-        # 显示导航按钮
         self._search_nav.pack(side="left", padx=(4, 0))
 
-        # 执行搜索
         self._perform_search(search_text)
 
     def _clear_search_state(self):
@@ -1082,34 +1076,26 @@ class LogWindow(ctk.CTk):
         """执行搜索并高亮结果"""
         tb = self.log_text._textbox
 
-        # 清除之前的高亮
         self._clear_search_highlights()
 
-        # 配置搜索高亮标签
         tb.tag_configure('search_highlight', background=self.COLORS['warning'], foreground='#000000')
         tb.tag_configure('search_current', background=self.COLORS['accent'], foreground='#ffffff')
 
-        # 搜索所有匹配项
         self._search_results = []
         start_pos = "1.0"
 
         while True:
-            # 不区分大小写搜索
             pos = tb.search(search_text, start_pos, stopindex="end", nocase=True)
             if not pos:
                 break
 
-            # 计算结束位置
             end_pos = f"{pos}+{len(search_text)}c"
             self._search_results.append((pos, end_pos))
 
-            # 添加高亮
             tb.tag_add('search_highlight', pos, end_pos)
 
-            # 移动到下一个位置继续搜索
             start_pos = end_pos
 
-        # 更新搜索结果计数
         count = len(self._search_results)
         if count > 0:
             self._search_current_index = 0
@@ -1135,22 +1121,17 @@ class LogWindow(ctk.CTk):
 
         tb = self.log_text._textbox
 
-        # 移除之前的当前高亮
         tb.tag_remove('search_current', "1.0", "end")
 
-        # 获取当前结果
         pos, end_pos = self._search_results[self._search_current_index]
 
-        # 添加当前高亮
         tb.tag_add('search_current', pos, end_pos)
 
         # 确保当前高亮在所有高亮之上
         tb.tag_raise('search_current')
 
-        # 滚动到当前结果
         tb.see(pos)
 
-        # 更新计数显示
         self._search_count_label.configure(
             text=f"{self._search_current_index + 1}/{len(self._search_results)}"
         )

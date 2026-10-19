@@ -35,11 +35,7 @@ UI_QUEUE_POLL_MS = 50
 
 
 def setup_dpi_awareness() -> None:
-    """从新到旧逐级尝试设置 DPI 感知，保证高分屏下坐标计算不模糊。
-
-    DPI 感知必须在创建任何窗口之前设置，但只影响之后创建的窗口，
-    所以放在 main() 里调用即可。
-    """
+    """在创建任何窗口前启用 DPI 感知，保证高分屏下坐标计算正确。"""
     try:
         # Windows 10 1703+ 使用 SetProcessDpiAwarenessContext
         # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
@@ -75,7 +71,6 @@ class LukerLauncher:
         self._ui_queue: queue.Queue[Callable[[], None]] = queue.Queue()
         self._ui_active = False
 
-        # 注册 GCL 配置变更回调
         config.add_gcl_change_callback(self._on_gcl_config_change)
 
     def _post_ui(self, callback: Callable[[], None]) -> None:
@@ -83,6 +78,7 @@ class LukerLauncher:
         self._ui_queue.put(callback)
 
     def _pump_ui_queue(self) -> None:
+        """在主线程取出后台线程投递的界面操作并执行。"""
         if not self._ui_active:
             return
 
@@ -149,6 +145,7 @@ class LukerLauncher:
         self._run_async(worker)
 
     def _finish_exit(self) -> None:
+        """停止托盘并结束 Tk 主循环。"""
         self._ui_active = False
         if self.tray_icon:
             self.tray_icon.stop()
@@ -217,10 +214,8 @@ class LukerLauncher:
     def _open_browser_now(self) -> None:
         url = config.get_server_url()
         if config.use_pwa_mode:
-            # 使用 PWA 模式打开浏览器，标题栏颜色会自动跟随 Luker 主题
             open_in_browser(url, prefer_pwa=True)
         else:
-            # 使用默认浏览器
             webbrowser.open(url)
 
     def _open_settings_window(self) -> None:
@@ -309,40 +304,27 @@ class LukerLauncher:
             self.log_window.after(STATUS_POLL_INTERVAL * 1000, self._schedule_status_poll)
 
     def run(self) -> None:
-        """
-        依次创建四大组件，最后进入 GUI 主循环。
-
-        本方法运行在 GUI 主线程上（由底部的 mainloop() 接管）。
-        线程全景：GUI 主线程 / 托盘消息循环线程 / stdout 读取线程 / 浏览器等待线程。
-        所有跨线程 UI 操作都通过 _ui_queue 投递，由主线程的 _pump_ui_queue 执行；
-        进程状态也在主线程用 after 定时检查。
-        """
-        # 首次运行检查：配置缺失时弹对话框引导用户选择 Luker 路径，
-        # 选不出来就放弃启动。配置读写的实现在 config.py，全局单例。
+        """创建窗口、托盘和进程管理器，进入 Tk 主循环。"""
+        # 首次运行：配置缺失时引导选择 Luker 路径
         if not ensure_luker_path_configured():
             logger.error("未配置 Luker 路径，程序退出")
             return
 
-        # 创建主窗口（log_window.py，最大的模块）。
-        # on_hide_callback / on_start / on_stop 都是回调注入
         self.log_window = LogWindow(
             on_hide_callback=lambda: self.tray_icon.set_window_visible(False) if self.tray_icon else None,
             on_start=self._on_start,
             on_stop=self._on_stop
         )
-        # 内部警告/错误同时送进日志窗口（回调只是入队，线程安全）
+        # 内部警告/错误同步到日志窗口
         app_logging.add_ui_log_sink(self._on_log)
 
-        # 启动主线程 UI 队列泵，之后后台线程可以安全地请求界面操作
+        # 启动主线程 UI 队列泵，后台线程才能安全地请求界面操作
         self._ui_active = True
         self._pump_ui_queue()
 
-        # 创建进程管理器（process_manager.py）。
-        # let_luker_open_browser：PWA 模式下要禁止 Luker 自己开浏览器，
-        # 改由启动器打开 PWA 窗口。设置里修改路径后可自动重建。
+        # PWA 模式下禁止 Luker 自己打开浏览器，改由启动器接管
         self._ensure_process_manager()
 
-        # 创建托盘弹出菜单（dialogs.py 的 TrayMenu）。
         self.tray_menu = TrayMenu(self.log_window, {
             'show_window': self._on_show_window,
             'hide_window': self._on_hide_window,
@@ -356,7 +338,6 @@ class LukerLauncher:
             'exit': self._on_exit,
         })
 
-        # 初始化 GCL 进程管理器（如果启用且路径有效）
         if config.gcl_enabled and config.gcl_bat_path and config.is_valid_gcl_path(config.gcl_bat_path):
             self.gcl_process_manager = GCLProcessManager(config.gcl_bat_path)
             self.gcl_process_manager.add_log_callback(self._on_gcl_log)
@@ -364,41 +345,32 @@ class LukerLauncher:
         else:
             self.log_window.set_gcl_enabled(False)
 
-        # 创建托盘图标；启动/停止/重启等操作都通过右键菜单完成
         self.tray_icon = TrayIcon(
             on_show_window=self._on_show_window,
             on_hide_window=self._on_hide_window,
             on_show_menu=self._on_show_menu,
         )
 
-        # 设置运行标志，供自动打开浏览器和状态轮询使用
         self._running = True
 
-        # 托盘线程在此启动：内部跑 Windows 消息循环 GetMessageW，
-        # 会永久阻塞等消息，所以必须独立线程（run_detached = 分离线程运行）。
+        # 托盘消息循环会永久阻塞，必须放在独立线程
         self.tray_icon.run_detached()
-
-        # 状态检查改为 Tk 主线程的 after 定时任务
         self._schedule_status_poll()
 
         self._on_log("[启动器] 正在启动 Luker...")
         self._on_start()
-        # 隐藏主窗口，只保留系统托盘图标。
         self.log_window.hide()
         self._on_log("[启动器] 已最小化到系统托盘，单击图标可显示日志窗口")
 
-        # 如果 GCL 已启用，显示提示
         if self.gcl_process_manager:
             self._on_log("[启动器] GCL 功能已启用，可通过右键菜单控制")
 
-        # 如果开启了 PWA 模式，等待 Luker 启动后自动打开浏览器
         if config.use_pwa_mode:
             self._schedule_auto_open_browser()
 
-        # 进入 Tk GUI 主循环。
         self.log_window.mainloop()
 
-        # 主循环退出后做最后清理；正常退出时 _finish_exit 已处理过，这里是幂等的
+        # 与 _finish_exit 互为兜底，正常退出时这里已是幂等操作
         self._ui_active = False
         self._running = False
         if self.tray_icon:
@@ -425,7 +397,6 @@ class LukerLauncher:
 
                 if ready:
                     self._on_log("[启动器] 检测到 Luker 已启动，正在打开 PWA 浏览器...")
-                    # 当前已在后台线程中，直接打开即可
                     self._open_browser_now()
                     return
 
@@ -434,7 +405,6 @@ class LukerLauncher:
             if self._running:
                 self._on_log("[启动器] 等待 Luker 启动超时，请手动打开浏览器")
 
-        # 在后台线程中执行检查
         Thread(target=check_and_open, daemon=True).start()
 
 

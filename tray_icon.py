@@ -256,23 +256,18 @@ class TrayIcon:
         return hicon
 
     def _get_cursor_pos(self) -> tuple:
-        """获取鼠标位置，处理 DPI 缩放"""
+        """获取鼠标位置并换算为 Tk 使用的逻辑像素。"""
         pt = wintypes.POINT()
         windll.user32.GetCursorPos(byref(pt))
 
-        # 获取主显示器的 DPI 缩放比例
+        # GetCursorPos 返回物理像素，需要按主屏 DPI 换算成逻辑像素
         try:
-            # 获取屏幕 DC
             hdc = windll.user32.GetDC(0)
-            # LOGPIXELSX = 88，标准 DPI 是 96
+            # 88 = LOGPIXELSX，96 DPI 对应 100% 缩放
             dpi = windll.gdi32.GetDeviceCaps(hdc, 88)
             windll.user32.ReleaseDC(0, hdc)
 
-            # 计算缩放比例
             scale = dpi / 96.0
-
-            # 将物理像素坐标转换为逻辑像素坐标
-            # customtkinter 使用的是逻辑像素
             logical_x = int(pt.x / scale)
             logical_y = int(pt.y / scale)
 
@@ -354,6 +349,7 @@ class TrayIcon:
         self._window_visible = visible
 
     def run(self) -> None:
+        """注册窗口类、创建托盘图标并运行 Win32 消息循环。"""
         self._running = True
         try:
             hinstance = windll.kernel32.GetModuleHandleW(None)

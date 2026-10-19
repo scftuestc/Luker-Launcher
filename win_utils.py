@@ -94,6 +94,7 @@ def apply_blur(hwnd, bg_color: str, alpha: int = 0xDD) -> None:
 
 
 def get_ui_font():
+    """返回可用界面字体，优先 Source Han / Noto。"""
     source_han_fonts = [
         'Source Han Sans SC',
         'Source Han Sans CN',
@@ -109,6 +110,7 @@ def get_ui_font():
 
 
 def get_mono_font():
+    """返回可用等宽字体，优先 Source Han Mono / Consolas。"""
     mono_fonts = [
         'Source Han Mono SC',
         'Noto Sans Mono CJK SC',

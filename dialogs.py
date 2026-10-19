@@ -185,14 +185,13 @@ class TrayMenu(ctk.CTkToplevel):
 
         self.menu_items = {}
 
-        # 显示日志窗口
         self.menu_items['window'] = self._create_menu_item(
             items_frame, "📋", "显示日志窗口", self._on_toggle_window
         )
 
         ctk.CTkFrame(items_frame, height=1, fg_color=self.COLORS['border']).pack(fill="x", padx=8, pady=6)
 
-        # Luker 控制区域：启动/停止（合并为一个按钮）、重启、Luker 页面
+        # Luker 控制区域：启动/停止合并为一个动态按钮
         self.menu_items['luker_toggle'] = self._create_menu_item(
             items_frame, "▶", "启动 Luker", self._on_luker_toggle, color=self.COLORS['success']
         )
@@ -205,9 +204,8 @@ class TrayMenu(ctk.CTkToplevel):
             items_frame, "🌐", "Luker 页面", self._on_open_browser, color=self.COLORS['info']
         )
 
-        # GCL 分隔线和菜单项（根据配置动态显示，初始隐藏）
+        # GCL 菜单项按配置动态显示
         self._gcl_separator = ctk.CTkFrame(items_frame, height=1, fg_color=self.COLORS['border'])
-        # 初始不 pack，由 update_state 控制
 
         self.menu_items['gcl_toggle'] = self._create_menu_item_hidden(
             items_frame, "▶", "启动 GCL", self._on_gcl_toggle, color=self.COLORS['success']
@@ -217,7 +215,6 @@ class TrayMenu(ctk.CTkToplevel):
             items_frame, "🌐", "GCL 页面", self._on_gcl_browser, color=self.COLORS['info']
         )
 
-        # 底部分隔线
         self._bottom_separator = ctk.CTkFrame(items_frame, height=1, fg_color=self.COLORS['border'])
         self._bottom_separator.pack(fill="x", padx=8, pady=6)
 
@@ -229,7 +226,6 @@ class TrayMenu(ctk.CTkToplevel):
             items_frame, "🚪", "退出", self._on_exit, color=self.COLORS['error']
         )
 
-        # 初始化 GCL 状态
         self._gcl_running = False
 
     def _create_menu_item(self, parent, icon, text, command, color=None):
@@ -253,9 +249,8 @@ class TrayMenu(ctk.CTkToplevel):
         return {'frame': frame, 'btn': btn, 'color': color}
 
     def _create_menu_item_hidden(self, parent, icon, text, command, color=None):
-        """创建菜单项但不立即显示（不 pack）"""
+        """创建但不 pack，由 update_state 控制显示。"""
         frame = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=8)
-        # 不调用 pack，由 update_state 控制显示
 
         btn = ctk.CTkButton(
             frame,
@@ -281,7 +276,6 @@ class TrayMenu(ctk.CTkToplevel):
             self.callbacks['show_window']()
 
     def _on_luker_toggle(self):
-        """Luker 启动/停止切换"""
         self.hide()
         if self._is_running:
             self.callbacks['stop']()
@@ -325,11 +319,10 @@ class TrayMenu(ctk.CTkToplevel):
         self._window_visible = window_visible
         self._gcl_enabled = gcl_enabled
 
-        # 更新日志窗口按钮
         window_text = "隐藏日志窗口" if window_visible else "显示日志窗口"
         self.menu_items['window']['btn'].configure(text=f"📋  {window_text}")
 
-        # 更新 Luker 启动/停止按钮（合并为一个动态按钮）
+        # 启停按钮共用一个位置，根据状态切换文案和颜色
         if is_running:
             self.menu_items['luker_toggle']['btn'].configure(
                 text="⏹  停止 Luker",
@@ -346,12 +339,11 @@ class TrayMenu(ctk.CTkToplevel):
         # 更新 GCL 菜单项状态
         self._gcl_running = gcl_running
         if gcl_enabled:
-            # 先隐藏再显示，确保顺序正确（在底部分隔线之前）
+            # 先隐藏再按顺序插到底部分隔线之前
             self._gcl_separator.pack_forget()
             self.menu_items['gcl_toggle']['frame'].pack_forget()
             self.menu_items['gcl_browser']['frame'].pack_forget()
 
-            # 在底部分隔线之前插入
             self._gcl_separator.pack(fill="x", padx=8, pady=6, before=self._bottom_separator)
             self.menu_items['gcl_toggle']['frame'].pack(fill="x", pady=2, before=self._bottom_separator)
             self.menu_items['gcl_browser']['frame'].pack(fill="x", pady=2, before=self._bottom_separator)
@@ -427,8 +419,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.title("设置")
         self.resizable(False, False)
 
-        # 先设置窗口位置到屏幕中央，再设置其他属性
-        # 计算居中位置
+        # 居中显示
         w = 600
         h = 720
         screen_w = self.winfo_screenwidth()
@@ -478,7 +469,6 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._build_titlebar(main)
 
-        # 创建可滚动区域
         scroll_frame = ctk.CTkScrollableFrame(
             main,
             fg_color="transparent",
@@ -642,7 +632,6 @@ class SettingsWindow(ctk.CTkToplevel):
         inner = ctk.CTkFrame(section, fg_color="transparent")
         inner.pack(fill="x", padx=16, pady=16)
 
-        # 标题行
         header = ctk.CTkFrame(inner, fg_color="transparent")
         header.pack(fill="x", pady=(0, 8))
 
@@ -652,7 +641,6 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text']
         ).pack(side="left")
 
-        # 开关
         self.pwa_switch = ctk.CTkSwitch(
             header,
             text="",
@@ -666,11 +654,9 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self.pwa_switch.pack(side="right")
 
-        # 设置初始状态
         if config.use_pwa_mode:
             self.pwa_switch.select()
 
-        # 说明文字
         ctk.CTkLabel(
             inner,
             text="开启后，打开浏览器时将使用 PWA 模式\n标题栏颜色会自动跟随 Luker 主题色变化",
@@ -680,7 +666,6 @@ class SettingsWindow(ctk.CTkToplevel):
         ).pack(anchor="w")
 
     def _on_pwa_toggle(self):
-        """PWA 模式开关切换回调"""
         config.use_pwa_mode = self.pwa_switch.get() == 1
 
     def _build_gcl_section(self, parent):
@@ -691,7 +676,6 @@ class SettingsWindow(ctk.CTkToplevel):
         inner = ctk.CTkFrame(section, fg_color="transparent")
         inner.pack(fill="x", padx=16, pady=16)
 
-        # 标题行
         header = ctk.CTkFrame(inner, fg_color="transparent")
         header.pack(fill="x", pady=(0, 8))
 
@@ -701,7 +685,6 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text']
         ).pack(side="left")
 
-        # 开关
         self.gcl_switch = ctk.CTkSwitch(
             header,
             text="",
@@ -715,11 +698,9 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self.gcl_switch.pack(side="right")
 
-        # 设置初始状态
         if config.gcl_enabled:
             self.gcl_switch.select()
 
-        # 说明文字
         ctk.CTkLabel(
             inner,
             text="开启后，可在托盘菜单中控制 GCL 的启动和停止",
@@ -763,12 +744,10 @@ class SettingsWindow(ctk.CTkToplevel):
             command=self._select_gcl_path
         ).pack(side="right")
 
-        # 根据开关状态显示或隐藏路径选择
         if config.gcl_enabled:
             self._gcl_path_frame.pack(fill="x")
 
     def _on_gcl_toggle(self):
-        """GCL 开关切换回调"""
         enabled = self.gcl_switch.get() == 1
 
         if enabled:
@@ -790,7 +769,6 @@ class SettingsWindow(ctk.CTkToplevel):
             self._gcl_path_frame.pack_forget()
 
     def _select_gcl_path(self):
-        """选择 GCL bat 路径"""
         path = select_gcl_bat_path(self)
         if path:
             self.gcl_path_label.configure(text=path)
@@ -808,7 +786,6 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text']
         ).pack(anchor="w", pady=(0, 10))
 
-        # 路径和按钮在同一行（与 GCL 布局一致）
         path_row = ctk.CTkFrame(inner, fg_color="transparent")
         path_row.pack(fill="x")
 

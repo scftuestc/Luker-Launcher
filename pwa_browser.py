@@ -1,13 +1,4 @@
-"""PWA 浏览器启动模块
-
-使用 Edge 的 PWA 模式启动 Luker，这样标题栏颜色会自动跟随 Luker 主题色变化。
-
-已安装 PWA 的 APPX 包信息通过两种方式获得（按优先级）：
-1. 手动配置：launcher_config.json 中的 pwa_appx_family_name
-2. 自动发现：扫描已安装的 APPX 包，匹配 DisplayName 为 "Luker" 的 PWA 包
-
-如果 PWA 未安装，回退到 Edge 的 --app 应用窗口模式，最终回退到默认浏览器。
-"""
+"""PWA 浏览器启动：优先 APPX，其次 Edge --app-id/--app，最后默认浏览器。"""
 
 import ctypes
 import json
@@ -23,13 +14,12 @@ from config import config
 
 logger = logging.getLogger(__name__)
 
-# Windows APPX 包的默认 Application Id（来自 AppxManifest.xml 的 Application Id）
+# AppxManifest.xml 未声明 Application Id 时的默认值
 DEFAULT_APPX_APP_ID = "App"
 
-# 自动发现失败后的重试间隔（秒）。成功结果会一直缓存。
+# 自动发现失败后的重试间隔；成功结果永久缓存，失败按此间隔退避
 DISCOVERY_RETRY_SECONDS = 60
 
-# 自动发现结果的缓存；失败时用 checked_at 做退避，避免反复启动 PowerShell
 _discovered_appx: Optional[Tuple[str, str]] = None
 _discovery_checked_at = 0.0
 
@@ -37,11 +27,9 @@ _discovery_checked_at = 0.0
 def find_edge_path() -> Optional[str]:
     """查找 Edge 浏览器可执行文件路径"""
     possible_paths = [
-        # 64位系统上的64位Edge
+        # Edge 的系统级和用户级安装位置
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        # 64位Edge
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-        # 用户安装的Edge
         os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
     ]
 
@@ -53,17 +41,13 @@ def find_edge_path() -> Optional[str]:
 
 
 def is_pwa_installed(app_id: str) -> bool:
-    """检查指定 App ID 的 PWA 是否已安装
-
-    通过检查 Edge 的 PWA 数据目录来判断
-    """
+    """通过 Edge 的 PWA 数据目录判断指定 App ID 是否已安装。"""
     edge_user_data = Path(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\User Data"))
 
     # 检查 Default 配置文件中的 Web Applications
     web_app_dir = edge_user_data / "Default" / "Web Applications"
 
     if web_app_dir.exists():
-        # 检查是否存在与 Luker 相关的 PWA
         for item in web_app_dir.iterdir():
             if item.is_dir() and app_id in item.name:
                 return True
@@ -82,10 +66,7 @@ def is_pwa_installed(app_id: str) -> bool:
 
 
 def is_appx_installed(family_name: str) -> bool:
-    """检查指定的 APPX 包是否已安装
-
-    通过 PowerShell 查询已安装的应用包
-    """
+    """通过 PowerShell 查询指定 APPX 包是否已安装。"""
     package_name = family_name.split('_')[0]
     try:
         result = subprocess.run(
@@ -101,20 +82,15 @@ def is_appx_installed(family_name: str) -> bool:
 
 
 def discover_luker_appx() -> Optional[Tuple[str, str]]:
-    """自动发现已安装的 Luker PWA APPX 包
+    """扫描 127.0.0.1-* APPX 包，按 DisplayName 找到 Luker PWA。
 
-    Edge 安装 PWA 时会生成一个 APPX 包，包名形如 "127.0.0.1-XXXXXXXX"，
-    其中哈希后缀由源地址（含端口）决定，无法预先得知。
-    这里枚举所有候选包并读取其 AppxManifest.xml，
-    匹配 DisplayName 为 "Luker" 的包。
-
-    Returns:
-        (PackageFamilyName, ApplicationId) 元组，未发现时返回 None
+    包名的哈希后缀由安装地址决定，无法直接拼出，所以枚举后读取 manifest。
+    返回 (PackageFamilyName, ApplicationId)，未发现时返回 None。
     """
     global _discovered_appx, _discovery_checked_at
     if _discovered_appx:
         return _discovered_appx
-    # 上次扫描失败且仍在退避期内，直接返回，避免每次点击都启动 PowerShell
+    # 退避期内直接返回，避免反复启动 PowerShell
     if time.monotonic() - _discovery_checked_at < DISCOVERY_RETRY_SECONDS:
         return None
     _discovery_checked_at = time.monotonic()
@@ -167,11 +143,7 @@ def discover_luker_appx() -> Optional[Tuple[str, str]]:
 
 
 def open_as_appx(family_name: str, app_id: str = DEFAULT_APPX_APP_ID) -> bool:
-    """通过 Windows Shell 协议启动已安装的 APPX PWA 应用
-
-    这是启动标题栏颜色跟随主题的正确方式
-    """
-    # 使用 shell:AppsFolder 协议启动
+    """通过 shell:AppsFolder 启动已安装的 APPX PWA。"""
     # 格式: shell:AppsFolder\{PackageFamilyName}!{AppId}
     app_uri = f"shell:AppsFolder\\{family_name}!{app_id}"
 
@@ -190,21 +162,11 @@ def open_as_appx(family_name: str, app_id: str = DEFAULT_APPX_APP_ID) -> bool:
 
 
 def open_as_pwa(url: Optional[str] = None) -> bool:
-    """以 PWA 模式打开 Luker
-
-    优先使用已安装/已配置的 APPX 包启动（标题栏颜色跟随主题）
-    如果 APPX 未安装，回退到 Edge --app-id 模式或 --app 模式
-
-    Args:
-        url: Luker 的 URL 地址，默认从配置中读取
-
-    Returns:
-        bool: 是否成功启动
-    """
+    """按 APPX → Edge --app-id → Edge --app 的顺序打开 Luker。"""
     if url is None:
         url = config.get_server_url()
 
-    # 1. 优先使用配置文件中手动指定的 APPX 包
+    # 优先使用配置文件中手动指定的 APPX 包
     configured_family = config.pwa_appx_family_name
     if configured_family:
         if is_appx_installed(configured_family):
@@ -215,7 +177,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
         else:
             logger.warning("配置的 APPX 包未安装: %s", configured_family)
 
-    # 2. 自动发现已安装的 Luker APPX 包
+    # 其次自动发现已安装的 Luker APPX 包
     discovered = discover_luker_appx()
     if discovered:
         family_name, app_id = discovered
@@ -229,7 +191,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
         logger.warning("未找到 Edge 浏览器")
         return False
 
-    # 3. 如果配置了 Edge PWA App ID 且已安装，使用 --app-id 参数启动
+    # 再尝试 Edge 的 --app-id 模式
     app_id = config.pwa_app_id
     if app_id and is_pwa_installed(app_id):
         args = [
@@ -239,7 +201,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
         ]
         logger.info("使用 --app-id 模式启动")
     else:
-        # 4. 如果 PWA 未安装，使用 --app 参数启动（简化的应用窗口模式）
+        # PWA 未安装时使用普通应用窗口
         args = [
             edge_path,
             f"--app={url}",
@@ -261,15 +223,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
 
 
 def open_in_browser(url: Optional[str] = None, prefer_pwa: bool = True) -> bool:
-    """打开 Luker 浏览器
-
-    Args:
-        url: Luker 的 URL 地址，默认从配置中读取
-        prefer_pwa: 是否优先使用 PWA 模式
-
-    Returns:
-        bool: 是否成功启动
-    """
+    """打开 Luker；优先 PWA，失败时回退默认浏览器。"""
     if url is None:
         url = config.get_server_url()
 
@@ -278,7 +232,6 @@ def open_in_browser(url: Optional[str] = None, prefer_pwa: bool = True) -> bool:
             return True
         logger.info("回退到默认浏览器")
 
-    # 回退到默认浏览器
     import webbrowser
     try:
         webbrowser.open(url)
@@ -289,7 +242,6 @@ def open_in_browser(url: Optional[str] = None, prefer_pwa: bool = True) -> bool:
 
 
 if __name__ == "__main__":
-    # 测试
     logging.basicConfig(level=logging.INFO)
     logger.info("Edge 路径: %s", find_edge_path())
     logger.info("Luker 地址: %s", config.get_server_url())

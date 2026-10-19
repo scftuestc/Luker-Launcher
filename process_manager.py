@@ -13,14 +13,10 @@ from win_job import assign_to_job
 
 
 class _ProcessManagerBase:
-    """子进程生命周期的公共实现。
-
-    子类只需要说明“启动前检查什么”和“如何构建启动命令”，
-    日志回调、输出读取、进程树终止和启停互斥都在这里统一处理。
-    """
+    """子进程生命周期的公共实现；子类只负责校验目标并构建启动命令。"""
 
     name = "进程"
-    # GCL 的日志标签需要形如 [GCL 信息]，Luker 保持 [信息]
+    # GCL 的日志标签形如 [GCL 信息]，Luker 保持 [信息]
     log_scope = ""
 
     def __init__(self, target: Path, encoding: str = "utf-8") -> None:
@@ -33,6 +29,7 @@ class _ProcessManagerBase:
         self._log_callbacks: List[Callable[[str], None]] = []
 
     def _tag(self, level: str) -> str:
+        """生成 [信息] 或 [GCL 错误] 形式的日志前缀。"""
         scope = f"{self.log_scope} " if self.log_scope else ""
         return f"[{scope}{level}]"
 
@@ -45,6 +42,7 @@ class _ProcessManagerBase:
         return None
 
     def _build_command(self) -> Sequence[str]:
+        """返回启动命令参数列表。"""
         raise NotImplementedError
 
     def _startup_cwd(self) -> str:
@@ -237,6 +235,7 @@ class ProcessManager(_ProcessManagerBase):
         return None
 
     def _pre_start_error(self) -> Optional[str]:
+        """端口被占用时阻止重复启动。"""
         if self.server_port and self._is_port_in_use(self.server_port):
             return (
                 f"端口 {self.server_port} 已被占用，可能已有 Luker 在运行；"
@@ -279,7 +278,6 @@ class GCLProcessManager(_ProcessManagerBase):
         return None
 
     def _build_command(self) -> Sequence[str]:
-        # 使用 cmd /c 来运行 bat 文件
         return ["cmd", "/c", str(self.bat_path)]
 
     def _startup_cwd(self) -> str:

@@ -1,8 +1,4 @@
-"""首次启动和设置窗口使用的路径选择对话框。
-
-配置模块只负责数据，这里集中处理与 tkinter 文件对话框的交互，
-避免 config.py 为了弹窗反复创建新的 Tk 根窗口。
-"""
+"""路径选择对话框；配置模块只负责数据，不直接处理 UI。"""
 
 import tkinter as tk
 from tkinter import filedialog, messagebox
