@@ -18,6 +18,8 @@ DEFAULT_APPX_APP_ID = "App"
 
 # 自动发现失败后的重试间隔；成功结果永久缓存，失败按此间隔退避
 DISCOVERY_RETRY_SECONDS = 60
+# PowerShell 查询超时，避免异常环境下无限挂起
+POWERSHELL_TIMEOUT_SECONDS = 10
 
 _discovered_appx: tuple[str, str] | None = None
 _discovery_checked_at = 0.0
@@ -76,9 +78,13 @@ def is_appx_installed(family_name: str) -> bool:
             ["powershell", "-Command", command],
             capture_output=True,
             text=True,
+            timeout=POWERSHELL_TIMEOUT_SECONDS,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         return bool(result.stdout.strip())
+    except subprocess.TimeoutExpired:
+        logger.warning("查询 APPX 包超时")
+        return False
     except Exception:
         return False
 
@@ -107,6 +113,7 @@ def discover_luker_appx() -> tuple[str, str] | None:
             ],
             capture_output=True,
             text=True,
+            timeout=POWERSHELL_TIMEOUT_SECONDS,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         output = result.stdout.strip()

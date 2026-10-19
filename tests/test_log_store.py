@@ -16,6 +16,17 @@ class LogStoreTests(unittest.TestCase):
             ["line-2", "line-3", "line-4"],
         )
 
+    def test_byte_capacity_drops_oldest_entries(self):
+        store = LogStore(max_entries=10, max_bytes=10)
+        store.append("12345")
+        store.append("67890")
+        store.append("abcde")
+
+        self.assertEqual(
+            [entry.text for entry in store.snapshot()],
+            ["67890", "abcde"],
+        )
+
     def test_append_preserves_timestamp(self):
         store = LogStore()
         timestamp = datetime.datetime(2026, 1, 2, 3, 4, 5)

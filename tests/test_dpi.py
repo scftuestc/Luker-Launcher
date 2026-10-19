@@ -1,9 +1,12 @@
 import unittest
 
+import customtkinter as ctk
+
 from dpi import (
     MonitorInfo,
     centered_position,
     clamp_popup_position,
+    discard_window_scaling,
     fit_logical_window_size,
     format_geometry,
 )
@@ -92,6 +95,17 @@ class FormatGeometryTests(unittest.TestCase):
 
     def test_position_only(self):
         self.assertEqual(format_geometry(None, None, -100, 50), "-100+50")
+
+
+class ScalingCacheTests(unittest.TestCase):
+    def test_discard_window_scaling_removes_entry(self):
+        key = object()
+        ctk.ScalingTracker.window_dpi_scaling_dict[key] = 1.0
+        try:
+            discard_window_scaling(key)
+            self.assertNotIn(key, ctk.ScalingTracker.window_dpi_scaling_dict)
+        finally:
+            ctk.ScalingTracker.window_dpi_scaling_dict.pop(key, None)
 
 
 if __name__ == "__main__":

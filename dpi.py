@@ -5,6 +5,7 @@ winfo_width/height 都是物理像素；CustomTkinter 只对窗口 width/height
 应用缩放，不对 x/y 应用缩放。
 """
 
+import contextlib
 import ctypes
 import logging
 from ctypes import wintypes
@@ -203,3 +204,9 @@ def sync_window_scaling(
         return fallback
 
     return scale
+
+
+def discard_window_scaling(window: ctk.CTk | ctk.CTkToplevel) -> None:
+    """移除已销毁窗口的缩放缓存，避免反复打开 Toplevel 时泄漏。"""
+    with contextlib.suppress(AttributeError):
+        ctk.ScalingTracker.window_dpi_scaling_dict.pop(window, None)

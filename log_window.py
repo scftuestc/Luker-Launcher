@@ -22,7 +22,7 @@ from dpi import (
     get_monitor_info,
     sync_window_scaling,
 )
-from log_store import MAX_LOG_ENTRIES, LogEntry, LogStore
+from log_store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry, LogStore
 from win_utils import apply_blur, get_mono_font, get_ui_font
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,8 @@ class LogWindow(ctk.CTk):
         self._gcl_store = LogStore()
         # 日志窗口中每条日志占用的行数，用于裁剪旧日志时同步删除文本
         self._display_entry_lines: deque[int] = deque()
+        self._display_entry_bytes: deque[int] = deque()
+        self._display_bytes = 0
         self._display_dirty = False
         self._search_job: str | None = None
 
@@ -927,6 +929,8 @@ class LogWindow(ctk.CTk):
         tb.configure(state="disabled")
 
         self._display_entry_lines.clear()
+        self._display_entry_bytes.clear()
+        self._display_bytes = 0
         self._last_log_timestamp = None
 
         # 只重放当前日志源，容量由 LogStore 限制
@@ -997,16 +1001,23 @@ class LogWindow(ctk.CTk):
 
         lines_after = int(tb.index("end-1c").split(".")[0])
         self._display_entry_lines.append(lines_after - lines_before)
+        self._display_entry_bytes.append(len(text.encode("utf-8", errors="replace")))
+        self._display_bytes += self._display_entry_bytes[-1]
 
     def _trim_display(self) -> None:
-        """超过上限时从 Text 头部删除最旧的日志，保持界面和内存有界。"""
-        excess = len(self._display_entry_lines) - MAX_LOG_ENTRIES
-        if excess <= 0:
+        """超过条数或字节上限时从 Text 头部删除最旧的日志。"""
+        if (
+            len(self._display_entry_lines) <= MAX_LOG_ENTRIES
+            and self._display_bytes <= MAX_LOG_BYTES
+        ):
             return
 
         removed_lines = 0
-        for _ in range(excess):
+        while self._display_entry_lines and (
+            len(self._display_entry_lines) > MAX_LOG_ENTRIES or self._display_bytes > MAX_LOG_BYTES
+        ):
             removed_lines += self._display_entry_lines.popleft()
+            self._display_bytes -= self._display_entry_bytes.popleft()
 
         if removed_lines <= 0:
             return
@@ -1023,7 +1034,8 @@ class LogWindow(ctk.CTk):
             return
 
         adjusted = []
-        for start, end in self._search_results:
+        removed_before_current = 0
+        for index, (start, end) in enumerate(self._search_results):
             start_line, start_col = map(int, start.split("."))
             end_base, sep, end_offset = end.partition("+")
             end_line, end_col = map(int, end_base.split("."))
@@ -1034,11 +1046,13 @@ class LogWindow(ctk.CTk):
                 if sep:
                     new_end += f"+{end_offset}"
                 adjusted.append((f"{start_line}.{start_col}", new_end))
+            elif index < self._search_current_index:
+                removed_before_current += 1
 
         self._search_results = adjusted
         if adjusted:
-            if self._search_current_index < 0 or self._search_current_index >= len(adjusted):
-                self._search_current_index = 0
+            new_index = self._search_current_index - removed_before_current
+            self._search_current_index = max(0, min(new_index, len(adjusted) - 1))
 
             # 不滚动窗口，只把“当前结果”标记移到仍然有效的位置
             tb = self._get_textbox()
@@ -1064,6 +1078,8 @@ class LogWindow(ctk.CTk):
         self._luker_store.clear()
         self._gcl_store.clear()
         self._display_entry_lines.clear()
+        self._display_entry_bytes.clear()
+        self._display_bytes = 0
 
         # 丢弃尚未处理的日志，避免清除后旧日志又冒出来
         for log_queue in (self.log_queue, self.gcl_log_queue):

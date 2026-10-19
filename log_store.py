@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 # 每个日志源在内存中保留的最大条数
 MAX_LOG_ENTRIES = 3000
+# 单个日志源的文本上限，防止少量超长行占满内存
+MAX_LOG_BYTES = 8 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -15,10 +17,21 @@ class LogEntry:
 
 
 class LogStore:
-    """固定容量的日志缓冲区；超出上限时自动丢弃最旧的记录。"""
+    """有上限的日志缓冲区；超出条数或字节上限时丢弃最旧的记录。"""
 
-    def __init__(self, max_entries: int = MAX_LOG_ENTRIES) -> None:
-        self._entries: deque[LogEntry] = deque(maxlen=max_entries)
+    def __init__(
+        self,
+        max_entries: int = MAX_LOG_ENTRIES,
+        max_bytes: int = MAX_LOG_BYTES,
+    ) -> None:
+        self._entries: deque[LogEntry] = deque()
+        self._max_entries = max_entries
+        self._max_bytes = max_bytes
+        self._bytes = 0
+
+    @staticmethod
+    def _text_size(text: str) -> int:
+        return len(text.encode("utf-8", errors="replace"))
 
     def append(
         self,
@@ -27,6 +40,14 @@ class LogStore:
     ) -> LogEntry:
         entry = LogEntry(timestamp or datetime.datetime.now(), text)
         self._entries.append(entry)
+        self._bytes += self._text_size(text)
+
+        while self._entries and (
+            len(self._entries) > self._max_entries or self._bytes > self._max_bytes
+        ):
+            removed = self._entries.popleft()
+            self._bytes -= self._text_size(removed.text)
+
         return entry
 
     def snapshot(self) -> list[LogEntry]:
@@ -35,6 +56,7 @@ class LogStore:
 
     def clear(self) -> None:
         self._entries.clear()
+        self._bytes = 0
 
     def __len__(self) -> int:
         return len(self._entries)

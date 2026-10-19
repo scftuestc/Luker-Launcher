@@ -64,6 +64,7 @@ class LukerLauncher:
         self.tray_menu: TrayMenu | None = None
         self._running = False
         self._process_busy = False  # 防止启停/重启操作重入
+        self._browser_busy = False  # 防止重复启动 PWA 发现线程
         self._exiting = False  # 退出流程只执行一次
         self._last_status: bool | None = None  # 上一次通知给界面的运行状态
         # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
@@ -277,9 +278,25 @@ class LukerLauncher:
 
     def _on_open_browser(self) -> None:
         """打开浏览器；PWA 发现可能调用 PowerShell，放到后台避免卡住界面。"""
-        if self._exiting:
+        if self._exiting or self._browser_busy:
             return
-        self._run_async(self._open_browser_now)
+
+        self._browser_busy = True
+
+        def worker() -> None:
+            try:
+                self._open_browser_now()
+            finally:
+                self._post_ui(self._finish_browser_open)
+
+        try:
+            self._run_async(worker)
+        except Exception:
+            self._browser_busy = False
+            logger.exception("启动浏览器打开线程失败")
+
+    def _finish_browser_open(self) -> None:
+        self._browser_busy = False
 
     def _open_browser_now(self) -> None:
         url = config.get_server_url()

@@ -9,6 +9,7 @@ import customtkinter as ctk
 from config import config
 from dpi import (
     centered_position,
+    discard_window_scaling,
     fit_logical_window_size,
     format_geometry,
     get_monitor_info,
@@ -65,6 +66,7 @@ class SettingsWindow(ctk.CTkToplevel):
         if event.widget == self:
             self._destroyed = True
             config.remove_theme_change_callback(self._on_theme_change)
+            discard_window_scaling(self)
 
     def _setup_blur(self) -> None:
         try:
