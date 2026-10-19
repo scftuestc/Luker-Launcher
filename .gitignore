@@ -2,15 +2,26 @@
 __pycache__/
 *.pyc
 
+# 本地工具与虚拟环境
+.ruff_cache/
+.pytest_cache/
+.venv/
+.idea/
+.vscode/
+.zcode/
+.mimosa/
+
 # PyInstaller 打包产生的目录
 build/
 dist/
+release/
 
 # 打包生成的 exe 文件
 *.exe
 
 # 配置文件，模板见 example
 launcher_config.json
+*.tmp
 
 # 运行日志
 launcher.log
