@@ -1,8 +1,6 @@
 """主题预设：颜色、显示名称与设置窗口使用的元数据。"""
 
-from typing import Dict
-
-PRESET_THEMES: Dict[str, Dict[str, str]] = {
+PRESET_THEMES: dict[str, dict[str, str]] = {
     'deep_blue': {
         'name': '深蓝夜空',
         'short_name': '深蓝',
@@ -116,7 +114,7 @@ PRESET_THEMES: Dict[str, Dict[str, str]] = {
 DEFAULT_THEME = 'deep_blue'
 
 
-def get_theme_colors(name: str) -> Dict[str, str]:
+def get_theme_colors(name: str) -> dict[str, str]:
     """返回主题颜色副本；主题名无效时使用默认主题。"""
     theme = PRESET_THEMES.get(name, PRESET_THEMES[DEFAULT_THEME])
     return theme.copy()

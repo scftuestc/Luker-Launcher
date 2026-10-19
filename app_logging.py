@@ -4,9 +4,9 @@ import logging
 import sys
 import tempfile
 import threading
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Callable, Optional
 
 from config import get_app_dir
 
@@ -17,7 +17,7 @@ _MAX_LOG_BYTES = 1_000_000
 _BACKUP_COUNT = 2
 
 _configured = False
-_ui_handler: Optional[logging.Handler] = None
+_ui_handler: logging.Handler | None = None
 
 
 class _UiLogHandler(logging.Handler):
@@ -29,10 +29,7 @@ class _UiLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            if record.levelno >= logging.ERROR:
-                label = "错误"
-            else:
-                label = "警告"
+            label = "错误" if record.levelno >= logging.ERROR else "警告"
             self._callback(f"[{label}] {record.getMessage()}")
         except Exception:
             self.handleError(record)
@@ -61,7 +58,7 @@ def setup_logging() -> None:
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     handler: logging.Handler
-    log_path: Optional[Path] = None
+    log_path: Path | None = None
     for directory in (get_app_dir(), Path(tempfile.gettempdir())):
         try:
             directory.mkdir(parents=True, exist_ok=True)

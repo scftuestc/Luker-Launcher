@@ -1,10 +1,10 @@
 """托盘右键菜单和设置窗口。"""
 
+import contextlib
 import logging
 import math
 import webbrowser
 from ctypes import windll
-from typing import Dict
 
 import customtkinter as ctk
 
@@ -42,7 +42,6 @@ class TrayMenu(ctk.CTkToplevel):
         self.configure(fg_color=self.COLORS['bg'])
 
         self._animation_phase = 0
-        self._hover_item = None
         self._menu_animation_id = None
         self._menu_animation_active = False
         self._mouse_poll_id = None
@@ -56,7 +55,7 @@ class TrayMenu(ctk.CTkToplevel):
 
         self.withdraw()
 
-    def _on_theme_change(self, new_colors: Dict[str, str]) -> None:
+    def _on_theme_change(self, new_colors: dict[str, str]) -> None:
         """主题变化时重建菜单，保证托盘菜单与新主题一致。"""
         if not self.winfo_exists():
             return
@@ -298,19 +297,14 @@ class TrayMenu(ctk.CTkToplevel):
 
     def _on_open_browser(self):
         self.hide()
-        if 'open_browser' in self.callbacks:
-            self.callbacks['open_browser']()
-        else:
-            webbrowser.open(config.get_server_url())
+        self.callbacks['open_browser']()
 
     def _on_gcl_toggle(self):
         self.hide()
         if self._gcl_running:
-            if 'gcl_stop' in self.callbacks:
-                self.callbacks['gcl_stop']()
+            self.callbacks['gcl_stop']()
         else:
-            if 'gcl_start' in self.callbacks:
-                self.callbacks['gcl_start']()
+            self.callbacks['gcl_start']()
 
     def _on_gcl_browser(self):
         self.hide()
@@ -403,18 +397,14 @@ class TrayMenu(ctk.CTkToplevel):
 
     def hide(self):
         if self._menu_animation_id is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self.after_cancel(self._menu_animation_id)
-            except Exception:
-                pass
             self._menu_animation_id = None
         self._menu_animation_active = False
 
         if self._mouse_poll_id is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self.after_cancel(self._mouse_poll_id)
-            except Exception:
-                pass
             self._mouse_poll_id = None
 
         self.withdraw()
@@ -472,7 +462,7 @@ class SettingsWindow(ctk.CTkToplevel):
         except Exception:
             logger.warning("设置窗口毛玻璃失败", exc_info=True)
 
-    def _on_theme_change(self, new_colors: Dict[str, str]) -> None:
+    def _on_theme_change(self, new_colors: dict[str, str]) -> None:
         if self._destroyed:
             return
         self.COLORS = new_colors

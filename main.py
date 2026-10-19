@@ -1,5 +1,6 @@
 """Luker 启动器入口：创建日志窗口、托盘和进程管理器，并进入 Tk 主循环。"""
 
+import contextlib
 import ctypes
 import logging
 import queue
@@ -7,10 +8,10 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
+from collections.abc import Callable
 from ctypes import windll
 from pathlib import Path
 from threading import Thread
-from typing import Callable
 
 import customtkinter as ctk
 
@@ -46,12 +47,9 @@ def setup_dpi_awareness() -> None:
             # PROCESS_PER_MONITOR_DPI_AWARE = 2
             windll.shcore.SetProcessDpiAwareness(2)
         except (AttributeError, OSError):
-            try:
-                # Windows Vista+ 使用 SetProcessDPIAware
+            # Windows Vista+ 使用 SetProcessDPIAware；极老系统交给默认缩放
+            with contextlib.suppress(AttributeError, OSError):
                 windll.user32.SetProcessDPIAware()
-            except (AttributeError, OSError):
-                # 极老系统连这也没有，交给系统默认的 DPI 缩放处理
-                pass
 
 
 class LukerLauncher:

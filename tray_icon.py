@@ -2,9 +2,9 @@
 
 import ctypes
 import logging
+from collections.abc import Callable
 from ctypes import WINFUNCTYPE, Structure, byref, c_int, sizeof, windll, wintypes
 from threading import Event, Lock, Thread, current_thread
-from typing import Callable, Optional
 
 from PIL import Image, ImageDraw
 
@@ -96,7 +96,7 @@ class TrayIcon:
         self,
         on_show_window: Callable[[], None],
         on_hide_window: Callable[[], None],
-        on_show_menu: Optional[Callable[[int, int], None]] = None,
+        on_show_menu: Callable[[int, int], None] | None = None,
     ):
         self.on_show_window = on_show_window
         self.on_hide_window = on_hide_window
@@ -105,7 +105,7 @@ class TrayIcon:
         self._window_visible = False
         self._is_running = False
         self._state_lock = Lock()
-        self._thread: Optional[Thread] = None
+        self._thread: Thread | None = None
         self._hwnd = None
         self._running = False
         self._hicon = None
@@ -137,10 +137,7 @@ class TrayIcon:
             draw.ellipse([x1, y2 - radius * 2, x1 + radius * 2, y2], fill=fill)
             draw.ellipse([x2 - radius * 2, y2 - radius * 2, x2, y2], fill=fill)
 
-        if self._is_running:
-            border_color = '#3fb950'
-        else:
-            border_color = '#6e7681'
+        border_color = '#3fb950' if self._is_running else '#6e7681'
 
         draw_rounded_rect(
             [margin, margin, size - margin, size - margin], corner_radius, border_color
@@ -288,10 +285,9 @@ class TrayIcon:
                 # 左键单击切换日志窗口，右键弹出菜单
                 if lparam == WM_LBUTTONUP:
                     self._toggle_window()
-                elif lparam == WM_RBUTTONUP:
-                    if self.on_show_menu:
-                        x, y = self._get_cursor_pos()
-                        self.on_show_menu(x, y)
+                elif lparam == WM_RBUTTONUP and self.on_show_menu:
+                    x, y = self._get_cursor_pos()
+                    self.on_show_menu(x, y)
             elif msg == WM_TRAY_STATUS:
                 self._update_icon()
             elif msg == WM_CLOSE:

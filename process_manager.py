@@ -1,11 +1,12 @@
 """Luker 与 GCL 子进程的启动、停止和日志读取。"""
 
+import contextlib
 import socket
 import subprocess
 import time
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from threading import RLock, Thread
-from typing import Callable, List, Optional, Sequence
 
 import psutil
 
@@ -22,22 +23,22 @@ class _ProcessManagerBase:
     def __init__(self, target: Path, encoding: str = "utf-8") -> None:
         self.target = target
         self._encoding = encoding
-        self.process: Optional[subprocess.Popen] = None
-        self._log_thread: Optional[Thread] = None
+        self.process: subprocess.Popen | None = None
+        self._log_thread: Thread | None = None
         self._running = False
         self._op_lock = RLock()  # 串行化 start/stop/restart，避免并发操作同一进程
-        self._log_callbacks: List[Callable[[str], None]] = []
+        self._log_callbacks: list[Callable[[str], None]] = []
 
     def _tag(self, level: str) -> str:
         """生成 [信息] 或 [GCL 错误] 形式的日志前缀。"""
         scope = f"{self.log_scope} " if self.log_scope else ""
         return f"[{scope}{level}]"
 
-    def _startup_error(self) -> Optional[str]:
+    def _startup_error(self) -> str | None:
         """启动前校验，返回错误信息；返回 None 表示可以启动。"""
         return None
 
-    def _pre_start_error(self) -> Optional[str]:
+    def _pre_start_error(self) -> str | None:
         """目标文件检查通过后的额外检查，例如端口是否已被占用。"""
         return None
 
@@ -56,16 +57,10 @@ class _ProcessManagerBase:
     def add_log_callback(self, callback: Callable[[str], None]) -> None:
         self._log_callbacks.append(callback)
 
-    def remove_log_callback(self, callback: Callable[[str], None]) -> None:
-        if callback in self._log_callbacks:
-            self._log_callbacks.remove(callback)
-
     def _emit_log(self, line: str) -> None:
         for callback in self._log_callbacks:
-            try:
+            with contextlib.suppress(Exception):
                 callback(line)
-            except Exception:
-                pass
 
     def _read_output(self, process: subprocess.Popen) -> None:
         """持续读取指定进程的输出，直到进程退出或收到停止请求。"""
@@ -82,10 +77,8 @@ class _ProcessManagerBase:
         except (OSError, ValueError) as e:
             self._emit_log(f"{self._tag('错误')} 读取输出失败: {e}")
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 stdout.close()
-            except OSError:
-                pass
 
     def start(self) -> bool:
         with self._op_lock:
@@ -148,18 +141,14 @@ class _ProcessManagerBase:
             children = parent.children(recursive=True)
 
             for child in children:
-                try:
+                with contextlib.suppress(psutil.NoSuchProcess):
                     child.terminate()
-                except psutil.NoSuchProcess:
-                    pass
 
             _, alive = psutil.wait_procs(children, timeout=3)
 
             for p in alive:
-                try:
+                with contextlib.suppress(psutil.NoSuchProcess):
                     p.kill()
-                except psutil.NoSuchProcess:
-                    pass
 
             try:
                 parent.terminate()
@@ -221,7 +210,7 @@ class ProcessManager(_ProcessManagerBase):
         self,
         luker_path: str,
         let_luker_open_browser: bool = True,
-        server_port: Optional[int] = None,
+        server_port: int | None = None,
     ) -> None:
         super().__init__(Path(luker_path), encoding="utf-8")
         self.luker_path = self.target
@@ -230,13 +219,13 @@ class ProcessManager(_ProcessManagerBase):
         self.let_luker_open_browser = let_luker_open_browser
         self.server_port = server_port
 
-    def _startup_error(self) -> Optional[str]:
+    def _startup_error(self) -> str | None:
         server_js = self.luker_path / "server.js"
         if not server_js.exists():
             return f"未找到 server.js: {server_js}"
         return None
 
-    def _pre_start_error(self) -> Optional[str]:
+    def _pre_start_error(self) -> str | None:
         """端口被占用时阻止重复启动。"""
         if self.server_port and self._is_port_in_use(self.server_port):
             return f"端口 {self.server_port} 已被占用，可能已有 Luker 在运行；请先关闭它再启动"
@@ -271,7 +260,7 @@ class GCLProcessManager(_ProcessManagerBase):
         super().__init__(Path(bat_path), encoding="mbcs")
         self.bat_path = self.target
 
-    def _startup_error(self) -> Optional[str]:
+    def _startup_error(self) -> str | None:
         if not self.bat_path.exists():
             return f"未找到 bat 文件: {self.bat_path}"
         return None

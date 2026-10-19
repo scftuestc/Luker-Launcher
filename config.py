@@ -1,12 +1,13 @@
 """启动器配置读写与路径校验。"""
 
+import contextlib
 import json
 import logging
 import os
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
 
 from theme import DEFAULT_THEME, PRESET_THEMES
 from theme import get_theme_colors as _get_theme_colors
@@ -45,20 +46,20 @@ class Config:
 
     CONFIG_FILE = "launcher_config.json"
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         self.config_path = (
             Path(config_path) if config_path is not None else get_app_dir() / self.CONFIG_FILE
         )
         self._config = self._load_config()
-        self._theme_change_callbacks: List[Callable[[Dict[str, str]], None]] = []
-        self._gcl_change_callbacks: List[Callable[[bool, Optional[str]], None]] = []
+        self._theme_change_callbacks: list[Callable[[dict[str, str]], None]] = []
+        self._gcl_change_callbacks: list[Callable[[bool, str | None], None]] = []
 
     def _load_config(self) -> dict:
         if not self.config_path.exists():
             return {}
 
         try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
+            with open(self.config_path, encoding='utf-8') as f:
                 data = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             logger.warning("读取配置失败，使用默认配置: %s", e)
@@ -104,16 +105,14 @@ class Config:
             return True
         except OSError as e:
             logger.error("保存配置失败: %s", e)
-            try:
+            with contextlib.suppress(OSError):
                 temp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
             return False
 
-    def add_theme_change_callback(self, callback: Callable[[Dict[str, str]], None]) -> None:
+    def add_theme_change_callback(self, callback: Callable[[dict[str, str]], None]) -> None:
         self._theme_change_callbacks.append(callback)
 
-    def remove_theme_change_callback(self, callback: Callable[[Dict[str, str]], None]) -> None:
+    def remove_theme_change_callback(self, callback: Callable[[dict[str, str]], None]) -> None:
         if callback in self._theme_change_callbacks:
             self._theme_change_callbacks.remove(callback)
 
@@ -125,14 +124,9 @@ class Config:
             except Exception:
                 logger.exception("主题回调执行失败")
 
-    def add_gcl_change_callback(self, callback: Callable[[bool, Optional[str]], None]) -> None:
+    def add_gcl_change_callback(self, callback: Callable[[bool, str | None], None]) -> None:
         """添加 GCL 配置变更回调"""
         self._gcl_change_callbacks.append(callback)
-
-    def remove_gcl_change_callback(self, callback: Callable[[bool, Optional[str]], None]) -> None:
-        """移除 GCL 配置变更回调"""
-        if callback in self._gcl_change_callbacks:
-            self._gcl_change_callbacks.remove(callback)
 
     def _notify_gcl_change(self) -> None:
         """通知 GCL 配置变更"""
@@ -155,11 +149,8 @@ class Config:
             self._save_config()
             self._notify_theme_change()
 
-    def get_theme_colors(self) -> Dict[str, str]:
+    def get_theme_colors(self) -> dict[str, str]:
         return _get_theme_colors(self.theme_name)
-
-    def get_all_themes(self) -> Dict[str, Dict[str, str]]:
-        return PRESET_THEMES.copy()
 
     @property
     def use_pwa_mode(self) -> bool:
@@ -172,7 +163,7 @@ class Config:
         self._save_config()
 
     @property
-    def pwa_app_id(self) -> Optional[str]:
+    def pwa_app_id(self) -> str | None:
         """Edge PWA 应用 ID（可选，用于 --app-id 启动模式）
 
         安装 Luker PWA 后，可在 Edge 的
@@ -187,7 +178,7 @@ class Config:
         self._save_config()
 
     @property
-    def pwa_appx_family_name(self) -> Optional[str]:
+    def pwa_appx_family_name(self) -> str | None:
         """已安装 Luker PWA 的 APPX PackageFamilyName（可选）
 
         形如 "127.0.0.1-XXXXXXXX_xxxxxxxxxxxxx"。
@@ -213,7 +204,7 @@ class Config:
         self._notify_gcl_change()
 
     @property
-    def gcl_bat_path(self) -> Optional[str]:
+    def gcl_bat_path(self) -> str | None:
         """GCL 的 start.bat 路径"""
         return self._config.get('gcl_bat_path')
 
@@ -228,7 +219,7 @@ class Config:
         """GCL 的本地访问地址"""
         return self._config.get('gcl_url', DEFAULT_GCL_URL)
 
-    def is_valid_gcl_path(self, path: Optional[str]) -> bool:
+    def is_valid_gcl_path(self, path: str | None) -> bool:
         """验证 GCL bat 路径是否有效"""
         if not path:
             return False
@@ -236,7 +227,7 @@ class Config:
         return p.exists() and p.suffix.lower() == '.bat'
 
     @property
-    def luker_path(self) -> Optional[str]:
+    def luker_path(self) -> str | None:
         path = self._config.get('luker_path')
         if path:
             return path
@@ -251,7 +242,7 @@ class Config:
         self._save_config()
 
     @property
-    def start_bat_path(self) -> Optional[Path]:
+    def start_bat_path(self) -> Path | None:
         if self.luker_path:
             return Path(self.luker_path) / "Start.bat"
         return None
@@ -280,7 +271,7 @@ class Config:
         """获取 Luker 的本地访问地址"""
         return f"http://127.0.0.1:{self.get_server_port()}"
 
-    def is_valid_luker_path(self, path: Optional[str]) -> bool:
+    def is_valid_luker_path(self, path: str | None) -> bool:
         if not path:
             return False
         p = Path(path)

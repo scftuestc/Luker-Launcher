@@ -1,5 +1,6 @@
 """主日志窗口：日志渲染、搜索和主题切换。"""
 
+import contextlib
 import datetime
 import logging
 import math
@@ -8,7 +9,6 @@ import queue
 import tkinter as tk
 from collections import deque
 from ctypes import windll
-from typing import Dict
 
 import customtkinter as ctk
 
@@ -144,7 +144,7 @@ class LogWindow(ctk.CTk):
             for i, color in enumerate(bar_colors):
                 x = start_x + i * (bar_width + 4)
                 draw.rounded_rectangle(
-                    [x, start_y, x + bar_width, start_y + bar_height], radius=2, fill=color + (255,)
+                    [x, start_y, x + bar_width, start_y + bar_height], radius=2, fill=(*color, 255)
                 )
 
             photo = ImageTk.PhotoImage(img)
@@ -159,7 +159,7 @@ class LogWindow(ctk.CTk):
         apply_blur(hwnd, self.COLORS['bg'], alpha=0xDD)
         self.update()
 
-    def _on_theme_change(self, new_colors: Dict[str, str]) -> None:
+    def _on_theme_change(self, new_colors: dict[str, str]) -> None:
         self.COLORS = new_colors
         self._apply_theme()
 
@@ -233,7 +233,7 @@ class LogWindow(ctk.CTk):
                     scrollbar_button_color=self.COLORS['border'],
                     scrollbar_button_hover_color=self.COLORS['accent'],
                 )
-                tb = self.log_text._textbox
+                tb = self._get_textbox()
                 tb.tag_configure('time', foreground=self.COLORS['text_muted'])
                 tb.tag_configure('info', foreground=self.COLORS['info'])
                 tb.tag_configure('success', foreground=self.COLORS['success'])
@@ -313,10 +313,8 @@ class LogWindow(ctk.CTk):
             b = int(0x50 + (0x43 - 0x50) * alpha)
             pulse_color = f"#{r:02x}{g:02x}{b:02x}"
 
-            try:
+            with contextlib.suppress(tk.TclError):
                 self.status_dot.configure(text_color=pulse_color)
-            except tk.TclError:
-                pass
 
         self.after(100, self._animate_status_pulse)
 
@@ -433,7 +431,6 @@ class LogWindow(ctk.CTk):
 
         self._titlebar.bind('<Button-1>', self._start_drag)
         self._titlebar.bind('<B1-Motion>', self._on_drag)
-        self._titlebar.bind('<Double-Button-1>', self._toggle_maximize)
 
         left = ctk.CTkFrame(self._titlebar, fg_color="transparent")
         left.pack(side="left", padx=16, pady=12)
@@ -514,10 +511,6 @@ class LogWindow(ctk.CTk):
     def _on_drag(self, e):
         self.geometry(f"+{e.x_root - self._drag_x}+{e.y_root - self._drag_y}")
 
-    def _toggle_maximize(self, e):
-        # 双击标题栏暂不提供最大化
-        pass
-
     def _on_minimize(self):
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
@@ -534,17 +527,14 @@ class LogWindow(ctk.CTk):
             self.focus_force()
 
     def _check_window_state(self):
-        try:
+        with contextlib.suppress(Exception):
             hwnd = windll.user32.GetParent(self.winfo_id())
             is_minimized = windll.user32.IsIconic(hwnd)
 
-            if hasattr(self, '_was_minimized'):
-                if self._was_minimized and not is_minimized:
-                    self.after(50, self._restore_window)
+            if getattr(self, '_was_minimized', False) and not is_minimized:
+                self.after(50, self._restore_window)
 
             self._was_minimized = is_minimized
-        except Exception:
-            pass
 
         # 隐藏到托盘时降到 1 秒一次，减少空转
         interval = 300 if self.winfo_viewable() else 1000
@@ -737,7 +727,7 @@ class LogWindow(ctk.CTk):
         )
         self.log_text.pack(fill="both", expand=True, padx=12, pady=12)
 
-        tb = self.log_text._textbox
+        tb = self._get_textbox()
         tb.tag_configure('time', foreground=self.COLORS['text_muted'])
         tb.tag_configure('info', foreground=self.COLORS['info'])
         tb.tag_configure('success', foreground=self.COLORS['success'])
@@ -746,6 +736,10 @@ class LogWindow(ctk.CTk):
         tb.tag_configure('accent', foreground=self.COLORS['accent'])
         tb.tag_configure('dim', foreground=self.COLORS['text_dim'])
         tb.tag_configure('separator', foreground=self.COLORS['accent'], elide=False)
+
+    def _get_textbox(self) -> tk.Text:
+        """返回 CTkTextbox 内部的 Text 控件；私有属性只在这里访问。"""
+        return self.log_text._textbox
 
     def _build_statusbar(self, parent):
         self._statusbar = ctk.CTkFrame(
@@ -795,21 +789,14 @@ class LogWindow(ctk.CTk):
         try:
             log_queue.put_nowait(line)
         except queue.Full:
-            try:
+            with contextlib.suppress(queue.Empty):
                 log_queue.get_nowait()
-            except queue.Empty:
-                pass
-            try:
+            with contextlib.suppress(queue.Full):
                 log_queue.put_nowait(line)
-            except queue.Full:
-                pass
 
-    def add_log(self, line: str, source: str = 'luker') -> None:
-        """添加日志，source 可以是 'luker' 或 'gcl'"""
-        if source == 'gcl':
-            self._enqueue_log(self.gcl_log_queue, line)
-        else:
-            self._enqueue_log(self.log_queue, line)
+    def add_log(self, line: str) -> None:
+        """添加 Luker 日志。"""
+        self._enqueue_log(self.log_queue, line)
 
     def add_gcl_log(self, line: str) -> None:
         """添加 GCL 日志的便捷方法"""
@@ -870,7 +857,7 @@ class LogWindow(ctk.CTk):
             self.after_cancel(self._search_job)
             self._search_job = None
 
-        tb = self.log_text._textbox
+        tb = self._get_textbox()
         tb.configure(state="normal")
         tb.delete("1.0", "end")
         tb.configure(state="disabled")
@@ -912,7 +899,7 @@ class LogWindow(ctk.CTk):
         if not entries:
             return
 
-        tb = self.log_text._textbox
+        tb = self._get_textbox()
         tb.configure(state="normal")
         for entry in entries:
             self._insert_log_entry(tb, entry.text, entry.timestamp)
@@ -960,7 +947,7 @@ class LogWindow(ctk.CTk):
         if removed_lines <= 0:
             return
 
-        tb = self.log_text._textbox
+        tb = self._get_textbox()
         tb.configure(state="normal")
         tb.delete("1.0", f"{removed_lines + 1}.0")
         tb.configure(state="disabled")
@@ -990,7 +977,7 @@ class LogWindow(ctk.CTk):
                 self._search_current_index = 0
 
             # 不滚动窗口，只把“当前结果”标记移到仍然有效的位置
-            tb = self.log_text._textbox
+            tb = self._get_textbox()
             tb.tag_remove('search_current', "1.0", "end")
             start, end = adjusted[self._search_current_index]
             tb.tag_add('search_current', start, end)
@@ -1004,7 +991,7 @@ class LogWindow(ctk.CTk):
             self._search_count_label.configure(text="0/0")
 
     def clear_logs(self) -> None:
-        tb = self.log_text._textbox
+        tb = self._get_textbox()
         tb.configure(state="normal")
         tb.delete("1.0", "end")
         tb.configure(state="disabled")
@@ -1102,7 +1089,7 @@ class LogWindow(ctk.CTk):
 
     def _perform_search(self, search_text: str):
         """执行搜索并高亮结果"""
-        tb = self.log_text._textbox
+        tb = self._get_textbox()
 
         self._clear_search_highlights()
 
@@ -1137,7 +1124,7 @@ class LogWindow(ctk.CTk):
 
     def _clear_search_highlights(self):
         """清除所有搜索高亮"""
-        tb = self.log_text._textbox
+        tb = self._get_textbox()
         try:
             tb.tag_remove('search_highlight', "1.0", "end")
             tb.tag_remove('search_current', "1.0", "end")
@@ -1149,7 +1136,7 @@ class LogWindow(ctk.CTk):
         if not self._search_results or self._search_current_index < 0:
             return
 
-        tb = self.log_text._textbox
+        tb = self._get_textbox()
 
         tb.tag_remove('search_current', "1.0", "end")
 

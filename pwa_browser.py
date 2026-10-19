@@ -8,7 +8,6 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional, Tuple
 
 from config import config
 
@@ -20,11 +19,11 @@ DEFAULT_APPX_APP_ID = "App"
 # 自动发现失败后的重试间隔；成功结果永久缓存，失败按此间隔退避
 DISCOVERY_RETRY_SECONDS = 60
 
-_discovered_appx: Optional[Tuple[str, str]] = None
+_discovered_appx: tuple[str, str] | None = None
 _discovery_checked_at = 0.0
 
 
-def find_edge_path() -> Optional[str]:
+def find_edge_path() -> str | None:
     """查找 Edge 浏览器可执行文件路径"""
     possible_paths = [
         # Edge 的系统级和用户级安装位置
@@ -84,7 +83,7 @@ def is_appx_installed(family_name: str) -> bool:
         return False
 
 
-def discover_luker_appx() -> Optional[Tuple[str, str]]:
+def discover_luker_appx() -> tuple[str, str] | None:
     """扫描 127.0.0.1-* APPX 包，按 DisplayName 找到 Luker PWA。
 
     包名的哈希后缀由安装地址决定，无法直接拼出，所以枚举后读取 manifest。
@@ -165,7 +164,7 @@ def open_as_appx(family_name: str, app_id: str = DEFAULT_APPX_APP_ID) -> bool:
     return False
 
 
-def open_as_pwa(url: Optional[str] = None) -> bool:
+def open_as_pwa(url: str | None = None) -> bool:
     """按 APPX → Edge --app-id → Edge --app 的顺序打开 Luker。"""
     if url is None:
         url = config.get_server_url()
@@ -226,7 +225,7 @@ def open_as_pwa(url: Optional[str] = None) -> bool:
         return False
 
 
-def open_in_browser(url: Optional[str] = None, prefer_pwa: bool = True) -> bool:
+def open_in_browser(url: str | None = None, prefer_pwa: bool = True) -> bool:
     """打开 Luker；优先 PWA，失败时回退默认浏览器。"""
     if url is None:
         url = config.get_server_url()

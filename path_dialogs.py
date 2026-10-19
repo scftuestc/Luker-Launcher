@@ -2,7 +2,6 @@
 
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from typing import Optional
 
 from config import config, get_app_dir
 
@@ -23,7 +22,7 @@ def _dialog_owner(parent=None):
     return root, root
 
 
-def select_luker_path(parent=None) -> Optional[str]:
+def select_luker_path(parent=None) -> str | None:
     """让用户选择 Luker 安装目录并校验，返回有效路径或 None。"""
     owner, temp_root = _dialog_owner(parent)
     try:
@@ -57,7 +56,7 @@ def select_luker_path(parent=None) -> Optional[str]:
             temp_root.destroy()
 
 
-def select_gcl_bat_path(parent=None) -> Optional[str]:
+def select_gcl_bat_path(parent=None) -> str | None:
     """选择 GCL 的 start.bat 文件并校验，返回有效路径或 None。"""
     owner, temp_root = _dialog_owner(parent)
     try:
