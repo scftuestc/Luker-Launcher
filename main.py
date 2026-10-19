@@ -136,7 +136,7 @@ class LukerLauncher:
         # 停止进程可能耗时数秒，放到后台，完成后再结束主循环
         managers = [m for m in (self.process_manager, self.gcl_process_manager) if m]
 
-        def worker():
+        def worker() -> None:
             for manager in managers:
                 manager.stop()
             self._post_ui(self._finish_exit)
@@ -151,7 +151,7 @@ class LukerLauncher:
         if self.log_window:
             self.log_window.quit()
 
-    def _run_async(self, func) -> None:
+    def _run_async(self, func: Callable[[], None]) -> None:
         """在守护线程中执行耗时操作，不阻塞 Tk 主循环。"""
         Thread(target=func, daemon=True).start()
 
@@ -179,7 +179,7 @@ class LukerLauncher:
 
         return self.process_manager
 
-    def _do_process_action(self, action) -> None:
+    def _do_process_action(self, action: Callable[[LukerProcessManager], bool]) -> None:
         """在后台线程执行进程操作，避免停止/重启时阻塞界面。"""
         if self._process_busy or self._exiting:
             return
@@ -191,7 +191,7 @@ class LukerLauncher:
 
         self._process_busy = True
 
-        def worker():
+        def worker() -> None:
             try:
                 action(manager)
             finally:
@@ -389,7 +389,7 @@ class LukerLauncher:
     def _schedule_auto_open_browser(self) -> None:
         """延迟打开浏览器，等待 Luker 服务启动"""
 
-        def check_and_open():
+        def check_and_open() -> None:
             url = config.get_server_url()
             deadline = time.monotonic() + BROWSER_WAIT_TIMEOUT_SECONDS
 

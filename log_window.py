@@ -8,12 +8,14 @@ import os
 import queue
 import tkinter as tk
 from collections import deque
+from collections.abc import Callable, Sequence
 from ctypes import windll
+from types import TracebackType
 
 import customtkinter as ctk
 
 from config import APP_VERSION, config
-from log_store import MAX_LOG_ENTRIES, LogStore
+from log_store import MAX_LOG_ENTRIES, LogEntry, LogStore
 from win_utils import apply_blur, get_mono_font, get_ui_font
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,12 @@ SEARCH_DEBOUNCE_MS = 250
 class LogWindow(ctk.CTk):
     """Tk 根窗口，负责日志显示、搜索、主题切换和窗口边框交互。"""
 
-    def __init__(self, on_hide_callback=None, on_start=None, on_stop=None):
+    def __init__(
+        self,
+        on_hide_callback: Callable[[], None] | None = None,
+        on_start: Callable[[], None] | None = None,
+        on_stop: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__()
 
         # Tk 回调里的未捕获异常默认只打印到不可见的 stderr，
@@ -81,7 +88,7 @@ class LogWindow(ctk.CTk):
         # 日志窗口中每条日志占用的行数，用于裁剪旧日志时同步删除文本
         self._display_entry_lines: deque[int] = deque()
         self._display_dirty = False
-        self._search_job = None
+        self._search_job: str | None = None
 
         self._build_ui()
 
@@ -89,8 +96,8 @@ class LogWindow(ctk.CTk):
         self._is_running = False
         self._last_log_timestamp: datetime.datetime | None = None
 
-        self.log_queue: queue.Queue = queue.Queue(maxsize=MAX_LOG_QUEUE_SIZE)
-        self.gcl_log_queue: queue.Queue = queue.Queue(maxsize=MAX_LOG_QUEUE_SIZE)
+        self.log_queue: queue.Queue[str] = queue.Queue(maxsize=MAX_LOG_QUEUE_SIZE)
+        self.gcl_log_queue: queue.Queue[str] = queue.Queue(maxsize=MAX_LOG_QUEUE_SIZE)
 
         self._process_logs()
 
@@ -100,10 +107,15 @@ class LogWindow(ctk.CTk):
 
         self._start_animations()
 
-    def _report_callback_exception(self, exc, val, tb) -> None:
+    def _report_callback_exception(
+        self,
+        exc: type[BaseException],
+        val: BaseException,
+        tb: TracebackType | None,
+    ) -> None:
         logger.error("界面回调异常", exc_info=(exc, val, tb))
 
-    def _set_window_icon(self):
+    def _set_window_icon(self) -> None:
         try:
             icon_path = os.path.join(os.path.dirname(__file__), 'icon.ico')
             if os.path.exists(icon_path):
@@ -122,7 +134,7 @@ class LogWindow(ctk.CTk):
         except Exception:
             logger.warning("设置窗口图标失败", exc_info=True)
 
-    def _create_dynamic_icon(self):
+    def _create_dynamic_icon(self) -> None:
         try:
             from PIL import Image, ImageDraw, ImageTk
 
@@ -154,7 +166,7 @@ class LogWindow(ctk.CTk):
         except Exception:
             logger.warning("动态生成图标失败", exc_info=True)
 
-    def _setup_blur(self):
+    def _setup_blur(self) -> None:
         hwnd = windll.user32.GetParent(self.winfo_id())
         apply_blur(hwnd, self.COLORS['bg'], alpha=0xDD)
         self.update()
@@ -255,11 +267,11 @@ class LogWindow(ctk.CTk):
         except Exception:
             logger.exception("应用主题时出错")
 
-    def _start_animations(self):
+    def _start_animations(self) -> None:
         self._animate_glow()
         self._animate_status_pulse()
 
-    def _animate_glow(self):
+    def _animate_glow(self) -> None:
         # 窗口隐藏时降低刷新频率，避免常驻托盘时空转
         if not self.winfo_viewable():
             self.after(500, self._animate_glow)
@@ -298,7 +310,7 @@ class LogWindow(ctk.CTk):
 
         self.after(50, self._animate_glow)
 
-    def _animate_status_pulse(self):
+    def _animate_status_pulse(self) -> None:
         # 窗口隐藏时降低刷新频率
         if not self.winfo_viewable():
             self.after(500, self._animate_status_pulse)
@@ -318,13 +330,13 @@ class LogWindow(ctk.CTk):
 
         self.after(100, self._animate_status_pulse)
 
-    def _setup_resize(self):
+    def _setup_resize(self) -> None:
         self.bind('<Motion>', self._check_resize_edge)
         self.bind('<Button-1>', self._start_resize)
         self.bind('<B1-Motion>', self._do_resize)
         self.bind('<ButtonRelease-1>', self._end_resize)
 
-    def _check_resize_edge(self, e):
+    def _check_resize_edge(self, e: tk.Event) -> None:
         # 距离窗口边缘 8px 内按方向显示缩放光标
         if e.widget != self:
             self.configure(cursor='')
@@ -371,7 +383,7 @@ class LogWindow(ctk.CTk):
 
         self._resize_edge = edge
 
-    def _start_resize(self, e):
+    def _start_resize(self, e: tk.Event) -> None:
         if e.widget != self or not self._resize_edge:
             return
         self._resize_start = (
@@ -383,7 +395,7 @@ class LogWindow(ctk.CTk):
             self.winfo_y(),
         )
 
-    def _do_resize(self, e):
+    def _do_resize(self, e: tk.Event) -> None:
         if not self._resize_edge or not hasattr(self, '_resize_start'):
             return
         if e.widget != self:
@@ -410,10 +422,10 @@ class LogWindow(ctk.CTk):
 
         self.geometry(f"{nw}x{nh}+{nx}+{ny}")
 
-    def _end_resize(self, e):
+    def _end_resize(self, e: tk.Event) -> None:
         self._resize_edge = None
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=12, pady=12)
 
@@ -422,7 +434,7 @@ class LogWindow(ctk.CTk):
         self._build_log_area(main)
         self._build_statusbar(main)
 
-    def _build_titlebar(self, parent):
+    def _build_titlebar(self, parent: tk.Misc) -> None:
         self._titlebar = ctk.CTkFrame(
             parent, height=52, fg_color=self.COLORS['card'], corner_radius=14
         )
@@ -504,14 +516,14 @@ class LogWindow(ctk.CTk):
         )
         self._close_btn.pack(side="left", padx=2)
 
-    def _start_drag(self, e):
+    def _start_drag(self, e: tk.Event) -> None:
         self._drag_x = e.x_root - self.winfo_x()
         self._drag_y = e.y_root - self.winfo_y()
 
-    def _on_drag(self, e):
+    def _on_drag(self, e: tk.Event) -> None:
         self.geometry(f"+{e.x_root - self._drag_x}+{e.y_root - self._drag_y}")
 
-    def _on_minimize(self):
+    def _on_minimize(self) -> None:
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
             SW_MINIMIZE = 6
@@ -520,13 +532,13 @@ class LogWindow(ctk.CTk):
         except Exception:
             logger.warning("最小化窗口失败", exc_info=True)
 
-    def _on_map(self, event):
+    def _on_map(self, event: tk.Event) -> None:
         if hasattr(self, '_minimized') and self._minimized:
             self._minimized = False
             self.lift()
             self.focus_force()
 
-    def _check_window_state(self):
+    def _check_window_state(self) -> None:
         with contextlib.suppress(Exception):
             hwnd = windll.user32.GetParent(self.winfo_id())
             is_minimized = windll.user32.IsIconic(hwnd)
@@ -540,7 +552,7 @@ class LogWindow(ctk.CTk):
         interval = 300 if self.winfo_viewable() else 1000
         self.after(interval, self._check_window_state)
 
-    def _restore_window(self):
+    def _restore_window(self) -> None:
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
             SW_RESTORE = 9
@@ -550,12 +562,12 @@ class LogWindow(ctk.CTk):
         except Exception:
             pass
 
-    def _on_close(self):
+    def _on_close(self) -> None:
         self.hide()
         if self.on_hide_callback:
             self.on_hide_callback()
 
-    def _build_toolbar(self, parent):
+    def _build_toolbar(self, parent: tk.Misc) -> None:
         self._toolbar = ctk.CTkFrame(parent, fg_color="transparent", height=48)
         self._toolbar.pack(fill="x", pady=(0, 10))
 
@@ -672,7 +684,7 @@ class LogWindow(ctk.CTk):
         )
         self._search_clear_btn.pack(side="left", padx=1)
 
-        self._search_results = []
+        self._search_results: list[tuple[str, str]] = []
         self._search_current_index = -1
         self._search_nav.pack_forget()
 
@@ -712,7 +724,7 @@ class LogWindow(ctk.CTk):
         )
         self.status_text.pack(side="left")
 
-    def _build_log_area(self, parent):
+    def _build_log_area(self, parent: tk.Misc) -> None:
         self._log_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
         self._log_card.pack(fill="both", expand=True, pady=(0, 10))
 
@@ -741,7 +753,7 @@ class LogWindow(ctk.CTk):
         """返回 CTkTextbox 内部的 Text 控件；私有属性只在这里访问。"""
         return self.log_text._textbox
 
-    def _build_statusbar(self, parent):
+    def _build_statusbar(self, parent: tk.Misc) -> None:
         self._statusbar = ctk.CTkFrame(
             parent, height=42, fg_color=self.COLORS['card'], corner_radius=10
         )
@@ -784,7 +796,7 @@ class LogWindow(ctk.CTk):
             return 'success'
         return 'dim'
 
-    def _enqueue_log(self, log_queue: queue.Queue, line: str) -> None:
+    def _enqueue_log(self, log_queue: queue.Queue[str], line: str) -> None:
         """入队；队列满时丢掉最旧的一行，避免极端刷屏时内存无限增长。"""
         try:
             log_queue.put_nowait(line)
@@ -802,7 +814,12 @@ class LogWindow(ctk.CTk):
         """添加 GCL 日志的便捷方法"""
         self._enqueue_log(self.gcl_log_queue, line)
 
-    def _drain_log_queue(self, log_queue: queue.Queue, log_store: LogStore, source: str) -> None:
+    def _drain_log_queue(
+        self,
+        log_queue: queue.Queue[str],
+        log_store: LogStore,
+        source: str,
+    ) -> None:
         """从队列取一批日志写入存储；仅当前日志源且窗口可见时渲染。"""
         entries = []
         for _ in range(MAX_LOG_LINES_PER_CYCLE):
@@ -894,7 +911,7 @@ class LogWindow(ctk.CTk):
                 self._title_label.configure(text="Luker 日志")
                 self._refresh_log_display()
 
-    def _add_log_lines(self, entries) -> None:
+    def _add_log_lines(self, entries: Sequence[LogEntry]) -> None:
         """批量插入日志，减少 Text 控件的状态切换和计数刷新次数。"""
         if not entries:
             return
@@ -911,7 +928,7 @@ class LogWindow(ctk.CTk):
         self._trim_display()
         self.count_label.configure(text=f"📝 {len(self._display_entry_lines)} 条日志")
 
-    def _insert_log_entry(self, tb, text: str, timestamp: datetime.datetime) -> None:
+    def _insert_log_entry(self, tb: tk.Text, text: str, timestamp: datetime.datetime) -> None:
         """插入一条日志，并记录它占用的行数供裁剪时同步删除。"""
         now = timestamp
         ts = now.strftime("%H:%M:%S")
@@ -1015,11 +1032,11 @@ class LogWindow(ctk.CTk):
 
         self._clear_search()
 
-    def _toggle_scroll(self):
+    def _toggle_scroll(self) -> None:
         self._auto_scroll = not self._auto_scroll
         self.scroll_btn.configure(text="📜 自动滚动" if self._auto_scroll else "📜 已暂停")
 
-    def _toggle_running(self):
+    def _toggle_running(self) -> None:
         if self._is_running:
             if self.on_stop_callback:
                 self.on_stop_callback()
@@ -1056,7 +1073,7 @@ class LogWindow(ctk.CTk):
 
     # ===== 搜索功能 =====
 
-    def _on_search_change(self, *args):
+    def _on_search_change(self, *args: str) -> None:
         """输入时防抖，避免每敲一个字都对全部日志重新搜索。"""
         if self._search_job is not None:
             self.after_cancel(self._search_job)
@@ -1068,7 +1085,7 @@ class LogWindow(ctk.CTk):
 
         self._search_job = self.after(SEARCH_DEBOUNCE_MS, self._run_search)
 
-    def _run_search(self):
+    def _run_search(self) -> None:
         """执行搜索并显示结果导航。"""
         self._search_job = None
         search_text = self._search_var.get().strip()
@@ -1080,14 +1097,14 @@ class LogWindow(ctk.CTk):
 
         self._perform_search(search_text)
 
-    def _clear_search_state(self):
+    def _clear_search_state(self) -> None:
         self._clear_search_highlights()
         self._search_results = []
         self._search_current_index = -1
         self._search_nav.pack_forget()
         self._search_count_label.configure(text="")
 
-    def _perform_search(self, search_text: str):
+    def _perform_search(self, search_text: str) -> None:
         """执行搜索并高亮结果"""
         tb = self._get_textbox()
 
@@ -1122,7 +1139,7 @@ class LogWindow(ctk.CTk):
             self._search_current_index = -1
             self._search_count_label.configure(text="0/0")
 
-    def _clear_search_highlights(self):
+    def _clear_search_highlights(self) -> None:
         """清除所有搜索高亮"""
         tb = self._get_textbox()
         try:
@@ -1131,7 +1148,7 @@ class LogWindow(ctk.CTk):
         except tk.TclError:
             pass
 
-    def _highlight_current_result(self):
+    def _highlight_current_result(self) -> None:
         """高亮当前选中的搜索结果"""
         if not self._search_results or self._search_current_index < 0:
             return
@@ -1153,7 +1170,7 @@ class LogWindow(ctk.CTk):
             text=f"{self._search_current_index + 1}/{len(self._search_results)}"
         )
 
-    def _search_next(self):
+    def _search_next(self) -> None:
         """跳转到下一个搜索结果"""
         if not self._search_results:
             return
@@ -1161,7 +1178,7 @@ class LogWindow(ctk.CTk):
         self._search_current_index = (self._search_current_index + 1) % len(self._search_results)
         self._highlight_current_result()
 
-    def _search_prev(self):
+    def _search_prev(self) -> None:
         """跳转到上一个搜索结果"""
         if not self._search_results:
             return
@@ -1169,7 +1186,7 @@ class LogWindow(ctk.CTk):
         self._search_current_index = (self._search_current_index - 1) % len(self._search_results)
         self._highlight_current_result()
 
-    def _clear_search(self):
+    def _clear_search(self) -> None:
         """清除搜索"""
         if self._search_job is not None:
             self.after_cancel(self._search_job)

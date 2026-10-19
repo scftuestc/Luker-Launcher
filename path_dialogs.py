@@ -6,7 +6,7 @@ from tkinter import filedialog, messagebox
 from config import config, get_app_dir
 
 
-def _dialog_owner(parent=None):
+def _dialog_owner(parent: tk.Misc | None = None) -> tuple[tk.Misc, tk.Tk | None]:
     """优先使用现有窗口作为对话框父窗口，否则创建一个临时隐藏根窗口。"""
     if parent is not None:
         try:
@@ -22,7 +22,7 @@ def _dialog_owner(parent=None):
     return root, root
 
 
-def select_luker_path(parent=None) -> str | None:
+def select_luker_path(parent: tk.Misc | None = None) -> str | None:
     """让用户选择 Luker 安装目录并校验，返回有效路径或 None。"""
     owner, temp_root = _dialog_owner(parent)
     try:
@@ -56,7 +56,7 @@ def select_luker_path(parent=None) -> str | None:
             temp_root.destroy()
 
 
-def select_gcl_bat_path(parent=None) -> str | None:
+def select_gcl_bat_path(parent: tk.Misc | None = None) -> str | None:
     """选择 GCL 的 start.bat 文件并校验，返回有效路径或 None。"""
     owner, temp_root = _dialog_owner(parent)
     try:

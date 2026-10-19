@@ -8,6 +8,7 @@ import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from theme import DEFAULT_THEME, PRESET_THEMES
 from theme import get_theme_colors as _get_theme_colors
@@ -46,15 +47,15 @@ class Config:
 
     CONFIG_FILE = "launcher_config.json"
 
-    def __init__(self, config_path: Path | None = None):
+    def __init__(self, config_path: Path | None = None) -> None:
         self.config_path = (
             Path(config_path) if config_path is not None else get_app_dir() / self.CONFIG_FILE
         )
-        self._config = self._load_config()
+        self._config: dict[str, Any] = self._load_config()
         self._theme_change_callbacks: list[Callable[[dict[str, str]], None]] = []
         self._gcl_change_callbacks: list[Callable[[bool, str | None], None]] = []
 
-    def _load_config(self) -> dict:
+    def _load_config(self) -> dict[str, Any]:
         if not self.config_path.exists():
             return {}
 
@@ -72,9 +73,9 @@ class Config:
         return self._normalize(data)
 
     @staticmethod
-    def _normalize(data: dict) -> dict:
+    def _normalize(data: dict[str, Any]) -> dict[str, Any]:
         """只保留已知键，并丢弃类型不正确的值。"""
-        normalized: dict = {}
+        normalized: dict[str, Any] = {}
 
         for key in _STRING_KEYS:
             value = data.get(key)

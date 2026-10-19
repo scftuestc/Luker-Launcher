@@ -23,7 +23,7 @@ class _ProcessManagerBase:
     def __init__(self, target: Path, encoding: str = "utf-8") -> None:
         self.target = target
         self._encoding = encoding
-        self.process: subprocess.Popen | None = None
+        self.process: subprocess.Popen[str] | None = None
         self._log_thread: Thread | None = None
         self._running = False
         self._op_lock = RLock()  # 串行化 start/stop/restart，避免并发操作同一进程
@@ -62,7 +62,7 @@ class _ProcessManagerBase:
             with contextlib.suppress(Exception):
                 callback(line)
 
-    def _read_output(self, process: subprocess.Popen) -> None:
+    def _read_output(self, process: subprocess.Popen[str]) -> None:
         """持续读取指定进程的输出，直到进程退出或收到停止请求。"""
         stdout = process.stdout
         if stdout is None:

@@ -3,8 +3,11 @@
 import contextlib
 import logging
 import math
+import tkinter as tk
 import webbrowser
+from collections.abc import Callable
 from ctypes import windll
+from typing import TypedDict
 
 import customtkinter as ctk
 
@@ -14,6 +17,14 @@ from win_utils import apply_blur, get_ui_font
 logger = logging.getLogger(__name__)
 
 
+class MenuItem(TypedDict):
+    """菜单项的控件与初始文字颜色。"""
+
+    frame: ctk.CTkFrame
+    btn: ctk.CTkButton
+    color: str | None
+
+
 class TrayMenu(ctk.CTkToplevel):
     """置顶、不抢焦点的托盘右键菜单。"""
 
@@ -21,7 +32,11 @@ class TrayMenu(ctk.CTkToplevel):
     WS_EX_TOOLWINDOW = 0x00000080
     GWL_EXSTYLE = -20
 
-    def __init__(self, parent, callbacks):
+    def __init__(
+        self,
+        parent: tk.Misc,
+        callbacks: dict[str, Callable[[], None]],
+    ) -> None:
         super().__init__(parent)
 
         self.callbacks = callbacks
@@ -40,9 +55,9 @@ class TrayMenu(ctk.CTkToplevel):
         self.configure(fg_color=self.COLORS['bg'])
 
         self._animation_phase = 0
-        self._menu_animation_id = None
+        self._menu_animation_id: str | None = None
         self._menu_animation_active = False
-        self._mouse_poll_id = None
+        self._mouse_poll_id: str | None = None
 
         self._build_menu()
 
@@ -73,7 +88,7 @@ class TrayMenu(ctk.CTkToplevel):
             self._start_menu_animation()
             self._start_mouse_poll()
 
-    def _setup_no_activate(self):
+    def _setup_no_activate(self) -> None:
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
             ex_style = windll.user32.GetWindowLongW(hwnd, self.GWL_EXSTYLE)
@@ -82,11 +97,11 @@ class TrayMenu(ctk.CTkToplevel):
         except Exception:
             logger.warning("设置无焦点窗口失败", exc_info=True)
 
-    def _start_mouse_poll(self):
+    def _start_mouse_poll(self) -> None:
         if self._mouse_poll_id is None:
             self._mouse_poll_id = self.after(100, self._check_mouse_outside)
 
-    def _check_mouse_outside(self):
+    def _check_mouse_outside(self) -> None:
         """菜单可见时轮询鼠标，左键点击菜单外部则收起。"""
         self._mouse_poll_id = None
         if not self.winfo_viewable():
@@ -114,20 +129,20 @@ class TrayMenu(ctk.CTkToplevel):
 
         self._mouse_poll_id = self.after(100, self._check_mouse_outside)
 
-    def _setup_blur(self):
+    def _setup_blur(self) -> None:
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
             apply_blur(hwnd, self.COLORS['bg'], alpha=0xEE)
         except Exception:
             pass
 
-    def _start_menu_animation(self):
+    def _start_menu_animation(self) -> None:
         if self._menu_animation_active:
             return
         self._menu_animation_active = True
         self._animate_menu()
 
-    def _animate_menu(self):
+    def _animate_menu(self) -> None:
         self._menu_animation_id = None
         if not self.winfo_viewable():
             self._menu_animation_active = False
@@ -154,7 +169,7 @@ class TrayMenu(ctk.CTkToplevel):
 
         self._menu_animation_id = self.after(50, self._animate_menu)
 
-    def _build_menu(self):
+    def _build_menu(self) -> None:
         main = ctk.CTkFrame(self, fg_color=self.COLORS['card'], corner_radius=16)
         main.pack(fill="both", expand=True, padx=2, pady=2)
 
@@ -183,7 +198,7 @@ class TrayMenu(ctk.CTkToplevel):
         items_frame = ctk.CTkFrame(main, fg_color="transparent")
         items_frame.pack(fill="x", padx=8, pady=8)
 
-        self.menu_items = {}
+        self.menu_items: dict[str, MenuItem] = {}
 
         self.menu_items['window'] = self._create_menu_item(
             items_frame, "📋", "显示日志窗口", self._on_toggle_window
@@ -240,7 +255,15 @@ class TrayMenu(ctk.CTkToplevel):
 
         self._gcl_running = False
 
-    def _create_menu_item(self, parent, icon, text, command, color=None, visible=True):
+    def _create_menu_item(
+        self,
+        parent: tk.Misc,
+        icon: str,
+        text: str,
+        command: Callable[[], None],
+        color: str | None = None,
+        visible: bool = True,
+    ) -> MenuItem:
         """创建菜单项；visible=False 时由 update_state 控制显示。"""
         frame = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=8)
         if visible:
@@ -262,44 +285,44 @@ class TrayMenu(ctk.CTkToplevel):
 
         return {'frame': frame, 'btn': btn, 'color': color}
 
-    def _on_toggle_window(self):
+    def _on_toggle_window(self) -> None:
         self.hide()
         if self._window_visible:
             self.callbacks['hide_window']()
         else:
             self.callbacks['show_window']()
 
-    def _on_luker_toggle(self):
+    def _on_luker_toggle(self) -> None:
         self.hide()
         if self._is_running:
             self.callbacks['stop']()
         else:
             self.callbacks['start']()
 
-    def _on_restart(self):
+    def _on_restart(self) -> None:
         self.hide()
         self.callbacks['restart']()
 
-    def _on_settings(self):
+    def _on_settings(self) -> None:
         self.hide()
         self.callbacks['settings']()
 
-    def _on_open_browser(self):
+    def _on_open_browser(self) -> None:
         self.hide()
         self.callbacks['open_browser']()
 
-    def _on_gcl_toggle(self):
+    def _on_gcl_toggle(self) -> None:
         self.hide()
         if self._gcl_running:
             self.callbacks['gcl_stop']()
         else:
             self.callbacks['gcl_start']()
 
-    def _on_gcl_browser(self):
+    def _on_gcl_browser(self) -> None:
         self.hide()
         webbrowser.open(config.gcl_url)
 
-    def _on_exit(self):
+    def _on_exit(self) -> None:
         self.hide()
         self.callbacks['exit']()
 
@@ -309,7 +332,7 @@ class TrayMenu(ctk.CTkToplevel):
         window_visible: bool,
         gcl_enabled: bool = False,
         gcl_running: bool = False,
-    ):
+    ) -> None:
         self._is_running = is_running
         self._window_visible = window_visible
         self._gcl_enabled = gcl_enabled
@@ -362,7 +385,7 @@ class TrayMenu(ctk.CTkToplevel):
             self.menu_items['gcl_toggle']['frame'].pack_forget()
             self.menu_items['gcl_browser']['frame'].pack_forget()
 
-    def show_at(self, x: int, y: int):
+    def show_at(self, x: int, y: int) -> None:
         self.update_idletasks()
         w = 220
         h = self.winfo_reqheight()
@@ -384,7 +407,7 @@ class TrayMenu(ctk.CTkToplevel):
         self._start_menu_animation()
         self._start_mouse_poll()
 
-    def hide(self):
+    def hide(self) -> None:
         if self._menu_animation_id is not None:
             with contextlib.suppress(Exception):
                 self.after_cancel(self._menu_animation_id)

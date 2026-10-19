@@ -2,7 +2,7 @@
 
 import ctypes
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from ctypes import WINFUNCTYPE, Structure, byref, c_int, sizeof, windll, wintypes
 from threading import Event, Lock, Thread, current_thread
 
@@ -97,7 +97,7 @@ class TrayIcon:
         on_show_window: Callable[[], None],
         on_hide_window: Callable[[], None],
         on_show_menu: Callable[[int, int], None] | None = None,
-    ):
+    ) -> None:
         self.on_show_window = on_show_window
         self.on_hide_window = on_hide_window
         self.on_show_menu = on_show_menu
@@ -106,13 +106,13 @@ class TrayIcon:
         self._is_running = False
         self._state_lock = Lock()
         self._thread: Thread | None = None
-        self._hwnd = None
+        self._hwnd: int | None = None
         self._running = False
-        self._hicon = None
-        self._nid = None
+        self._hicon: int | None = None
+        self._nid: NOTIFYICONDATA | None = None
         self._ready = Event()
 
-        self._wndproc_ref = None
+        self._wndproc_ref: WNDPROC | None = None
 
     def _create_icon_image(self) -> Image.Image:
         size = 64
@@ -124,7 +124,9 @@ class TrayIcon:
         margin = max(1, int(8 * scale))
         corner_radius = max(2, int(48 * scale))
 
-        def draw_rounded_rect(coords, radius, fill):
+        def draw_rounded_rect(
+            coords: Sequence[float], radius: int, fill: str | tuple[int, ...]
+        ) -> None:
             x1, y1, x2, y2 = coords
             if radius * 2 > min(x2 - x1, y2 - y1):
                 radius = min(x2 - x1, y2 - y1) // 2
@@ -258,7 +260,7 @@ class TrayIcon:
 
         return hicon
 
-    def _get_cursor_pos(self) -> tuple:
+    def _get_cursor_pos(self) -> tuple[int, int]:
         """获取鼠标位置并换算为 Tk 使用的逻辑像素。"""
         pt = wintypes.POINT()
         windll.user32.GetCursorPos(byref(pt))
@@ -279,7 +281,7 @@ class TrayIcon:
             logger.warning("获取 DPI 缩放失败", exc_info=True)
             return (pt.x, pt.y)
 
-    def _wnd_proc(self, hwnd, msg, wparam, lparam):
+    def _wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
         try:
             if msg == WM_TRAYICON:
                 # 左键单击切换日志窗口，右键弹出菜单

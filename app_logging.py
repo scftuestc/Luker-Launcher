@@ -7,6 +7,7 @@ import threading
 from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from types import TracebackType
 
 from config import get_app_dir
 
@@ -35,12 +36,16 @@ class _UiLogHandler(logging.Handler):
             self.handleError(record)
 
 
-def _excepthook(exc_type, exc, tb) -> None:
+def _excepthook(
+    exc_type: type[BaseException],
+    exc: BaseException,
+    tb: TracebackType | None,
+) -> None:
     logger.critical("未捕获异常", exc_info=(exc_type, exc, tb))
     sys.__excepthook__(exc_type, exc, tb)
 
 
-def _thread_excepthook(args) -> None:
+def _thread_excepthook(args: threading.ExceptHookArgs) -> None:
     logger.critical(
         "线程 %s 未捕获异常",
         args.thread.name if args.thread else "?",

@@ -36,7 +36,7 @@ class WindowsBlur:
         ]
 
     @staticmethod
-    def enable_blur(hwnd, color=0xCC000000):
+    def enable_blur(hwnd: int, color: int = 0xCC000000) -> None:
         user32 = windll.user32
         dwmapi = windll.dwmapi
         build = sys.getwindowsversion().build
@@ -65,7 +65,7 @@ class WindowsBlur:
             logger.warning("应用毛玻璃失败: %s", e)
 
     @staticmethod
-    def extend_frame(hwnd):
+    def extend_frame(hwnd: int) -> None:
         margins = WindowsBlur.MARGINS(-1, -1, -1, -1)
         windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(margins))
 
@@ -84,7 +84,7 @@ def hex_to_colorref(hex_color: str, alpha: int = 0xDD) -> int:
     return ((alpha & 0xFF) << 24) | (b << 16) | (g << 8) | r
 
 
-def apply_blur(hwnd, bg_color: str, alpha: int = 0xDD) -> None:
+def apply_blur(hwnd: int, bg_color: str, alpha: int = 0xDD) -> None:
     """给窗口应用与当前主题背景一致的毛玻璃效果。"""
     try:
         WindowsBlur.extend_frame(hwnd)
@@ -93,7 +93,7 @@ def apply_blur(hwnd, bg_color: str, alpha: int = 0xDD) -> None:
         logger.warning("设置窗口毛玻璃失败: %s", e)
 
 
-def get_ui_font():
+def get_ui_font() -> str:
     """返回可用界面字体，优先 Source Han / Noto。"""
     source_han_fonts = [
         'Source Han Sans SC',
@@ -109,7 +109,7 @@ def get_ui_font():
     return 'Microsoft YaHei'
 
 
-def get_mono_font():
+def get_mono_font() -> str:
     """返回可用等宽字体，优先 Source Han Mono / Consolas。"""
     mono_fonts = [
         'Source Han Mono SC',

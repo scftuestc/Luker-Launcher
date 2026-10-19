@@ -15,7 +15,7 @@ _kernel32.CreateMutexW.restype = wintypes.HANDLE
 _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 _kernel32.CloseHandle.restype = wintypes.BOOL
 
-_mutex_handle = None
+_mutex_handle: int | None = None
 
 
 def acquire() -> bool:

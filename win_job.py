@@ -6,6 +6,7 @@
 
 import ctypes
 import logging
+import subprocess
 from ctypes import wintypes
 
 logger = logging.getLogger(__name__)
@@ -69,10 +70,10 @@ _kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
 _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 _kernel32.CloseHandle.restype = wintypes.BOOL
 
-_job_handle = None
+_job_handle: int | None = None
 
 
-def _get_job_handle():
+def _get_job_handle() -> int | None:
     """懒创建全局 Job Object；句柄随启动器进程生命周期存在。"""
     global _job_handle
 
@@ -100,7 +101,7 @@ def _get_job_handle():
     return _job_handle
 
 
-def assign_to_job(process) -> bool:
+def assign_to_job(process: subprocess.Popen[str]) -> bool:
     """把 Popen 子进程加入 Job；失败时返回 False，调用方可继续运行。"""
     job = _get_job_handle()
     if not job:

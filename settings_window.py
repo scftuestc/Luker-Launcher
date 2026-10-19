@@ -1,6 +1,7 @@
 """设置窗口。"""
 
 import logging
+import tkinter as tk
 from ctypes import windll
 
 import customtkinter as ctk
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class SettingsWindow(ctk.CTkToplevel):
     """设置窗口：主题、PWA 模式、GCL 和 Luker 路径。"""
 
-    def __init__(self, parent):
+    def __init__(self, parent: tk.Misc) -> None:
         super().__init__(parent)
 
         self._destroyed = False
@@ -52,12 +53,12 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self.bind('<Destroy>', self._on_destroy)
 
-    def _on_destroy(self, event):
+    def _on_destroy(self, event: tk.Event) -> None:
         if event.widget == self:
             self._destroyed = True
             config.remove_theme_change_callback(self._on_theme_change)
 
-    def _setup_blur(self):
+    def _setup_blur(self) -> None:
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
             apply_blur(hwnd, self.COLORS['bg'], alpha=0xEE)
@@ -71,7 +72,7 @@ class SettingsWindow(ctk.CTkToplevel):
         # 延后重建，避免在主题卡片的点击回调里销毁当前控件
         self.after(0, self._rebuild_ui)
 
-    def _build_ui(self):
+    def _build_ui(self) -> None:
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=16, pady=16)
 
@@ -95,7 +96,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._build_footer(main)
 
-    def _build_titlebar(self, parent):
+    def _build_titlebar(self, parent: tk.Misc) -> None:
         bar = ctk.CTkFrame(parent, height=48, fg_color=self.COLORS['card'], corner_radius=12)
         bar.pack(fill="x", pady=(0, 16))
         bar.pack_propagate(False)
@@ -123,14 +124,14 @@ class SettingsWindow(ctk.CTkToplevel):
             command=self.destroy,
         ).pack(side="right", padx=10)
 
-    def _start_drag(self, e):
+    def _start_drag(self, e: tk.Event) -> None:
         self._drag_x = e.x_root - self.winfo_x()
         self._drag_y = e.y_root - self.winfo_y()
 
-    def _on_drag(self, e):
+    def _on_drag(self, e: tk.Event) -> None:
         self.geometry(f"+{e.x_root - self._drag_x}+{e.y_root - self._drag_y}")
 
-    def _build_theme_section(self, parent):
+    def _build_theme_section(self, parent: tk.Misc) -> None:
         section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=12)
         section.pack(fill="x", pady=(0, 12))
 
@@ -154,7 +155,7 @@ class SettingsWindow(ctk.CTkToplevel):
         grid = ctk.CTkFrame(section, fg_color="transparent")
         grid.pack(fill="x", padx=12, pady=(0, 16))
 
-        self.theme_cards = {}
+        self.theme_cards: dict[str, ctk.CTkFrame] = {}
         current_theme = config.theme_name
 
         row = 0
@@ -172,7 +173,13 @@ class SettingsWindow(ctk.CTkToplevel):
         for i in range(3):
             grid.columnconfigure(i, weight=1)
 
-    def _create_theme_card(self, parent, theme_id, colors, is_selected):
+    def _create_theme_card(
+        self,
+        parent: tk.Misc,
+        theme_id: str,
+        colors: dict[str, str],
+        is_selected: bool,
+    ) -> ctk.CTkFrame:
         card = ctk.CTkFrame(
             parent,
             fg_color=colors['card'],
@@ -209,7 +216,7 @@ class SettingsWindow(ctk.CTkToplevel):
                 text_color=colors['accent'],
             ).pack(anchor="w", pady=(4, 0))
 
-        def on_click(e, tid=theme_id):
+        def on_click(e: tk.Event, tid: str = theme_id) -> None:
             self._select_theme(tid)
 
         card.bind('<Button-1>', on_click)
@@ -222,11 +229,11 @@ class SettingsWindow(ctk.CTkToplevel):
 
         return card
 
-    def _select_theme(self, theme_id):
+    def _select_theme(self, theme_id: str) -> None:
         if theme_id in PRESET_THEMES:
             config.theme_name = theme_id
 
-    def _rebuild_ui(self):
+    def _rebuild_ui(self) -> None:
         """按当前主题重建整个设置界面，让卡片、文字和选中状态一起刷新。"""
         if self._destroyed or not self.winfo_exists():
             return
@@ -238,7 +245,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.configure(fg_color=self.COLORS['bg'])
         self._setup_blur()
 
-    def _build_pwa_section(self, parent):
+    def _build_pwa_section(self, parent: tk.Misc) -> None:
         """构建 PWA 模式开关区域"""
         section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=12)
         section.pack(fill="x", pady=(0, 12))
@@ -280,10 +287,10 @@ class SettingsWindow(ctk.CTkToplevel):
             justify="left",
         ).pack(anchor="w")
 
-    def _on_pwa_toggle(self):
+    def _on_pwa_toggle(self) -> None:
         config.use_pwa_mode = self.pwa_switch.get() == 1
 
-    def _build_gcl_section(self, parent):
+    def _build_gcl_section(self, parent: tk.Misc) -> None:
         """构建 GCL 设置区域"""
         section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=12)
         section.pack(fill="x", pady=(0, 12))
@@ -367,7 +374,7 @@ class SettingsWindow(ctk.CTkToplevel):
         if config.gcl_enabled:
             self._gcl_path_frame.pack(fill="x")
 
-    def _on_gcl_toggle(self):
+    def _on_gcl_toggle(self) -> None:
         enabled = self.gcl_switch.get() == 1
 
         if enabled:
@@ -388,12 +395,12 @@ class SettingsWindow(ctk.CTkToplevel):
         else:
             self._gcl_path_frame.pack_forget()
 
-    def _select_gcl_path(self):
+    def _select_gcl_path(self) -> None:
         path = select_gcl_bat_path(self)
         if path:
             self.gcl_path_label.configure(text=path)
 
-    def _build_path_section(self, parent):
+    def _build_path_section(self, parent: tk.Misc) -> None:
         section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=12)
         section.pack(fill="x", pady=(0, 12))
 
@@ -436,12 +443,12 @@ class SettingsWindow(ctk.CTkToplevel):
             command=self._select_path,
         ).pack(side="right")
 
-    def _select_path(self):
+    def _select_path(self) -> None:
         path = select_luker_path(self)
         if path:
             self.path_label.configure(text=path)
 
-    def _build_footer(self, parent):
+    def _build_footer(self, parent: tk.Misc) -> None:
         footer = ctk.CTkFrame(parent, fg_color="transparent")
         footer.pack(fill="x", pady=(8, 0))
 
