@@ -66,6 +66,7 @@ class LogWindow(ctk.CTk):
         self.overrideredirect(True)
 
         self.title("Luker 日志")
+        # 按主屏工作区和当前缩放限制初始尺寸，避免 150% 下落入任务栏
         monitor = get_monitor_info()
         scale = sync_window_scaling(self, monitor.scale)
         logical_width, logical_height = fit_logical_window_size(960, 640, monitor, scale, margin=24)
@@ -73,6 +74,7 @@ class LogWindow(ctk.CTk):
         physical_height = round(logical_height * scale)
         x, y = centered_position(physical_width, physical_height, monitor)
         self.geometry(format_geometry(logical_width, logical_height, x, y))
+        # 最小尺寸保存为逻辑值，拖拽时按当前缩放换算
         self._min_logical_width = min(700, logical_width)
         self._min_logical_height = min(450, logical_height)
         self.minsize(self._min_logical_width, self._min_logical_height)

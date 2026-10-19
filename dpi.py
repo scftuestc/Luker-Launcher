@@ -75,6 +75,7 @@ class MonitorInfo:
 
 
 def _monitor_handle(hwnd: int | None, point: tuple[int, int] | None) -> int:
+    """按屏幕点、窗口或主屏选择显示器句柄。"""
     if point is not None:
         return _user32.MonitorFromPoint(wintypes.POINT(*point), MONITOR_DEFAULTTONEAREST)
     if hwnd:
@@ -83,6 +84,7 @@ def _monitor_handle(hwnd: int | None, point: tuple[int, int] | None) -> int:
 
 
 def _dpi_for(hwnd: int | None, monitor: int) -> int:
+    # 窗口 DPI 最可靠；只有传屏幕点时 GetDpiForMonitor 才没有窗口可查
     if hwnd:
         dpi = _user32.GetDpiForWindow(hwnd)
         if dpi:
@@ -188,6 +190,7 @@ def sync_window_scaling(
     try:
         tracker = ctk.ScalingTracker
         scale = target_scale if target_scale is not None else tracker.get_window_dpi_scaling(window)
+        # CTk 每 100ms 才轮询一次显示器 DPI；这里提前更新，避免首帧按旧缩放绘制
         if tracker.window_dpi_scaling_dict.get(window) != scale:
             tracker.window_dpi_scaling_dict[window] = scale
             tracker.update_scaling_callbacks_for_window(window)

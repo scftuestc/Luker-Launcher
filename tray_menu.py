@@ -395,6 +395,7 @@ class TrayMenu(ctk.CTkToplevel):
         self.update_idletasks()
 
         width = round(MENU_WIDTH * scale)
+        # reqheight 是缩放后的物理像素；CTk 的 geometry 接收逻辑尺寸
         height = self.winfo_reqheight()
         x, y = clamp_popup_position(x, y, width, height, monitor)
         logical_height = max(1, math.ceil(height / scale))

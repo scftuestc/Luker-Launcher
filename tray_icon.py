@@ -188,8 +188,10 @@ class TrayIcon:
         """按系统 DPI 返回托盘图标源尺寸，失败时回退到 32px。"""
         try:
             dpi = windll.user32.GetDpiForSystem()
+            # 用大图标作为源，通知区域在高缩放下缩小时更清晰
             size = windll.user32.GetSystemMetricsForDpi(SM_CXICON, dpi)
             if size:
+                # 源图按 64px 绘制，再大只会被缩小
                 return max(32, min(64, int(size)))
         except (AttributeError, OSError):
             pass

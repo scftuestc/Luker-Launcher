@@ -39,6 +39,7 @@ class SettingsWindow(ctk.CTkToplevel):
         monitor = get_monitor_info(hwnd=parent.winfo_id())
         scale = sync_window_scaling(self, monitor.scale)
         logical_width, logical_height = fit_logical_window_size(600, 720, monitor, scale, margin=16)
+        # 高度不足时由窗口内部的滚动区域承载
         physical_width = round(logical_width * scale)
         physical_height = round(logical_height * scale)
         x, y = centered_position(physical_width, physical_height, monitor)
