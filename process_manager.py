@@ -6,11 +6,14 @@ import subprocess
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from threading import RLock, Thread
+from threading import RLock, Thread, current_thread
 
 import psutil
 
 from win_job import assign_to_job
+
+# 单次读取上限，避免子进程输出超长行时无限占用内存
+MAX_LOG_CHUNK = 64 * 1024
 
 
 class _ProcessManagerBase:
@@ -69,16 +72,28 @@ class _ProcessManagerBase:
             return
 
         try:
-            for line in iter(stdout.readline, ''):
-                if not self._running:
+            while self._running:
+                line = stdout.readline(MAX_LOG_CHUNK)
+                if not line:
                     break
-                if line:
-                    self._emit_log(line.rstrip('\n\r'))
+                self._emit_log(line.rstrip('\n\r'))
         except (OSError, ValueError) as e:
             self._emit_log(f"{self._tag('错误')} 读取输出失败: {e}")
         finally:
             with contextlib.suppress(OSError):
                 stdout.close()
+
+    def _close_process_pipes(self, process: subprocess.Popen[str]) -> None:
+        for stream in (process.stdin, process.stdout):
+            if stream is not None:
+                with contextlib.suppress(OSError, ValueError):
+                    stream.close()
+
+    def _join_log_thread(self) -> None:
+        thread = self._log_thread
+        if thread and thread.is_alive() and thread is not current_thread():
+            thread.join(timeout=1)
+        self._log_thread = None
 
     def start(self) -> bool:
         with self._op_lock:
@@ -134,34 +149,76 @@ class _ProcessManagerBase:
                 self._emit_log(f"{self._tag('错误')} 启动失败: {e}")
                 return False
 
-    def _kill_process_tree(self, pid: int) -> None:
-        """先终止子进程树，再终止父进程，避免留下孤儿进程。"""
+    def _kill_process_tree(self, pid: int) -> bool:
+        """先终止子进程树，再终止父进程；返回是否确认全部退出。"""
         try:
             parent = psutil.Process(pid)
+        except psutil.NoSuchProcess:
+            return True
+        except Exception as e:
+            self._emit_log(f"{self._tag('警告')} 无法访问进程树: {e}")
+            return False
+
+        tree_ok = True
+        try:
             children = parent.children(recursive=True)
+        except psutil.NoSuchProcess:
+            children = []
+        except Exception as e:
+            self._emit_log(f"{self._tag('警告')} 枚举子进程失败: {e}")
+            children = []
+            tree_ok = False
 
-            for child in children:
-                with contextlib.suppress(psutil.NoSuchProcess):
-                    child.terminate()
-
-            _, alive = psutil.wait_procs(children, timeout=3)
-
-            for p in alive:
-                with contextlib.suppress(psutil.NoSuchProcess):
-                    p.kill()
-
+        for child in children:
             try:
-                parent.terminate()
-                parent.wait(timeout=3)
-            except psutil.TimeoutExpired:
-                parent.kill()
+                child.terminate()
             except psutil.NoSuchProcess:
                 pass
+            except Exception as e:
+                self._emit_log(f"{self._tag('警告')} 终止子进程失败: {e}")
+                tree_ok = False
 
+        try:
+            _, alive = psutil.wait_procs(children, timeout=3)
+        except Exception as e:
+            self._emit_log(f"{self._tag('警告')} 等待子进程退出失败: {e}")
+            alive = []
+            tree_ok = False
+
+        for child in alive:
+            try:
+                child.kill()
+            except psutil.NoSuchProcess:
+                pass
+            except Exception as e:
+                self._emit_log(f"{self._tag('警告')} 强制结束子进程失败: {e}")
+                tree_ok = False
+
+        if alive:
+            _, still_alive = psutil.wait_procs(alive, timeout=2)
+            if still_alive:
+                self._emit_log(f"{self._tag('警告')} 仍有 {len(still_alive)} 个子进程未退出")
+                tree_ok = False
+
+        try:
+            parent.terminate()
+            parent.wait(timeout=3)
+        except psutil.TimeoutExpired:
+            try:
+                parent.kill()
+                parent.wait(timeout=3)
+            except psutil.TimeoutExpired:
+                self._emit_log(f"{self._tag('警告')} 父进程未能退出")
+                tree_ok = False
+            except psutil.NoSuchProcess:
+                pass
         except psutil.NoSuchProcess:
             pass
         except Exception as e:
-            self._emit_log(f"{self._tag('警告')} 杀死进程树时出错: {e}")
+            self._emit_log(f"{self._tag('警告')} 终止父进程失败: {e}")
+            tree_ok = False
+
+        return tree_ok
 
     def stop(self) -> bool:
         with self._op_lock:
@@ -169,6 +226,9 @@ class _ProcessManagerBase:
             if process is None or process.poll() is not None:
                 self._running = False
                 self.process = None
+                if process is not None:
+                    self._close_process_pipes(process)
+                self._join_log_thread()
                 self._emit_log(f"{self._tag('信息')} {self.name} 未在运行")
                 return True
 
@@ -177,26 +237,47 @@ class _ProcessManagerBase:
                 self._emit_log(
                     f"{self._tag('信息')} 正在停止 {self.name} 进程 (PID: {process.pid})..."
                 )
-                self._kill_process_tree(process.pid)
+                tree_ok = self._kill_process_tree(process.pid)
 
-                # 回收 Popen 句柄；进程树已终止，这里通常立即返回
                 try:
                     process.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     process.kill()
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        tree_ok = False
 
-                self.process = None
-                self._emit_log(f"{self._tag('信息')} {self.name} 已停止")
-                return True
+                self._close_process_pipes(process)
+                self._join_log_thread()
+
+                if process.poll() is None:
+                    tree_ok = False
+                    self._emit_log(f"{self._tag('警告')} {self.name} 父进程仍未退出")
+                else:
+                    self.process = None
+
+                if tree_ok:
+                    self._emit_log(f"{self._tag('信息')} {self.name} 已停止")
+                    return True
+
+                self._emit_log(f"{self._tag('警告')} {self.name} 停止后仍有子进程可能存活")
+                return False
 
             except Exception as e:
                 self._emit_log(f"{self._tag('错误')} 停止失败: {e}")
+                self._close_process_pipes(process)
+                self._join_log_thread()
+                if process.poll() is not None:
+                    self.process = None
                 return False
 
     def restart(self) -> bool:
         with self._op_lock:
             self._emit_log(f"{self._tag('信息')} 正在重启 {self.name}...")
-            self.stop()
+            if not self.stop():
+                self._emit_log(f"{self._tag('错误')} 停止失败，取消重启")
+                return False
             time.sleep(1)
             return self.start()
 

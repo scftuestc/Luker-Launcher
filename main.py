@@ -125,7 +125,49 @@ class LukerLauncher:
         self._do_process_action(lambda manager: manager.stop())
 
     def _on_restart(self) -> None:
+        if self._process_busy or self._exiting:
+            return
+
+        desired_path = config.luker_path
+        current = self.process_manager
+        if desired_path and current and str(current.luker_path) != str(Path(desired_path)):
+            self._restart_with_path(desired_path)
+            return
+
         self._do_process_action(lambda manager: manager.restart())
+
+    def _restart_with_path(self, path: str) -> None:
+        """路径变化时先停旧进程，再创建并启动新管理器。"""
+        self._process_busy = True
+        old_manager = self.process_manager
+
+        def worker() -> None:
+            try:
+                if old_manager and not old_manager.stop():
+                    self._on_log("[错误] 旧 Luker 进程未停止，已取消切换路径")
+                    return
+                if self._exiting:
+                    return
+
+                manager = LukerProcessManager(
+                    path,
+                    let_luker_open_browser=not config.use_pwa_mode,
+                    server_port=config.get_server_port(),
+                )
+                manager.add_log_callback(self._on_log)
+                self._post_ui(lambda: self._adopt_process_manager(manager))
+                if not self._exiting:
+                    manager.start()
+                    if self._exiting and manager.is_running:
+                        manager.stop()
+            finally:
+                self._post_ui(self._finish_process_action)
+
+        self._run_async(worker)
+
+    def _adopt_process_manager(self, manager: LukerProcessManager) -> None:
+        self.process_manager = manager
+        self._last_status = None
 
     def _on_exit(self) -> None:
         if self._exiting:
@@ -141,15 +183,21 @@ class LukerLauncher:
                 manager.stop()
             self._post_ui(self._finish_exit)
 
-        self._run_async(worker)
+        try:
+            self._run_async(worker)
+        except Exception:
+            logger.exception("启动退出线程失败")
+            self._finish_exit()
 
     def _finish_exit(self) -> None:
         """停止托盘并结束 Tk 主循环。"""
-        self._ui_active = False
-        if self.tray_icon:
-            self.tray_icon.stop()
-        if self.log_window:
-            self.log_window.quit()
+        try:
+            self._ui_active = False
+            if self.tray_icon:
+                self.tray_icon.stop()
+        finally:
+            if self.log_window:
+                self.log_window.quit()
 
     def _run_async(self, func: Callable[[], None]) -> None:
         """在守护线程中执行耗时操作，不阻塞 Tk 主循环。"""
@@ -203,11 +251,34 @@ class LukerLauncher:
         self._process_busy = False
         self._update_status()
 
+    def _do_gcl_action(self, action: Callable[[GCLProcessManager], bool]) -> None:
+        """GCL 启停也走统一的忙碌/退出保护。"""
+        if self._process_busy or self._exiting:
+            return
+
+        manager = self.gcl_process_manager
+        if manager is None:
+            return
+
+        self._process_busy = True
+
+        def worker() -> None:
+            try:
+                action(manager)
+            finally:
+                self._post_ui(self._finish_process_action)
+
+        self._run_async(worker)
+
     def _on_settings(self) -> None:
+        if self._exiting:
+            return
         self._post_ui(self._open_settings_window)
 
     def _on_open_browser(self) -> None:
         """打开浏览器；PWA 发现可能调用 PowerShell，放到后台避免卡住界面。"""
+        if self._exiting:
+            return
         self._run_async(self._open_browser_now)
 
     def _open_browser_now(self) -> None:
@@ -223,14 +294,10 @@ class LukerLauncher:
             settings_win.focus_force()
 
     def _on_gcl_start(self) -> None:
-        manager = self.gcl_process_manager
-        if manager:
-            self._run_async(manager.start)
+        self._do_gcl_action(lambda manager: manager.start())
 
     def _on_gcl_stop(self) -> None:
-        manager = self.gcl_process_manager
-        if manager:
-            self._run_async(manager.stop)
+        self._do_gcl_action(lambda manager: manager.stop())
 
     def _on_gcl_log(self, line: str) -> None:
         if self.log_window:
@@ -238,6 +305,9 @@ class LukerLauncher:
 
     def _on_gcl_config_change(self, enabled: bool, bat_path: str | None) -> None:
         """GCL 配置变更回调，动态创建或销毁 GCL 进程管理器"""
+        if self._exiting:
+            return
+
         active = bool(enabled and bat_path and config.is_valid_gcl_path(bat_path))
 
         if active:
@@ -268,6 +338,8 @@ class LukerLauncher:
                 self._on_log("[启动器] GCL 功能已禁用")
 
     def _on_show_menu(self, x: int, y: int) -> None:
+        if self._exiting:
+            return
         # 托盘线程只传坐标，状态读取和菜单显示都回到主线程
         self._post_ui(lambda: self._show_tray_menu(x, y))
 
@@ -300,9 +372,13 @@ class LukerLauncher:
         if not self._running:
             return
 
-        self._update_status()
-        if self.log_window:
-            self.log_window.after(STATUS_POLL_INTERVAL * 1000, self._schedule_status_poll)
+        try:
+            self._update_status()
+        except Exception:
+            logger.exception("更新进程状态失败")
+        finally:
+            if self._running and self.log_window:
+                self.log_window.after(STATUS_POLL_INTERVAL * 1000, self._schedule_status_poll)
 
     def run(self) -> None:
         """创建窗口、托盘和进程管理器，进入 Tk 主循环。"""
@@ -364,13 +440,20 @@ class LukerLauncher:
         self._running = True
 
         # 托盘消息循环会永久阻塞，必须放在独立线程
-        self.tray_icon.run_detached()
+        tray_ready = self.tray_icon.run_detached()
         self._schedule_status_poll()
 
         self._on_log("[启动器] 正在启动 Luker...")
         self._on_start()
-        self.log_window.hide()
-        self._on_log("[启动器] 已最小化到系统托盘，单击图标可显示日志窗口")
+        if tray_ready:
+            self.log_window.hide()
+            self._on_log("[启动器] 已最小化到系统托盘，单击图标可显示日志窗口")
+        else:
+            # 没有托盘时保留窗口作为唯一入口，关闭窗口直接退出
+            self.log_window.set_tray_available(False)
+            self.log_window.on_hide_callback = self._on_exit
+            self.log_window.show()
+            self._on_log("[错误] 托盘图标创建失败，日志窗口保持显示；关闭窗口将退出")
 
         if self.gcl_process_manager:
             self._on_log("[启动器] GCL 功能已启用，可通过右键菜单控制")

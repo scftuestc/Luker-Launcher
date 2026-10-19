@@ -1,4 +1,6 @@
 import socket
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,6 +55,36 @@ class ProcessManagerTests(unittest.TestCase):
         self.assertEqual(manager._build_command(), ["cmd", "/c", str(bat_path)])
         self.assertEqual(manager._startup_cwd(), str(self.luker_dir))
         self.assertEqual(manager._encoding, "mbcs")
+
+    def test_kill_process_tree_terminates_process(self):
+        manager = LukerProcessManager(str(self.luker_dir))
+        process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            self.assertTrue(manager._kill_process_tree(process.pid))
+            process.wait(timeout=5)
+            self.assertIsNotNone(process.poll())
+        finally:
+            if process.poll() is None:
+                process.kill()
+
+    def test_stop_terminates_running_process(self):
+        manager = LukerProcessManager(str(self.luker_dir))
+        process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        manager.process = process
+        manager._running = True
+        try:
+            self.assertTrue(manager.stop())
+            self.assertIsNone(manager.process)
+            self.assertIsNotNone(process.poll())
+        finally:
+            if process.poll() is None:
+                process.kill()
+
+    def test_restart_cancelled_when_stop_fails(self):
+        manager = LukerProcessManager(str(self.luker_dir))
+        manager.stop = lambda: False
+        manager.start = lambda: True
+        self.assertFalse(manager.restart())
 
 
 if __name__ == "__main__":

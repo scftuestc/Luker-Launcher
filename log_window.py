@@ -53,6 +53,7 @@ class LogWindow(ctk.CTk):
         self.on_hide_callback = on_hide_callback
         self.on_start_callback = on_start
         self.on_stop_callback = on_stop
+        self._tray_available = True
 
         self.COLORS = config.get_theme_colors()
 
@@ -550,11 +551,17 @@ class LogWindow(ctk.CTk):
         self.geometry(f"+{e.x_root - self._drag_x}+{e.y_root - self._drag_y}")
 
     def _on_minimize(self) -> None:
+        if not self._tray_available:
+            return
+
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
             SW_MINIMIZE = 6
             windll.user32.ShowWindow(hwnd, SW_MINIMIZE)
             self._minimized = True
+            # 同步托盘状态，避免下一次左键点击先执行“隐藏”
+            if self.on_hide_callback:
+                self.on_hide_callback()
         except Exception:
             logger.warning("最小化窗口失败", exc_info=True)
 
@@ -589,9 +596,21 @@ class LogWindow(ctk.CTk):
             pass
 
     def _on_close(self) -> None:
+        if not self._tray_available:
+            # 没有托盘时不能隐藏到不可恢复的位置，交给主程序退出
+            if self.on_hide_callback:
+                self.on_hide_callback()
+            return
+
         self.hide()
         if self.on_hide_callback:
             self.on_hide_callback()
+
+    def set_tray_available(self, available: bool) -> None:
+        """托盘不可用时禁用最小化，避免窗口隐藏后无法恢复。"""
+        self._tray_available = available
+        if not available:
+            self._min_btn.configure(state="disabled")
 
     def _build_toolbar(self, parent: tk.Misc) -> None:
         self._toolbar = ctk.CTkFrame(parent, fg_color="transparent", height=48)
@@ -805,11 +824,13 @@ class LogWindow(ctk.CTk):
     def _get_tag_for_line(self, line: str) -> str:
         """按日志内容选择颜色标签。"""
         line_lower = line.lower()
-        if '[错误]' in line or 'error' in line_lower or 'fail' in line_lower:
+        # GCL 日志带 [GCL 错误] 这类作用域前缀，归一化后复用同一套匹配
+        normalized = line.replace('[GCL ', '[')
+        if '[错误]' in normalized or 'error' in line_lower or 'fail' in line_lower:
             return 'error'
-        elif '[警告]' in line or 'warn' in line_lower:
+        elif '[警告]' in normalized or 'warn' in line_lower:
             return 'warn'
-        elif '[信息]' in line or 'info' in line_lower:
+        elif '[信息]' in normalized or 'info' in line_lower:
             return 'info'
         elif '[启动器]' in line:
             return 'accent'

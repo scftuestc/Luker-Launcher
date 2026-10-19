@@ -15,8 +15,10 @@ WM_TRAYICON = WM_USER + 1
 WM_TRAY_STATUS = WM_USER + 2
 WM_CLOSE = 0x0010
 WM_LBUTTONUP = 0x0202
+WM_LBUTTONDBLCLK = 0x0203
 WM_RBUTTONUP = 0x0205
 WM_DESTROY = 0x0002
+CS_DBLCLKS = 0x0008
 
 NIM_ADD = 0x00
 NIM_MODIFY = 0x01
@@ -88,6 +90,8 @@ _user32.PostMessageW.restype = wintypes.BOOL
 _user32.DestroyWindow.argtypes = [wintypes.HWND]
 _user32.DestroyWindow.restype = wintypes.BOOL
 _user32.PostQuitMessage.argtypes = [c_int]
+_user32.RegisterWindowMessageW.argtypes = [wintypes.LPCWSTR]
+_user32.RegisterWindowMessageW.restype = wintypes.UINT
 
 
 class TrayIcon:
@@ -112,6 +116,10 @@ class TrayIcon:
         self._hicon: int | None = None
         self._nid: NOTIFYICONDATA | None = None
         self._ready = Event()
+        self._icon_added = False
+        self._ignore_next_up = False
+        # Explorer 重启后会广播 TaskbarCreated，需要据此重新添加图标
+        self._taskbar_created_msg = _user32.RegisterWindowMessageW("TaskbarCreated")
 
         self._wndproc_ref: WNDPROC | None = None
 
@@ -283,12 +291,21 @@ class TrayIcon:
     def _wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
         try:
             if msg == WM_TRAYICON:
-                # 左键单击切换日志窗口，右键弹出菜单
+                # 左键单击切换日志窗口；双击只显示，并忽略随后重复的 UP
                 if lparam == WM_LBUTTONUP:
-                    self._toggle_window()
+                    if self._ignore_next_up:
+                        self._ignore_next_up = False
+                    else:
+                        self._toggle_window()
+                elif lparam == WM_LBUTTONDBLCLK:
+                    self._ignore_next_up = True
+                    self._show_window()
                 elif lparam == WM_RBUTTONUP and self.on_show_menu:
                     x, y = self._get_cursor_pos()
                     self.on_show_menu(x, y)
+            elif self._taskbar_created_msg and msg == self._taskbar_created_msg:
+                # Explorer 重启后通知区域会丢失图标，需要重新注册
+                self._add_icon()
             elif msg == WM_TRAY_STATUS:
                 self._update_icon()
             elif msg == WM_CLOSE:
@@ -304,13 +321,29 @@ class TrayIcon:
 
         return windll.user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
+    def _show_window(self) -> None:
+        self.on_show_window()
+        self._window_visible = True
+
     def _toggle_window(self) -> None:
         if self._window_visible:
             self.on_hide_window()
             self._window_visible = False
         else:
-            self.on_show_window()
-            self._window_visible = True
+            self._show_window()
+
+    def _add_icon(self) -> bool:
+        """把图标加入通知区域；也用于 Explorer 重启后的恢复。"""
+        if self._nid is None:
+            return False
+
+        if windll.shell32.Shell_NotifyIconW(NIM_ADD, byref(self._nid)):
+            self._icon_added = True
+            return True
+
+        self._icon_added = False
+        logger.error("添加托盘图标失败: %s", ctypes.get_last_error())
+        return False
 
     def _update_icon(self) -> None:
         """在托盘线程中替换 HICON；新图标生效后再释放旧图标。"""
@@ -329,6 +362,7 @@ class TrayIcon:
 
     def _remove_icon(self) -> None:
         """从通知区域移除图标并释放 GDI 句柄（只能由托盘线程调用）。"""
+        self._icon_added = False
         if self._nid:
             windll.shell32.Shell_NotifyIconW(NIM_DELETE, byref(self._nid))
             self._nid = None
@@ -361,7 +395,7 @@ class TrayIcon:
 
             class_name = "LukerTrayClass"
             wc = WNDCLASSW()
-            wc.style = 0
+            wc.style = CS_DBLCLKS
             wc.lpfnWndProc = self._wndproc_ref
             wc.cbClsExtra = 0
             wc.cbWndExtra = 0
@@ -396,10 +430,7 @@ class TrayIcon:
             self._nid.hIcon = self._hicon
             self._nid.szTip = "Luker 启动器"
 
-            result = windll.shell32.Shell_NotifyIconW(NIM_ADD, byref(self._nid))
-            if not result:
-                logger.error("添加托盘图标失败: %s", ctypes.get_last_error())
-
+            self._add_icon()
             self._ready.set()
 
             msg = MSG()
@@ -417,11 +448,13 @@ class TrayIcon:
                 windll.user32.DestroyWindow(self._hwnd)
                 self._hwnd = None
 
-    def run_detached(self) -> None:
+    def run_detached(self) -> bool:
+        """在后台启动托盘；返回图标是否成功加入通知区域。"""
         self._thread = Thread(target=self.run, daemon=True, name="TrayMessageLoop")
         self._thread.start()
         # 等窗口和图标创建完成，避免首次右键菜单时 hwnd 还不存在
         self._ready.wait(timeout=2)
+        return bool(self._icon_added and self._thread and self._thread.is_alive())
 
     def stop(self) -> None:
         """请求托盘线程清理图标并退出消息循环（可从任意线程调用）。"""
