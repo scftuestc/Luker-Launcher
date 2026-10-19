@@ -15,6 +15,13 @@ from types import TracebackType
 import customtkinter as ctk
 
 from config import APP_VERSION, config
+from dpi import (
+    centered_position,
+    fit_logical_window_size,
+    format_geometry,
+    get_monitor_info,
+    sync_window_scaling,
+)
 from log_store import MAX_LOG_ENTRIES, LogEntry, LogStore
 from win_utils import apply_blur, get_mono_font, get_ui_font
 
@@ -59,8 +66,18 @@ class LogWindow(ctk.CTk):
         self.overrideredirect(True)
 
         self.title("Luker 日志")
-        self.geometry("960x640+200+100")
-        self.minsize(700, 450)
+        monitor = get_monitor_info()
+        scale = sync_window_scaling(self, monitor.scale)
+        logical_width, logical_height = fit_logical_window_size(960, 640, monitor, scale, margin=24)
+        physical_width = round(logical_width * scale)
+        physical_height = round(logical_height * scale)
+        x, y = centered_position(physical_width, physical_height, monitor)
+        self.geometry(format_geometry(logical_width, logical_height, x, y))
+        self._min_logical_width = min(700, logical_width)
+        self._min_logical_height = min(450, logical_height)
+        self.minsize(self._min_logical_width, self._min_logical_height)
+        # 防止 CTk 在 DPI 变化后把最大尺寸锁死为当前尺寸
+        self.maxsize(10000, 10000)
 
         self._set_window_icon()
 
@@ -337,13 +354,14 @@ class LogWindow(ctk.CTk):
         self.bind('<ButtonRelease-1>', self._end_resize)
 
     def _check_resize_edge(self, e: tk.Event) -> None:
-        # 距离窗口边缘 8px 内按方向显示缩放光标
+        # 距离窗口边缘 8px（按当前缩放换算）内显示缩放光标
         if e.widget != self:
             self.configure(cursor='')
             self._resize_edge = None
             return
 
-        margin = 8
+        scale = ctk.ScalingTracker.get_window_scaling(self)
+        margin = max(4, round(8 * scale))
         w, h = self.winfo_width(), self.winfo_height()
         x, y = e.x, e.y
 
@@ -404,23 +422,29 @@ class LogWindow(ctk.CTk):
         sx, sy, sw, sh, wx, wy = self._resize_start
         dx = e.x_root - sx
         dy = e.y_root - sy
+        scale = ctk.ScalingTracker.get_window_scaling(self)
+        min_width = round(self._min_logical_width * scale)
+        min_height = round(self._min_logical_height * scale)
 
         nw, nh, nx, ny = sw, sh, wx, wy
 
         if 'e' in self._resize_edge:
-            nw = max(700, sw + dx)
+            nw = max(min_width, sw + dx)
         if 's' in self._resize_edge:
-            nh = max(450, sh + dy)
+            nh = max(min_height, sh + dy)
         if 'w' in self._resize_edge:
-            nw = max(700, sw - dx)
+            nw = max(min_width, sw - dx)
             if nw != sw:
                 nx = wx + (sw - nw)
         if 'n' in self._resize_edge:
-            nh = max(450, sh - dy)
+            nh = max(min_height, sh - dy)
             if nh != sh:
                 ny = wy + (sh - nh)
 
-        self.geometry(f"{nw}x{nh}+{nx}+{ny}")
+        # 物理像素先换算回 CTk 的逻辑尺寸，避免 geometry() 再次缩放
+        logical_width = max(self._min_logical_width, round(nw / scale))
+        logical_height = max(self._min_logical_height, round(nh / scale))
+        self.geometry(format_geometry(logical_width, logical_height, nx, ny))
 
     def _end_resize(self, e: tk.Event) -> None:
         self._resize_edge = None

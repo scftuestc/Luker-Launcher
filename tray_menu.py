@@ -12,9 +12,12 @@ from typing import TypedDict
 import customtkinter as ctk
 
 from config import config
+from dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
 from win_utils import apply_blur, get_ui_font
 
 logger = logging.getLogger(__name__)
+
+MENU_WIDTH = 220
 
 
 class MenuItem(TypedDict):
@@ -386,19 +389,17 @@ class TrayMenu(ctk.CTkToplevel):
             self.menu_items['gcl_browser']['frame'].pack_forget()
 
     def show_at(self, x: int, y: int) -> None:
+        """在物理坐标 (x, y) 附近显示，并限制在光标所在显示器。"""
+        monitor = get_monitor_info(point=(x, y))
+        scale = sync_window_scaling(self, monitor.scale)
         self.update_idletasks()
-        w = 220
-        h = self.winfo_reqheight()
 
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
+        width = round(MENU_WIDTH * scale)
+        height = self.winfo_reqheight()
+        x, y = clamp_popup_position(x, y, width, height, monitor)
+        logical_height = max(1, math.ceil(height / scale))
 
-        if x + w > screen_w:
-            x = screen_w - w - 10
-        if y + h > screen_h - 50:
-            y = y - h - 10
-
-        self.geometry(f"{w}x{h}+{x}+{y}")
+        self.geometry(format_geometry(MENU_WIDTH, logical_height, x, y))
         self.deiconify()
         self.lift()
 

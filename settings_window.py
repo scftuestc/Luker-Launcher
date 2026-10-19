@@ -7,6 +7,13 @@ from ctypes import windll
 import customtkinter as ctk
 
 from config import config
+from dpi import (
+    centered_position,
+    fit_logical_window_size,
+    format_geometry,
+    get_monitor_info,
+    sync_window_scaling,
+)
 from path_dialogs import select_gcl_bat_path, select_luker_path
 from theme import PRESET_THEMES
 from win_utils import apply_blur, get_mono_font, get_ui_font
@@ -28,14 +35,14 @@ class SettingsWindow(ctk.CTkToplevel):
         self.title("设置")
         self.resizable(False, False)
 
-        # 居中显示
-        w = 600
-        h = 720
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        x = (screen_w - w) // 2
-        y = (screen_h - h) // 2
-        self.geometry(f"{w}x{h}+{x}+{y}")
+        # 跟随父窗口所在显示器，并在工作区内居中
+        monitor = get_monitor_info(hwnd=parent.winfo_id())
+        scale = sync_window_scaling(self, monitor.scale)
+        logical_width, logical_height = fit_logical_window_size(600, 720, monitor, scale, margin=16)
+        physical_width = round(logical_width * scale)
+        physical_height = round(logical_height * scale)
+        x, y = centered_position(physical_width, physical_height, monitor)
+        self.geometry(format_geometry(logical_width, logical_height, x, y))
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)

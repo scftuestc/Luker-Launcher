@@ -25,6 +25,7 @@ NIM_DELETE = 0x02
 NIF_MESSAGE = 0x01
 NIF_ICON = 0x02
 NIF_TIP = 0x04
+SM_CXICON = 11
 
 WNDPROC = WINFUNCTYPE(
     wintypes.LPARAM, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
@@ -183,11 +184,22 @@ class TrayIcon:
 
         return image
 
-    def _image_to_hicon(self, image: Image.Image) -> wintypes.HICON:
+    def _get_icon_size(self) -> int:
+        """按系统 DPI 返回托盘图标源尺寸，失败时回退到 32px。"""
+        try:
+            dpi = windll.user32.GetDpiForSystem()
+            size = windll.user32.GetSystemMetricsForDpi(SM_CXICON, dpi)
+            if size:
+                return max(32, min(64, int(size)))
+        except (AttributeError, OSError):
+            pass
+        return 32
+
+    def _image_to_hicon(self, image: Image.Image, size: int = 32) -> wintypes.HICON:
         if image.mode != 'RGBA':
             image = image.convert('RGBA')
 
-        image = image.resize((32, 32), Image.LANCZOS)
+        image = image.resize((size, size), Image.LANCZOS)
 
         width, height = image.size
         pixels = image.tobytes()
@@ -261,25 +273,10 @@ class TrayIcon:
         return hicon
 
     def _get_cursor_pos(self) -> tuple[int, int]:
-        """获取鼠标位置并换算为 Tk 使用的逻辑像素。"""
+        """返回光标的物理屏幕坐标；Tk 的窗口位置也使用物理像素。"""
         pt = wintypes.POINT()
         windll.user32.GetCursorPos(byref(pt))
-
-        # GetCursorPos 返回物理像素，需要按主屏 DPI 换算成逻辑像素
-        try:
-            hdc = windll.user32.GetDC(0)
-            # 88 = LOGPIXELSX，96 DPI 对应 100% 缩放
-            dpi = windll.gdi32.GetDeviceCaps(hdc, 88)
-            windll.user32.ReleaseDC(0, hdc)
-
-            scale = dpi / 96.0
-            logical_x = int(pt.x / scale)
-            logical_y = int(pt.y / scale)
-
-            return (logical_x, logical_y)
-        except Exception:
-            logger.warning("获取 DPI 缩放失败", exc_info=True)
-            return (pt.x, pt.y)
+        return pt.x, pt.y
 
     def _wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
         try:
@@ -318,7 +315,7 @@ class TrayIcon:
         if not (self._hwnd and self._nid):
             return
 
-        new_icon = self._image_to_hicon(self._create_icon_image())
+        new_icon = self._image_to_hicon(self._create_icon_image(), self._get_icon_size())
         old_icon = self._hicon
         self._hicon = new_icon
         self._nid.hIcon = new_icon
@@ -386,7 +383,7 @@ class TrayIcon:
                 logger.error("创建窗口失败: %s", ctypes.get_last_error())
                 return
 
-            self._hicon = self._image_to_hicon(self._create_icon_image())
+            self._hicon = self._image_to_hicon(self._create_icon_image(), self._get_icon_size())
 
             self._nid = NOTIFYICONDATA()
             self._nid.cbSize = sizeof(NOTIFYICONDATA)
