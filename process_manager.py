@@ -201,7 +201,7 @@ class _ProcessManagerBase:
             return self.start()
 
 
-class ProcessManager(_ProcessManagerBase):
+class LukerProcessManager(_ProcessManagerBase):
     """管理 Luker（node server.js）子进程。"""
 
     name = "Luker"

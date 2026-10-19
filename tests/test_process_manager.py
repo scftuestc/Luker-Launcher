@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from process_manager import GCLProcessManager, ProcessManager
+from process_manager import GCLProcessManager, LukerProcessManager
 
 
 class ProcessManagerTests(unittest.TestCase):
@@ -16,11 +16,11 @@ class ProcessManagerTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_luker_command_allows_browser_launch(self):
-        manager = ProcessManager(str(self.luker_dir), let_luker_open_browser=True)
+        manager = LukerProcessManager(str(self.luker_dir), let_luker_open_browser=True)
         self.assertEqual(manager._build_command(), ["node", "server.js"])
 
     def test_luker_command_disables_browser_launch(self):
-        manager = ProcessManager(str(self.luker_dir), let_luker_open_browser=False)
+        manager = LukerProcessManager(str(self.luker_dir), let_luker_open_browser=False)
         self.assertEqual(
             manager._build_command(),
             ["node", "server.js", "--browserLaunchEnabled", "false"],
@@ -28,7 +28,7 @@ class ProcessManagerTests(unittest.TestCase):
 
     def test_luker_requires_server_js(self):
         missing = Path(self.temp_dir.name) / "missing"
-        manager = ProcessManager(str(missing))
+        manager = LukerProcessManager(str(missing))
         self.assertIn("server.js", manager._startup_error())
 
     def test_occupied_port_blocks_start(self):
@@ -38,7 +38,7 @@ class ProcessManagerTests(unittest.TestCase):
             listener.listen(5)
             port = listener.getsockname()[1]
 
-            manager = ProcessManager(str(self.luker_dir), server_port=port)
+            manager = LukerProcessManager(str(self.luker_dir), server_port=port)
             manager.add_log_callback(logs.append)
             self.assertFalse(manager.start())
 

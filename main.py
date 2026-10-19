@@ -18,12 +18,13 @@ import customtkinter as ctk
 import app_logging
 import single_instance
 from config import APP_VERSION, config
-from dialogs import SettingsWindow, TrayMenu
 from log_window import LogWindow
 from path_dialogs import ensure_luker_path_configured
-from process_manager import GCLProcessManager, ProcessManager
+from process_manager import GCLProcessManager, LukerProcessManager
 from pwa_browser import open_in_browser
+from settings_window import SettingsWindow
 from tray_icon import TrayIcon
+from tray_menu import TrayMenu
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ class LukerLauncher:
     """协调日志窗口、托盘菜单和两个进程管理器的应用主体。"""
 
     def __init__(self) -> None:
-        self.process_manager: ProcessManager | None = None
+        self.process_manager: LukerProcessManager | None = None
         self.gcl_process_manager: GCLProcessManager | None = None
         self.tray_icon: TrayIcon | None = None
         self.log_window: LogWindow | None = None
@@ -154,7 +155,7 @@ class LukerLauncher:
         """在守护线程中执行耗时操作，不阻塞 Tk 主循环。"""
         Thread(target=func, daemon=True).start()
 
-    def _ensure_process_manager(self) -> ProcessManager | None:
+    def _ensure_process_manager(self) -> LukerProcessManager | None:
         """确保进程管理器与当前配置的 Luker 路径保持一致。"""
         if not config.luker_path:
             return None
@@ -165,7 +166,7 @@ class LukerLauncher:
                 # 运行中不热切换，避免意外中断正在工作的进程
                 return self.process_manager
 
-            self.process_manager = ProcessManager(
+            self.process_manager = LukerProcessManager(
                 path,
                 let_luker_open_browser=not config.use_pwa_mode,
                 server_port=config.get_server_port(),
