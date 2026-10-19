@@ -6,6 +6,7 @@ from dpi import (
     MonitorInfo,
     centered_position,
     clamp_popup_position,
+    clamp_window_position,
     discard_window_scaling,
     fit_logical_window_size,
     format_geometry,
@@ -91,10 +92,26 @@ class FormatGeometryTests(unittest.TestCase):
         self.assertEqual(format_geometry(220, 300, 100, 200), "220x300+100+200")
 
     def test_negative_position(self):
-        self.assertEqual(format_geometry(220, 300, -100, 200), "220x300-100+200")
+        self.assertEqual(format_geometry(220, 300, -100, 200), "220x300+-100+200")
 
     def test_position_only(self):
-        self.assertEqual(format_geometry(None, None, -100, 50), "-100+50")
+        self.assertEqual(format_geometry(None, None, -100, 50), "+-100+50")
+
+
+class WindowPositionTests(unittest.TestCase):
+    def test_clamps_window_into_work_area(self):
+        monitor = MonitorInfo(0, 0, 1920, 1040, 144)
+        self.assertEqual(
+            clamp_window_position(1900, 1000, 900, 1008, monitor, margin=8),
+            (1012, 24),
+        )
+
+    def test_keeps_window_inside_negative_monitor(self):
+        monitor = MonitorInfo(-1920, 0, 0, 1080, 120)
+        self.assertEqual(
+            clamp_window_position(-2100, -20, 750, 900, monitor, margin=8),
+            (-1912, 8),
+        )
 
 
 class ScalingCacheTests(unittest.TestCase):

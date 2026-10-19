@@ -9,6 +9,7 @@ import customtkinter as ctk
 from config import config
 from dpi import (
     centered_position,
+    clamp_window_position,
     discard_window_scaling,
     fit_logical_window_size,
     format_geometry,
@@ -45,6 +46,13 @@ class SettingsWindow(ctk.CTkToplevel):
         physical_height = round(logical_height * scale)
         x, y = centered_position(physical_width, physical_height, monitor)
         self.geometry(format_geometry(logical_width, logical_height, x, y))
+        self._monitor_signature = (
+            monitor.left,
+            monitor.top,
+            monitor.right,
+            monitor.bottom,
+            monitor.dpi,
+        )
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
@@ -60,7 +68,42 @@ class SettingsWindow(ctk.CTkToplevel):
 
         config.add_theme_change_callback(self._on_theme_change)
 
+        self.bind('<Configure>', self._on_configure)
         self.bind('<Destroy>', self._on_destroy)
+
+    def _on_configure(self, event: tk.Event) -> None:
+        if event.widget == self:
+            self.after_idle(self._fit_to_current_monitor)
+
+    def _fit_to_current_monitor(self) -> None:
+        """移动到不同 DPI 的显示器后重新限制尺寸和位置。"""
+        if self._destroyed or not self.winfo_exists():
+            return
+
+        monitor = get_monitor_info(hwnd=self.winfo_id())
+        signature = (
+            monitor.left,
+            monitor.top,
+            monitor.right,
+            monitor.bottom,
+            monitor.dpi,
+        )
+        if signature == self._monitor_signature:
+            return
+
+        self._monitor_signature = signature
+        scale = sync_window_scaling(self, monitor.scale)
+        logical_width, logical_height = fit_logical_window_size(600, 720, monitor, scale, margin=16)
+        physical_width = round(logical_width * scale)
+        physical_height = round(logical_height * scale)
+        x, y = clamp_window_position(
+            self.winfo_x(),
+            self.winfo_y(),
+            physical_width,
+            physical_height,
+            monitor,
+        )
+        self.geometry(format_geometry(logical_width, logical_height, x, y))
 
     def _on_destroy(self, event: tk.Event) -> None:
         if event.widget == self:

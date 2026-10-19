@@ -18,6 +18,7 @@ import customtkinter as ctk
 import app_logging
 import single_instance
 from config import APP_VERSION, config
+from dpi import get_process_dpi_awareness
 from log_window import LogWindow
 from path_dialogs import ensure_luker_path_configured
 from process_manager import GCLProcessManager, LukerProcessManager
@@ -41,16 +42,37 @@ def setup_dpi_awareness() -> None:
     try:
         # Windows 10 1703+ 使用 SetProcessDpiAwarenessContext
         # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
-        windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        if windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4)):
+            _log_dpi_awareness()
+            return
     except (AttributeError, OSError):
-        try:
-            # Windows 8.1+ 使用 SetProcessDpiAwareness
-            # PROCESS_PER_MONITOR_DPI_AWARE = 2
-            windll.shcore.SetProcessDpiAwareness(2)
-        except (AttributeError, OSError):
-            # Windows Vista+ 使用 SetProcessDPIAware；极老系统交给默认缩放
-            with contextlib.suppress(AttributeError, OSError):
-                windll.user32.SetProcessDPIAware()
+        pass
+
+    try:
+        # Windows 8.1+ 使用 SetProcessDpiAwareness
+        # PROCESS_PER_MONITOR_DPI_AWARE = 2
+        if windll.shcore.SetProcessDpiAwareness(2) == 0:
+            _log_dpi_awareness()
+            return
+    except (AttributeError, OSError):
+        pass
+
+    # Windows Vista+ 使用 SetProcessDPIAware；极老系统交给默认缩放
+    with contextlib.suppress(AttributeError, OSError):
+        windll.user32.SetProcessDPIAware()
+    _log_dpi_awareness()
+
+
+def _log_dpi_awareness() -> None:
+    awareness = get_process_dpi_awareness()
+    if awareness == 2:
+        logger.info("DPI 感知模式: Per-Monitor")
+    elif awareness == 1:
+        logger.warning("DPI 感知模式: System（混合 DPI 下窗口可能偏移）")
+    elif awareness == 0:
+        logger.warning("DPI 感知模式: Unaware（高分屏可能缩放异常）")
+    else:
+        logger.warning("无法读取 DPI 感知模式")
 
 
 class LukerLauncher:

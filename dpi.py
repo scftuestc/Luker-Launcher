@@ -39,8 +39,13 @@ _user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
 _user32.MonitorFromWindow.restype = wintypes.HANDLE
 _user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_MONITORINFO)]
 _user32.GetMonitorInfoW.restype = wintypes.BOOL
-_user32.GetDpiForWindow.argtypes = [wintypes.HWND]
-_user32.GetDpiForWindow.restype = wintypes.UINT
+_get_dpi_for_window = getattr(_user32, "GetDpiForWindow", None)
+if _get_dpi_for_window is not None:
+    _get_dpi_for_window.argtypes = [wintypes.HWND]
+    _get_dpi_for_window.restype = wintypes.UINT
+_get_dpi_for_system = getattr(_user32, "GetDpiForSystem", None)
+if _get_dpi_for_system is not None:
+    _get_dpi_for_system.restype = wintypes.UINT
 _user32.GetSystemMetrics.argtypes = [ctypes.c_int]
 _user32.GetSystemMetrics.restype = ctypes.c_int
 _shcore.GetDpiForMonitor.argtypes = [
@@ -50,6 +55,11 @@ _shcore.GetDpiForMonitor.argtypes = [
     ctypes.POINTER(wintypes.UINT),
 ]
 _shcore.GetDpiForMonitor.restype = ctypes.c_long
+_shcore.GetProcessDpiAwareness.argtypes = [
+    wintypes.HANDLE,
+    ctypes.POINTER(ctypes.c_int),
+]
+_shcore.GetProcessDpiAwareness.restype = ctypes.c_long
 
 
 @dataclass(frozen=True)
@@ -86,8 +96,8 @@ def _monitor_handle(hwnd: int | None, point: tuple[int, int] | None) -> int:
 
 def _dpi_for(hwnd: int | None, monitor: int) -> int:
     # 窗口 DPI 最可靠；只有传屏幕点时 GetDpiForMonitor 才没有窗口可查
-    if hwnd:
-        dpi = _user32.GetDpiForWindow(hwnd)
+    if hwnd and _get_dpi_for_window is not None:
+        dpi = _get_dpi_for_window(hwnd)
         if dpi:
             return dpi
 
@@ -122,7 +132,19 @@ def get_monitor_info(
     logger.warning("获取显示器工作区失败，回退到主屏")
     width = _user32.GetSystemMetrics(0)  # SM_CXSCREEN
     height = _user32.GetSystemMetrics(1)  # SM_CYSCREEN
-    return MonitorInfo(0, 0, width, height)
+    dpi = _get_dpi_for_system() if _get_dpi_for_system is not None else BASE_DPI
+    return MonitorInfo(0, 0, width, height, dpi or BASE_DPI)
+
+
+def get_process_dpi_awareness() -> int | None:
+    """返回进程 DPI 感知级别：0 不感知，1 系统感知，2 每显示器感知。"""
+    value = ctypes.c_int()
+    try:
+        if _shcore.GetProcessDpiAwareness(None, ctypes.byref(value)) == 0:
+            return value.value
+    except AttributeError:
+        pass
+    return None
 
 
 def fit_logical_window_size(
@@ -171,15 +193,31 @@ def clamp_popup_position(
     return x, y
 
 
+def clamp_window_position(
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    monitor: MonitorInfo,
+    margin: int = 8,
+) -> tuple[int, int]:
+    """把普通窗口的位置限制在工作区内，不改变窗口尺寸。"""
+    x = max(monitor.left + margin, min(x, monitor.right - width - margin))
+    y = max(monitor.top + margin, min(y, monitor.bottom - height - margin))
+    return x, y
+
+
 def format_geometry(
     width: int | None,
     height: int | None,
     x: int,
     y: int,
 ) -> str:
-    """生成 Tk geometry 字符串，正确处理副屏的负坐标。"""
+    """生成 Tk geometry 字符串；负坐标用 +-，兼容原始 Tk 和 CTk。"""
     size = f"{width}x{height}" if width is not None and height is not None else ""
-    return f"{size}{x:+d}{y:+d}"
+    x_part = f"+{x}" if x >= 0 else f"+-{abs(x)}"
+    y_part = f"+{y}" if y >= 0 else f"+-{abs(y)}"
+    return f"{size}{x_part}{y_part}"
 
 
 def sync_window_scaling(
