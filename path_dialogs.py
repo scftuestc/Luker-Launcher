@@ -75,8 +75,7 @@ def select_gcl_bat_path(parent=None) -> Optional[str]:
 
         messagebox.showerror(
             "错误",
-            f"所选文件不是有效的批处理文件！\n\n"
-            f"选择的路径: {path}",
+            f"所选文件不是有效的批处理文件！\n\n选择的路径: {path}",
             parent=owner,
         )
         return None

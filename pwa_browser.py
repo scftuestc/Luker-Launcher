@@ -3,9 +3,9 @@
 import ctypes
 import json
 import logging
+import os
 import re
 import subprocess
-import os
 import time
 from pathlib import Path
 from typing import Optional, Tuple
@@ -69,12 +69,15 @@ def is_appx_installed(family_name: str) -> bool:
     """通过 PowerShell 查询指定 APPX 包是否已安装。"""
     package_name = family_name.split('_')[0]
     try:
+        command = (
+            f"Get-AppxPackage -Name '{package_name}' | "
+            "Select-Object -ExpandProperty PackageFullName"
+        )
         result = subprocess.run(
-            ["powershell", "-Command",
-             f"Get-AppxPackage -Name '{package_name}' | Select-Object -ExpandProperty PackageFullName"],
+            ["powershell", "-Command", command],
             capture_output=True,
             text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
         return bool(result.stdout.strip())
     except Exception:
@@ -97,12 +100,15 @@ def discover_luker_appx() -> Optional[Tuple[str, str]]:
 
     try:
         result = subprocess.run(
-            ["powershell", "-Command",
-             "Get-AppxPackage -Name '127.0.0.1-*' | "
-             "Select-Object Name, PackageFamilyName, InstallLocation | ConvertTo-Json -Compress"],
+            [
+                "powershell",
+                "-Command",
+                "Get-AppxPackage -Name '127.0.0.1-*' | "
+                "Select-Object Name, PackageFamilyName, InstallLocation | ConvertTo-Json -Compress",
+            ],
             capture_output=True,
             text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
         output = result.stdout.strip()
         if not output:
@@ -149,9 +155,7 @@ def open_as_appx(family_name: str, app_id: str = DEFAULT_APPX_APP_ID) -> bool:
 
     try:
         # ShellExecuteW 返回 > 32 表示启动成功；失败时交给调用方回退到其他方式
-        result = ctypes.windll.shell32.ShellExecuteW(
-            None, "open", app_uri, None, None, 1
-        )
+        result = ctypes.windll.shell32.ShellExecuteW(None, "open", app_uri, None, None, 1)
         if result > 32:
             logger.info("通过 APPX 启动成功")
             return True
@@ -233,6 +237,7 @@ def open_in_browser(url: Optional[str] = None, prefer_pwa: bool = True) -> bool:
         logger.info("回退到默认浏览器")
 
     import webbrowser
+
     try:
         webbrowser.open(url)
         return True

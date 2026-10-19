@@ -56,7 +56,10 @@ _kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
 _kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
 _kernel32.CreateJobObjectW.restype = wintypes.HANDLE
 _kernel32.SetInformationJobObject.argtypes = [
-    wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD
+    wintypes.HANDLE,
+    ctypes.c_int,
+    ctypes.c_void_p,
+    wintypes.DWORD,
 ]
 _kernel32.SetInformationJobObject.restype = wintypes.BOOL
 _kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -111,7 +114,8 @@ def assign_to_job(process) -> bool:
     if not process_handle:
         logger.warning(
             "打开子进程句柄失败 (PID %s): %s",
-            process.pid, ctypes.get_last_error(),
+            process.pid,
+            ctypes.get_last_error(),
         )
         return False
 
@@ -119,7 +123,8 @@ def assign_to_job(process) -> bool:
         if not _kernel32.AssignProcessToJobObject(job, process_handle):
             logger.warning(
                 "将子进程加入 Job Object 失败 (PID %s): %s",
-                process.pid, ctypes.get_last_error(),
+                process.pid,
+                ctypes.get_last_error(),
             )
             return False
         return True

@@ -58,9 +58,7 @@ def setup_logging() -> None:
     if _configured:
         return
 
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     handler: logging.Handler
     log_path: Optional[Path] = None

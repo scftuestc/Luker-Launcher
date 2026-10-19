@@ -114,7 +114,7 @@ class _ProcessManagerBase:
                     startupinfo=startupinfo,
                     creationflags=subprocess.CREATE_NO_WINDOW,
                     encoding=self._encoding,
-                    errors='replace'
+                    errors='replace',
                 )
 
                 # 强制结束启动器时由 Job Object 兜底清理子进程
@@ -127,8 +127,10 @@ class _ProcessManagerBase:
                 self.process = process
                 self._running = True
                 self._log_thread = Thread(
-                    target=self._read_output, args=(process,),
-                    daemon=True, name=f"{type(self).__name__}LogReader"
+                    target=self._read_output,
+                    args=(process,),
+                    daemon=True,
+                    name=f"{type(self).__name__}LogReader",
                 )
                 self._log_thread.start()
 
@@ -237,10 +239,7 @@ class ProcessManager(_ProcessManagerBase):
     def _pre_start_error(self) -> Optional[str]:
         """端口被占用时阻止重复启动。"""
         if self.server_port and self._is_port_in_use(self.server_port):
-            return (
-                f"端口 {self.server_port} 已被占用，可能已有 Luker 在运行；"
-                f"请先关闭它再启动"
-            )
+            return f"端口 {self.server_port} 已被占用，可能已有 Luker 在运行；请先关闭它再启动"
         return None
 
     @staticmethod

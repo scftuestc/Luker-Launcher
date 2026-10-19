@@ -3,9 +3,19 @@ import unittest
 from theme import DEFAULT_THEME, PRESET_THEMES, get_theme_colors
 
 REQUIRED_COLOR_KEYS = (
-    "bg", "card", "card_hover", "border", "text", "text_dim",
-    "text_muted", "accent", "accent_blue", "success", "error",
-    "warning", "info",
+    "bg",
+    "card",
+    "card_hover",
+    "border",
+    "text",
+    "text_dim",
+    "text_muted",
+    "accent",
+    "accent_blue",
+    "success",
+    "error",
+    "warning",
+    "info",
 )
 
 

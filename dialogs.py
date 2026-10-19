@@ -69,8 +69,7 @@ class TrayMenu(ctk.CTkToplevel):
 
         gcl_running = self._gcl_running
         self._build_menu()
-        self.update_state(self._is_running, self._window_visible,
-                          self._gcl_enabled, gcl_running)
+        self.update_state(self._is_running, self._window_visible, self._gcl_enabled, gcl_running)
         self._setup_blur()
 
         if self.winfo_viewable():
@@ -105,8 +104,7 @@ class TrayMenu(ctk.CTkToplevel):
             menu_w = self.winfo_width()
             menu_h = self.winfo_height()
 
-            in_menu = (menu_x <= mouse_x <= menu_x + menu_w and
-                      menu_y <= mouse_y <= menu_y + menu_h)
+            in_menu = menu_x <= mouse_x <= menu_x + menu_w and menu_y <= mouse_y <= menu_y + menu_h
 
             if not in_menu:
                 left_button = windll.user32.GetAsyncKeyState(0x01) & 0x8000
@@ -145,7 +143,12 @@ class TrayMenu(ctk.CTkToplevel):
                 phase = (self._animation_phase + i * 0.25) % 1.0
                 brightness = 0.7 + 0.3 * math.sin(phase * 2 * 3.14159)
 
-                colors = [(0xff, 0x6b, 0x6b), (0xfe, 0xca, 0x57), (0x48, 0xdb, 0xfb), (0x1d, 0xd1, 0xa1)]
+                colors = [
+                    (0xFF, 0x6B, 0x6B),
+                    (0xFE, 0xCA, 0x57),
+                    (0x48, 0xDB, 0xFB),
+                    (0x1D, 0xD1, 0xA1),
+                ]
                 r, g, b = colors[i]
                 r = int(r * brightness)
                 g = int(g * brightness)
@@ -172,9 +175,10 @@ class TrayMenu(ctk.CTkToplevel):
             self._menu_logo_bars.append(bar)
 
         ctk.CTkLabel(
-            header, text="Luker",
+            header,
+            text="Luker",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            text_color=self.COLORS['text']
+            text_color=self.COLORS['text'],
         ).pack(side="left", padx=(10, 0))
 
         ctk.CTkFrame(main, height=1, fg_color=self.COLORS['border']).pack(fill="x", padx=12)
@@ -189,7 +193,9 @@ class TrayMenu(ctk.CTkToplevel):
             items_frame, "📋", "显示日志窗口", self._on_toggle_window
         )
 
-        ctk.CTkFrame(items_frame, height=1, fg_color=self.COLORS['border']).pack(fill="x", padx=8, pady=6)
+        ctk.CTkFrame(items_frame, height=1, fg_color=self.COLORS['border']).pack(
+            fill="x", padx=8, pady=6
+        )
 
         # Luker 控制区域：启动/停止合并为一个动态按钮
         self.menu_items['luker_toggle'] = self._create_menu_item(
@@ -242,7 +248,7 @@ class TrayMenu(ctk.CTkToplevel):
             anchor="w",
             corner_radius=8,
             height=38,
-            command=command
+            command=command,
         )
         btn.pack(fill="x", padx=4)
 
@@ -262,7 +268,7 @@ class TrayMenu(ctk.CTkToplevel):
             anchor="w",
             corner_radius=8,
             height=38,
-            command=command
+            command=command,
         )
         btn.pack(fill="x", padx=4)
 
@@ -314,7 +320,13 @@ class TrayMenu(ctk.CTkToplevel):
         self.hide()
         self.callbacks['exit']()
 
-    def update_state(self, is_running: bool, window_visible: bool, gcl_enabled: bool = False, gcl_running: bool = False):
+    def update_state(
+        self,
+        is_running: bool,
+        window_visible: bool,
+        gcl_enabled: bool = False,
+        gcl_running: bool = False,
+    ):
         self._is_running = is_running
         self._window_visible = window_visible
         self._gcl_enabled = gcl_enabled
@@ -325,16 +337,18 @@ class TrayMenu(ctk.CTkToplevel):
         # 启停按钮共用一个位置，根据状态切换文案和颜色
         if is_running:
             self.menu_items['luker_toggle']['btn'].configure(
-                text="⏹  停止 Luker",
-                text_color=self.COLORS['error']
+                text="⏹  停止 Luker", text_color=self.COLORS['error']
             )
-            self.menu_items['restart']['btn'].configure(state="normal", text_color=self.COLORS['accent'])
+            self.menu_items['restart']['btn'].configure(
+                state="normal", text_color=self.COLORS['accent']
+            )
         else:
             self.menu_items['luker_toggle']['btn'].configure(
-                text="▶  启动 Luker",
-                text_color=self.COLORS['success']
+                text="▶  启动 Luker", text_color=self.COLORS['success']
             )
-            self.menu_items['restart']['btn'].configure(state="disabled", text_color=self.COLORS['text_muted'])
+            self.menu_items['restart']['btn'].configure(
+                state="disabled", text_color=self.COLORS['text_muted']
+            )
 
         # 更新 GCL 菜单项状态
         self._gcl_running = gcl_running
@@ -345,18 +359,20 @@ class TrayMenu(ctk.CTkToplevel):
             self.menu_items['gcl_browser']['frame'].pack_forget()
 
             self._gcl_separator.pack(fill="x", padx=8, pady=6, before=self._bottom_separator)
-            self.menu_items['gcl_toggle']['frame'].pack(fill="x", pady=2, before=self._bottom_separator)
-            self.menu_items['gcl_browser']['frame'].pack(fill="x", pady=2, before=self._bottom_separator)
+            self.menu_items['gcl_toggle']['frame'].pack(
+                fill="x", pady=2, before=self._bottom_separator
+            )
+            self.menu_items['gcl_browser']['frame'].pack(
+                fill="x", pady=2, before=self._bottom_separator
+            )
 
             if gcl_running:
                 self.menu_items['gcl_toggle']['btn'].configure(
-                    text="⏹  停止 GCL",
-                    text_color=self.COLORS['error']
+                    text="⏹  停止 GCL", text_color=self.COLORS['error']
                 )
             else:
                 self.menu_items['gcl_toggle']['btn'].configure(
-                    text="▶  启动 GCL",
-                    text_color=self.COLORS['success']
+                    text="▶  启动 GCL", text_color=self.COLORS['success']
                 )
         else:
             self._gcl_separator.pack_forget()
@@ -473,7 +489,7 @@ class SettingsWindow(ctk.CTkToplevel):
             main,
             fg_color="transparent",
             scrollbar_button_color=self.COLORS['border'],
-            scrollbar_button_hover_color=self.COLORS['accent']
+            scrollbar_button_hover_color=self.COLORS['accent'],
         )
         scroll_frame.pack(fill="both", expand=True, pady=(0, 8))
 
@@ -496,19 +512,23 @@ class SettingsWindow(ctk.CTkToplevel):
         bar.bind('<B1-Motion>', self._on_drag)
 
         ctk.CTkLabel(
-            bar, text="⚙️  设置",
+            bar,
+            text="⚙️  设置",
             font=ctk.CTkFont(family=self.UI_FONT, size=16, weight="bold"),
-            text_color=self.COLORS['text']
+            text_color=self.COLORS['text'],
         ).pack(side="left", padx=16, pady=12)
 
         ctk.CTkButton(
-            bar, text="✕", width=36, height=28,
+            bar,
+            text="✕",
+            width=36,
+            height=28,
             fg_color="transparent",
             hover_color=self.COLORS['error'],
             text_color=self.COLORS['text_dim'],
             font=ctk.CTkFont(size=14, weight="bold"),
             corner_radius=8,
-            command=self.destroy
+            command=self.destroy,
         ).pack(side="right", padx=10)
 
     def _start_drag(self, e):
@@ -526,15 +546,17 @@ class SettingsWindow(ctk.CTkToplevel):
         header.pack(fill="x", padx=16, pady=(16, 12))
 
         ctk.CTkLabel(
-            header, text="🎨  主题颜色",
+            header,
+            text="🎨  主题颜色",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            text_color=self.COLORS['text']
+            text_color=self.COLORS['text'],
         ).pack(side="left")
 
         ctk.CTkLabel(
-            header, text="点击卡片实时预览",
+            header,
+            text="点击卡片实时预览",
             font=ctk.CTkFont(family=self.UI_FONT, size=12),
-            text_color=self.COLORS['text_muted']
+            text_color=self.COLORS['text_muted'],
         ).pack(side="right")
 
         grid = ctk.CTkFrame(section, fg_color="transparent")
@@ -546,9 +568,7 @@ class SettingsWindow(ctk.CTkToplevel):
         row = 0
         col = 0
         for theme_id, colors in PRESET_THEMES.items():
-            card = self._create_theme_card(
-                grid, theme_id, colors, current_theme == theme_id
-            )
+            card = self._create_theme_card(grid, theme_id, colors, current_theme == theme_id)
             card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
             self.theme_cards[theme_id] = card
 
@@ -566,7 +586,7 @@ class SettingsWindow(ctk.CTkToplevel):
             fg_color=colors['card'],
             corner_radius=10,
             border_width=3 if is_selected else 1,
-            border_color=colors['accent'] if is_selected else colors['border']
+            border_color=colors['accent'] if is_selected else colors['border'],
         )
 
         inner = ctk.CTkFrame(card, fg_color="transparent")
@@ -577,13 +597,15 @@ class SettingsWindow(ctk.CTkToplevel):
 
         preview_colors = [colors['accent'], colors['success'], colors['info'], colors['warning']]
         for pc in preview_colors:
-            ctk.CTkFrame(preview, width=28, height=20, fg_color=pc, corner_radius=4).pack(side="left", padx=2)
+            ctk.CTkFrame(preview, width=28, height=20, fg_color=pc, corner_radius=4).pack(
+                side="left", padx=2
+            )
 
         name_label = ctk.CTkLabel(
             inner,
             text=f"{colors['icon']} {colors['short_name']}",
             font=ctk.CTkFont(family=self.UI_FONT, size=13, weight="bold"),
-            text_color=colors['text']
+            text_color=colors['text'],
         )
         name_label.pack(anchor="w")
 
@@ -592,7 +614,7 @@ class SettingsWindow(ctk.CTkToplevel):
                 inner,
                 text="✓ 当前主题",
                 font=ctk.CTkFont(family=self.UI_FONT, size=11),
-                text_color=colors['accent']
+                text_color=colors['accent'],
             ).pack(anchor="w", pady=(4, 0))
 
         def on_click(e, tid=theme_id):
@@ -636,9 +658,10 @@ class SettingsWindow(ctk.CTkToplevel):
         header.pack(fill="x", pady=(0, 8))
 
         ctk.CTkLabel(
-            header, text="🌐  PWA 浏览器模式",
+            header,
+            text="🌐  PWA 浏览器模式",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            text_color=self.COLORS['text']
+            text_color=self.COLORS['text'],
         ).pack(side="left")
 
         self.pwa_switch = ctk.CTkSwitch(
@@ -650,7 +673,7 @@ class SettingsWindow(ctk.CTkToplevel):
             progress_color=self.COLORS['accent'],
             button_color=self.COLORS['text'],
             button_hover_color=self.COLORS['accent'],
-            command=self._on_pwa_toggle
+            command=self._on_pwa_toggle,
         )
         self.pwa_switch.pack(side="right")
 
@@ -662,7 +685,7 @@ class SettingsWindow(ctk.CTkToplevel):
             text="开启后，打开浏览器时将使用 PWA 模式\n标题栏颜色会自动跟随 Luker 主题色变化",
             font=ctk.CTkFont(family=self.UI_FONT, size=12),
             text_color=self.COLORS['text_muted'],
-            justify="left"
+            justify="left",
         ).pack(anchor="w")
 
     def _on_pwa_toggle(self):
@@ -680,9 +703,10 @@ class SettingsWindow(ctk.CTkToplevel):
         header.pack(fill="x", pady=(0, 8))
 
         ctk.CTkLabel(
-            header, text="🚀  GCL 功能",
+            header,
+            text="🚀  GCL 功能",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            text_color=self.COLORS['text']
+            text_color=self.COLORS['text'],
         ).pack(side="left")
 
         self.gcl_switch = ctk.CTkSwitch(
@@ -694,7 +718,7 @@ class SettingsWindow(ctk.CTkToplevel):
             progress_color=self.COLORS['accent'],
             button_color=self.COLORS['text'],
             button_hover_color=self.COLORS['accent'],
-            command=self._on_gcl_toggle
+            command=self._on_gcl_toggle,
         )
         self.gcl_switch.pack(side="right")
 
@@ -706,16 +730,17 @@ class SettingsWindow(ctk.CTkToplevel):
             text="开启后，可在托盘菜单中控制 GCL 的启动和停止",
             font=ctk.CTkFont(family=self.UI_FONT, size=12),
             text_color=self.COLORS['text_muted'],
-            justify="left"
+            justify="left",
         ).pack(anchor="w", pady=(0, 10))
 
         # GCL 路径选择区域（仅在开启时显示）
         self._gcl_path_frame = ctk.CTkFrame(inner, fg_color="transparent")
 
         ctk.CTkLabel(
-            self._gcl_path_frame, text="GCL start.bat 路径:",
+            self._gcl_path_frame,
+            text="GCL start.bat 路径:",
             font=ctk.CTkFont(family=self.UI_FONT, size=12),
-            text_color=self.COLORS['text_dim']
+            text_color=self.COLORS['text_dim'],
         ).pack(anchor="w", pady=(0, 6))
 
         path_row = ctk.CTkFrame(self._gcl_path_frame, fg_color="transparent")
@@ -730,18 +755,21 @@ class SettingsWindow(ctk.CTkToplevel):
             text=current_gcl_path,
             font=ctk.CTkFont(family=get_mono_font(), size=11),
             text_color=self.COLORS['text_muted'],
-            anchor="w"
+            anchor="w",
         )
         self.gcl_path_label.pack(fill="x", padx=10, pady=8)
 
         ctk.CTkButton(
-            path_row, text="📂 选择",
+            path_row,
+            text="📂 选择",
             font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
             fg_color=self.COLORS['accent'],
             hover_color=self.COLORS['card_hover'],
             text_color="#ffffff",
-            corner_radius=8, height=32, width=80,
-            command=self._select_gcl_path
+            corner_radius=8,
+            height=32,
+            width=80,
+            command=self._select_gcl_path,
         ).pack(side="right")
 
         if config.gcl_enabled:
@@ -781,9 +809,10 @@ class SettingsWindow(ctk.CTkToplevel):
         inner.pack(fill="x", padx=16, pady=16)
 
         ctk.CTkLabel(
-            inner, text="📁  Luker 路径",
+            inner,
+            text="📁  Luker 路径",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            text_color=self.COLORS['text']
+            text_color=self.COLORS['text'],
         ).pack(anchor="w", pady=(0, 10))
 
         path_row = ctk.CTkFrame(inner, fg_color="transparent")
@@ -798,18 +827,21 @@ class SettingsWindow(ctk.CTkToplevel):
             text=current_path,
             font=ctk.CTkFont(family=get_mono_font(), size=11),
             text_color=self.COLORS['text_muted'],
-            anchor="w"
+            anchor="w",
         )
         self.path_label.pack(fill="x", padx=10, pady=8)
 
         ctk.CTkButton(
-            path_row, text="📂 选择",
+            path_row,
+            text="📂 选择",
             font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
             fg_color=self.COLORS['accent'],
             hover_color=self.COLORS['card_hover'],
             text_color="#ffffff",
-            corner_radius=8, height=32, width=80,
-            command=self._select_path
+            corner_radius=8,
+            height=32,
+            width=80,
+            command=self._select_path,
         ).pack(side="right")
 
     def _select_path(self):
@@ -822,11 +854,14 @@ class SettingsWindow(ctk.CTkToplevel):
         footer.pack(fill="x", pady=(8, 0))
 
         ctk.CTkButton(
-            footer, text="完成",
+            footer,
+            text="完成",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
             fg_color=self.COLORS['accent'],
             hover_color=self.COLORS['card_hover'],
             text_color="#ffffff",
-            corner_radius=10, height=42, width=120,
-            command=self.destroy
+            corner_radius=10,
+            height=42,
+            width=120,
+            command=self.destroy,
         ).pack(side="right")

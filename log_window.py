@@ -112,6 +112,7 @@ class LogWindow(ctk.CTk):
                 png_path = os.path.join(os.path.dirname(__file__), 'icon.png')
                 if os.path.exists(png_path):
                     from PIL import Image, ImageTk
+
                     img = Image.open(png_path)
                     photo = ImageTk.PhotoImage(img)
                     self.iconphoto(True, photo)
@@ -131,9 +132,7 @@ class LogWindow(ctk.CTk):
 
             margin = 4
             draw.rounded_rectangle(
-                [margin, margin, size - margin, size - margin],
-                radius=12,
-                fill=(13, 17, 23, 255)
+                [margin, margin, size - margin, size - margin], radius=12, fill=(13, 17, 23, 255)
             )
 
             bar_colors = [(255, 107, 107), (254, 202, 87), (72, 219, 251), (29, 209, 161)]
@@ -145,9 +144,7 @@ class LogWindow(ctk.CTk):
             for i, color in enumerate(bar_colors):
                 x = start_x + i * (bar_width + 4)
                 draw.rounded_rectangle(
-                    [x, start_y, x + bar_width, start_y + bar_height],
-                    radius=2,
-                    fill=color + (255,)
+                    [x, start_y, x + bar_width, start_y + bar_height], radius=2, fill=color + (255,)
                 )
 
             photo = ImageTk.PhotoImage(img)
@@ -178,55 +175,51 @@ class LogWindow(ctk.CTk):
                 self._title_label.configure(text_color=self.COLORS['text'])
             if hasattr(self, '_log_source_btn'):
                 self._log_source_btn.configure(
-                    fg_color=self.COLORS['warning'] if self._log_source == 'gcl' else self.COLORS['accent']
+                    fg_color=self.COLORS['warning']
+                    if self._log_source == 'gcl'
+                    else self.COLORS['accent']
                 )
             if hasattr(self, '_min_btn'):
                 self._min_btn.configure(
-                    hover_color=self.COLORS['card_hover'],
-                    text_color=self.COLORS['text_dim']
+                    hover_color=self.COLORS['card_hover'], text_color=self.COLORS['text_dim']
                 )
             if hasattr(self, '_close_btn'):
                 self._close_btn.configure(
-                    hover_color=self.COLORS['error'],
-                    text_color=self.COLORS['text_dim']
+                    hover_color=self.COLORS['error'], text_color=self.COLORS['text_dim']
                 )
 
             if hasattr(self, '_clear_btn'):
                 self._clear_btn.configure(
                     fg_color=self.COLORS['card'],
                     hover_color=self.COLORS['card_hover'],
-                    text_color=self.COLORS['text']
+                    text_color=self.COLORS['text'],
                 )
             if hasattr(self, 'scroll_btn'):
                 self.scroll_btn.configure(
                     fg_color=self.COLORS['card'],
                     hover_color=self.COLORS['card_hover'],
-                    text_color=self.COLORS['text']
+                    text_color=self.COLORS['text'],
                 )
 
             if hasattr(self, '_search_frame'):
                 self._search_frame.configure(fg_color=self.COLORS['card'])
             if hasattr(self, '_search_entry'):
                 self._search_entry.configure(
-                    text_color=self.COLORS['text'],
-                    placeholder_text_color=self.COLORS['text_muted']
+                    text_color=self.COLORS['text'], placeholder_text_color=self.COLORS['text_muted']
                 )
             if hasattr(self, '_search_count_label'):
                 self._search_count_label.configure(text_color=self.COLORS['text_muted'])
             if hasattr(self, '_search_prev_btn'):
                 self._search_prev_btn.configure(
-                    hover_color=self.COLORS['card_hover'],
-                    text_color=self.COLORS['text_dim']
+                    hover_color=self.COLORS['card_hover'], text_color=self.COLORS['text_dim']
                 )
             if hasattr(self, '_search_next_btn'):
                 self._search_next_btn.configure(
-                    hover_color=self.COLORS['card_hover'],
-                    text_color=self.COLORS['text_dim']
+                    hover_color=self.COLORS['card_hover'], text_color=self.COLORS['text_dim']
                 )
             if hasattr(self, '_search_clear_btn'):
                 self._search_clear_btn.configure(
-                    hover_color=self.COLORS['error'],
-                    text_color=self.COLORS['text_dim']
+                    hover_color=self.COLORS['error'], text_color=self.COLORS['text_dim']
                 )
 
             if hasattr(self, '_status_card'):
@@ -238,7 +231,7 @@ class LogWindow(ctk.CTk):
                 self.log_text.configure(
                     text_color=self.COLORS['text'],
                     scrollbar_button_color=self.COLORS['border'],
-                    scrollbar_button_hover_color=self.COLORS['accent']
+                    scrollbar_button_hover_color=self.COLORS['accent'],
                 )
                 tb = self.log_text._textbox
                 tb.tag_configure('time', foreground=self.COLORS['text_muted'])
@@ -279,8 +272,18 @@ class LogWindow(ctk.CTk):
             self._glow_direction = 1
 
         if hasattr(self, '_logo_bars'):
-            colors_start = [(0xff, 0x6b, 0x6b), (0xfe, 0xca, 0x57), (0x48, 0xdb, 0xfb), (0x1d, 0xd1, 0xa1)]
-            colors_end = [(0xf8, 0x71, 0x71), (0xff, 0xb7, 0x4d), (0x22, 0xd3, 0xee), (0x4a, 0xde, 0x80)]
+            colors_start = [
+                (0xFF, 0x6B, 0x6B),
+                (0xFE, 0xCA, 0x57),
+                (0x48, 0xDB, 0xFB),
+                (0x1D, 0xD1, 0xA1),
+            ]
+            colors_end = [
+                (0xF8, 0x71, 0x71),
+                (0xFF, 0xB7, 0x4D),
+                (0x22, 0xD3, 0xEE),
+                (0x4A, 0xDE, 0x80),
+            ]
 
             for i, bar in enumerate(self._logo_bars):
                 phase = (self._glow_intensity + i * 0.25) % 1.0
@@ -305,8 +308,8 @@ class LogWindow(ctk.CTk):
             self._animation_phase = (self._animation_phase + 0.1) % (2 * 3.14159)
             alpha = 0.5 + 0.5 * math.sin(self._animation_phase)
 
-            r = int(0x3f + (0x2e - 0x3f) * alpha)
-            g = int(0xb9 + (0xa0 - 0xb9) * alpha)
+            r = int(0x3F + (0x2E - 0x3F) * alpha)
+            g = int(0xB9 + (0xA0 - 0xB9) * alpha)
             b = int(0x50 + (0x43 - 0x50) * alpha)
             pulse_color = f"#{r:02x}{g:02x}{b:02x}"
 
@@ -353,10 +356,14 @@ class LogWindow(ctk.CTk):
             edge = 's'
 
         cursors = {
-            'nw': 'size_nw_se', 'se': 'size_nw_se',
-            'ne': 'size_ne_sw', 'sw': 'size_ne_sw',
-            'n': 'size_ns', 's': 'size_ns',
-            'w': 'size_we', 'e': 'size_we'
+            'nw': 'size_nw_se',
+            'se': 'size_nw_se',
+            'ne': 'size_ne_sw',
+            'sw': 'size_ne_sw',
+            'n': 'size_ns',
+            's': 'size_ns',
+            'w': 'size_we',
+            'e': 'size_we',
         }
 
         if edge:
@@ -369,7 +376,14 @@ class LogWindow(ctk.CTk):
     def _start_resize(self, e):
         if e.widget != self or not self._resize_edge:
             return
-        self._resize_start = (e.x_root, e.y_root, self.winfo_width(), self.winfo_height(), self.winfo_x(), self.winfo_y())
+        self._resize_start = (
+            e.x_root,
+            e.y_root,
+            self.winfo_width(),
+            self.winfo_height(),
+            self.winfo_x(),
+            self.winfo_y(),
+        )
 
     def _do_resize(self, e):
         if not self._resize_edge or not hasattr(self, '_resize_start'):
@@ -412,9 +426,7 @@ class LogWindow(ctk.CTk):
 
     def _build_titlebar(self, parent):
         self._titlebar = ctk.CTkFrame(
-            parent, height=52,
-            fg_color=self.COLORS['card'],
-            corner_radius=14
+            parent, height=52, fg_color=self.COLORS['card'], corner_radius=14
         )
         self._titlebar.pack(fill="x", pady=(0, 10))
         self._titlebar.pack_propagate(False)
@@ -441,9 +453,10 @@ class LogWindow(ctk.CTk):
             self._logo_bars.append(bar_item)
 
         self._title_label = ctk.CTkLabel(
-            left, text="Luker 日志",
+            left,
+            text="Luker 日志",
             font=ctk.CTkFont(family=self.UI_FONT, size=16, weight="bold"),
-            text_color=self.COLORS['text']
+            text_color=self.COLORS['text'],
         )
         self._title_label.pack(side="left", padx=(14, 0))
         self._title_label.bind('<Button-1>', self._start_drag)
@@ -454,34 +467,43 @@ class LogWindow(ctk.CTk):
 
         # 日志源切换按钮（仅在 GCL 启用时显示）
         self._log_source_btn = ctk.CTkButton(
-            right, text="📊 Luker 日志", width=110, height=32,
+            right,
+            text="📊 Luker 日志",
+            width=110,
+            height=32,
             fg_color=self.COLORS['accent'],
             hover_color=self.COLORS['card_hover'],
             text_color="#ffffff",
             font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
             corner_radius=8,
-            command=self._toggle_log_source
+            command=self._toggle_log_source,
         )
 
         self._min_btn = ctk.CTkButton(
-            right, text="─", width=40, height=32,
+            right,
+            text="─",
+            width=40,
+            height=32,
             fg_color="transparent",
             hover_color=self.COLORS['card_hover'],
             text_color=self.COLORS['text_dim'],
             font=ctk.CTkFont(size=16, weight="bold"),
             corner_radius=8,
-            command=self._on_minimize
+            command=self._on_minimize,
         )
         self._min_btn.pack(side="left", padx=2)
 
         self._close_btn = ctk.CTkButton(
-            right, text="✕", width=40, height=32,
+            right,
+            text="✕",
+            width=40,
+            height=32,
             fg_color="transparent",
             hover_color=self.COLORS['error'],
             text_color=self.COLORS['text_dim'],
             font=ctk.CTkFont(size=15, weight="bold"),
             corner_radius=8,
-            command=self._on_close
+            command=self._on_close,
         )
         self._close_btn.pack(side="left", padx=2)
 
@@ -551,24 +573,30 @@ class LogWindow(ctk.CTk):
         left.pack(side="left")
 
         self._clear_btn = ctk.CTkButton(
-            left, text="🗑️ 清除",
+            left,
+            text="🗑️ 清除",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
             fg_color=self.COLORS['card'],
             hover_color=self.COLORS['card_hover'],
             text_color=self.COLORS['text'],
-            corner_radius=10, width=100, height=40,
-            command=self.clear_logs
+            corner_radius=10,
+            width=100,
+            height=40,
+            command=self.clear_logs,
         )
         self._clear_btn.pack(side="left", padx=(0, 8))
 
         self.scroll_btn = ctk.CTkButton(
-            left, text="📜 自动滚动",
+            left,
+            text="📜 自动滚动",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
             fg_color=self.COLORS['card'],
             hover_color=self.COLORS['card_hover'],
             text_color=self.COLORS['text'],
-            corner_radius=10, width=130, height=40,
-            command=self._toggle_scroll
+            corner_radius=10,
+            width=130,
+            height=40,
+            command=self._toggle_scroll,
         )
         self.scroll_btn.pack(side="left", padx=(0, 8))
 
@@ -580,9 +608,7 @@ class LogWindow(ctk.CTk):
         search_inner.pack(padx=8, pady=4)
 
         ctk.CTkLabel(
-            search_inner, text="🔍",
-            font=ctk.CTkFont(size=14),
-            text_color=self.COLORS['text_muted']
+            search_inner, text="🔍", font=ctk.CTkFont(size=14), text_color=self.COLORS['text_muted']
         ).pack(side="left", padx=(4, 4))
 
         self._search_var = ctk.StringVar()
@@ -598,7 +624,7 @@ class LogWindow(ctk.CTk):
             placeholder_text_color=self.COLORS['text_muted'],
             width=150,
             height=32,
-            textvariable=self._search_var
+            textvariable=self._search_var,
         )
         self._search_entry.pack(side="left")
 
@@ -606,43 +632,53 @@ class LogWindow(ctk.CTk):
         self._search_nav.pack(side="left", padx=(4, 0))
 
         self._search_count_label = ctk.CTkLabel(
-            self._search_nav, text="",
+            self._search_nav,
+            text="",
             font=ctk.CTkFont(family=self.UI_FONT, size=11),
             text_color=self.COLORS['text_muted'],
-            width=50
+            width=50,
         )
         self._search_count_label.pack(side="left")
 
         self._search_prev_btn = ctk.CTkButton(
-            self._search_nav, text="▲", width=24, height=24,
+            self._search_nav,
+            text="▲",
+            width=24,
+            height=24,
             font=ctk.CTkFont(size=10),
             fg_color="transparent",
             hover_color=self.COLORS['card_hover'],
             text_color=self.COLORS['text_dim'],
             corner_radius=4,
-            command=self._search_prev
+            command=self._search_prev,
         )
         self._search_prev_btn.pack(side="left", padx=1)
 
         self._search_next_btn = ctk.CTkButton(
-            self._search_nav, text="▼", width=24, height=24,
+            self._search_nav,
+            text="▼",
+            width=24,
+            height=24,
             font=ctk.CTkFont(size=10),
             fg_color="transparent",
             hover_color=self.COLORS['card_hover'],
             text_color=self.COLORS['text_dim'],
             corner_radius=4,
-            command=self._search_next
+            command=self._search_next,
         )
         self._search_next_btn.pack(side="left", padx=1)
 
         self._search_clear_btn = ctk.CTkButton(
-            self._search_nav, text="✕", width=24, height=24,
+            self._search_nav,
+            text="✕",
+            width=24,
+            height=24,
             font=ctk.CTkFont(size=10),
             fg_color="transparent",
             hover_color=self.COLORS['error'],
             text_color=self.COLORS['text_dim'],
             corner_radius=4,
-            command=self._clear_search
+            command=self._clear_search,
         )
         self._search_clear_btn.pack(side="left", padx=1)
 
@@ -653,51 +689,51 @@ class LogWindow(ctk.CTk):
         right = ctk.CTkFrame(self._toolbar, fg_color="transparent")
         right.pack(side="right")
 
-        self._status_card = ctk.CTkFrame(
-            right, fg_color=self.COLORS['card'], corner_radius=10
-        )
+        self._status_card = ctk.CTkFrame(right, fg_color=self.COLORS['card'], corner_radius=10)
         self._status_card.pack()
 
         inner = ctk.CTkFrame(self._status_card, fg_color="transparent")
         inner.pack(padx=16, pady=10)
 
         self.play_btn = ctk.CTkButton(
-            inner, text="▶", width=36, height=36,
+            inner,
+            text="▶",
+            width=36,
+            height=36,
             font=ctk.CTkFont(size=16),
             fg_color=self.COLORS['success'],
             hover_color="#2ea043",
             text_color="#ffffff",
             corner_radius=18,
-            command=self._toggle_running
+            command=self._toggle_running,
         )
         self.play_btn.pack(side="left", padx=(0, 12))
 
         self.status_dot = ctk.CTkLabel(
-            inner, text="●", font=ctk.CTkFont(size=18),
-            text_color=self.COLORS['error']
+            inner, text="●", font=ctk.CTkFont(size=18), text_color=self.COLORS['error']
         )
         self.status_dot.pack(side="left", padx=(0, 8))
 
         self.status_text = ctk.CTkLabel(
-            inner, text="已停止",
+            inner,
+            text="已停止",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            text_color=self.COLORS['error']
+            text_color=self.COLORS['error'],
         )
         self.status_text.pack(side="left")
 
     def _build_log_area(self, parent):
-        self._log_card = ctk.CTkFrame(
-            parent, fg_color=self.COLORS['card'], corner_radius=14
-        )
+        self._log_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
         self._log_card.pack(fill="both", expand=True, pady=(0, 10))
 
         self.log_text = ctk.CTkTextbox(
-            self._log_card, fg_color="transparent",
+            self._log_card,
+            fg_color="transparent",
             text_color=self.COLORS['text'],
             font=ctk.CTkFont(family=self.MONO_FONT, size=13),
             corner_radius=10,
             scrollbar_button_color=self.COLORS['border'],
-            scrollbar_button_hover_color=self.COLORS['accent']
+            scrollbar_button_hover_color=self.COLORS['accent'],
         )
         self.log_text.pack(fill="both", expand=True, padx=12, pady=12)
 
@@ -713,23 +749,24 @@ class LogWindow(ctk.CTk):
 
     def _build_statusbar(self, parent):
         self._statusbar = ctk.CTkFrame(
-            parent, height=42,
-            fg_color=self.COLORS['card'], corner_radius=10
+            parent, height=42, fg_color=self.COLORS['card'], corner_radius=10
         )
         self._statusbar.pack(fill="x")
         self._statusbar.pack_propagate(False)
 
         self.count_label = ctk.CTkLabel(
-            self._statusbar, text="📝 0 条日志",
+            self._statusbar,
+            text="📝 0 条日志",
             font=ctk.CTkFont(family=self.UI_FONT, size=13),
-            text_color=self.COLORS['text_muted']
+            text_color=self.COLORS['text_muted'],
         )
         self.count_label.pack(side="left", padx=16, pady=10)
 
         self._version_label = ctk.CTkLabel(
-            self._statusbar, text=f"v{APP_VERSION}",
+            self._statusbar,
+            text=f"v{APP_VERSION}",
             font=ctk.CTkFont(family=self.UI_FONT, size=13),
-            text_color=self.COLORS['text_muted']
+            text_color=self.COLORS['text_muted'],
         )
         self._version_label.pack(side="right", padx=16, pady=10)
 
@@ -744,7 +781,12 @@ class LogWindow(ctk.CTk):
             return 'info'
         elif '[启动器]' in line:
             return 'accent'
-        elif 'success' in line_lower or '成功' in line or 'listening' in line_lower or 'compiled' in line_lower:
+        elif (
+            'success' in line_lower
+            or '成功' in line
+            or 'listening' in line_lower
+            or 'compiled' in line_lower
+        ):
             return 'success'
         return 'dim'
 
@@ -813,17 +855,11 @@ class LogWindow(ctk.CTk):
         """切换日志源"""
         if self._log_source == 'luker':
             self._log_source = 'gcl'
-            self._log_source_btn.configure(
-                text="🚀 GCL 日志",
-                fg_color=self.COLORS['warning']
-            )
+            self._log_source_btn.configure(text="🚀 GCL 日志", fg_color=self.COLORS['warning'])
             self._title_label.configure(text="GCL 日志")
         else:
             self._log_source = 'luker'
-            self._log_source_btn.configure(
-                text="📊 Luker 日志",
-                fg_color=self.COLORS['accent']
-            )
+            self._log_source_btn.configure(text="📊 Luker 日志", fg_color=self.COLORS['accent'])
             self._title_label.configure(text="Luker 日志")
 
         self._refresh_log_display()
@@ -867,10 +903,7 @@ class LogWindow(ctk.CTk):
             # 如果当前显示的是 GCL 日志，切换回 Luker 日志
             if self._log_source == 'gcl':
                 self._log_source = 'luker'
-                self._log_source_btn.configure(
-                    text="📊 Luker 日志",
-                    fg_color=self.COLORS['accent']
-                )
+                self._log_source_btn.configure(text="📊 Luker 日志", fg_color=self.COLORS['accent'])
                 self._title_label.configure(text="Luker 日志")
                 self._refresh_log_display()
 
@@ -899,7 +932,10 @@ class LogWindow(ctk.CTk):
 
         lines_before = int(tb.index("end-1c").split(".")[0])
 
-        if self._last_log_timestamp is not None and (now - self._last_log_timestamp).total_seconds() >= 60:
+        if (
+            self._last_log_timestamp is not None
+            and (now - self._last_log_timestamp).total_seconds() >= 60
+        ):
             tb.insert("end", "\n")
             tb.insert("end", "─" * 40 + "\n", "separator")
 
@@ -994,9 +1030,7 @@ class LogWindow(ctk.CTk):
 
     def _toggle_scroll(self):
         self._auto_scroll = not self._auto_scroll
-        self.scroll_btn.configure(
-            text="📜 自动滚动" if self._auto_scroll else "📜 已暂停"
-        )
+        self.scroll_btn.configure(text="📜 自动滚动" if self._auto_scroll else "📜 已暂停")
 
     def _toggle_running(self):
         if self._is_running:
@@ -1011,18 +1045,12 @@ class LogWindow(ctk.CTk):
         if is_running:
             self.status_dot.configure(text_color=self.COLORS['success'])
             self.status_text.configure(text="运行中", text_color=self.COLORS['success'])
-            self.play_btn.configure(
-                text="⏸",
-                fg_color=self.COLORS['error'],
-                hover_color="#da3633"
-            )
+            self.play_btn.configure(text="⏸", fg_color=self.COLORS['error'], hover_color="#da3633")
         else:
             self.status_dot.configure(text_color=self.COLORS['error'])
             self.status_text.configure(text="已停止", text_color=self.COLORS['error'])
             self.play_btn.configure(
-                text="▶",
-                fg_color=self.COLORS['success'],
-                hover_color="#2ea043"
+                text="▶", fg_color=self.COLORS['success'], hover_color="#2ea043"
             )
 
     def show(self) -> None:
@@ -1078,7 +1106,9 @@ class LogWindow(ctk.CTk):
 
         self._clear_search_highlights()
 
-        tb.tag_configure('search_highlight', background=self.COLORS['warning'], foreground='#000000')
+        tb.tag_configure(
+            'search_highlight', background=self.COLORS['warning'], foreground='#000000'
+        )
         tb.tag_configure('search_current', background=self.COLORS['accent'], foreground='#ffffff')
 
         self._search_results = []

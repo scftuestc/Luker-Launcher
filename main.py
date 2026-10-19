@@ -243,7 +243,9 @@ class LukerLauncher:
 
         if active:
             # 如果之前没有 GCL 进程管理器，或者路径变了，需要重新创建
-            if self.gcl_process_manager is None or Path(self.gcl_process_manager.bat_path) != Path(bat_path):
+            if self.gcl_process_manager is None or Path(self.gcl_process_manager.bat_path) != Path(
+                bat_path
+            ):
                 old_manager = self.gcl_process_manager
                 if old_manager and old_manager.is_running:
                     self._run_async(old_manager.stop)
@@ -311,9 +313,11 @@ class LukerLauncher:
             return
 
         self.log_window = LogWindow(
-            on_hide_callback=lambda: self.tray_icon.set_window_visible(False) if self.tray_icon else None,
+            on_hide_callback=lambda: (
+                self.tray_icon.set_window_visible(False) if self.tray_icon else None
+            ),
             on_start=self._on_start,
-            on_stop=self._on_stop
+            on_stop=self._on_stop,
         )
         # 内部警告/错误同步到日志窗口
         app_logging.add_ui_log_sink(self._on_log)
@@ -325,20 +329,27 @@ class LukerLauncher:
         # PWA 模式下禁止 Luker 自己打开浏览器，改由启动器接管
         self._ensure_process_manager()
 
-        self.tray_menu = TrayMenu(self.log_window, {
-            'show_window': self._on_show_window,
-            'hide_window': self._on_hide_window,
-            'start': self._on_start,
-            'stop': self._on_stop,
-            'restart': self._on_restart,
-            'settings': self._on_settings,
-            'open_browser': self._on_open_browser,
-            'gcl_start': self._on_gcl_start,
-            'gcl_stop': self._on_gcl_stop,
-            'exit': self._on_exit,
-        })
+        self.tray_menu = TrayMenu(
+            self.log_window,
+            {
+                'show_window': self._on_show_window,
+                'hide_window': self._on_hide_window,
+                'start': self._on_start,
+                'stop': self._on_stop,
+                'restart': self._on_restart,
+                'settings': self._on_settings,
+                'open_browser': self._on_open_browser,
+                'gcl_start': self._on_gcl_start,
+                'gcl_stop': self._on_gcl_stop,
+                'exit': self._on_exit,
+            },
+        )
 
-        if config.gcl_enabled and config.gcl_bat_path and config.is_valid_gcl_path(config.gcl_bat_path):
+        if (
+            config.gcl_enabled
+            and config.gcl_bat_path
+            and config.is_valid_gcl_path(config.gcl_bat_path)
+        ):
             self.gcl_process_manager = GCLProcessManager(config.gcl_bat_path)
             self.gcl_process_manager.add_log_callback(self._on_gcl_log)
             self.log_window.set_gcl_enabled(True)
@@ -378,6 +389,7 @@ class LukerLauncher:
 
     def _schedule_auto_open_browser(self) -> None:
         """延迟打开浏览器，等待 Luker 服务启动"""
+
         def check_and_open():
             url = config.get_server_url()
             deadline = time.monotonic() + BROWSER_WAIT_TIMEOUT_SECONDS

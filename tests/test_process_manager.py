@@ -16,15 +16,11 @@ class ProcessManagerTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_luker_command_allows_browser_launch(self):
-        manager = ProcessManager(
-            str(self.luker_dir), let_luker_open_browser=True
-        )
+        manager = ProcessManager(str(self.luker_dir), let_luker_open_browser=True)
         self.assertEqual(manager._build_command(), ["node", "server.js"])
 
     def test_luker_command_disables_browser_launch(self):
-        manager = ProcessManager(
-            str(self.luker_dir), let_luker_open_browser=False
-        )
+        manager = ProcessManager(str(self.luker_dir), let_luker_open_browser=False)
         self.assertEqual(
             manager._build_command(),
             ["node", "server.js", "--browserLaunchEnabled", "false"],
@@ -42,9 +38,7 @@ class ProcessManagerTests(unittest.TestCase):
             listener.listen(5)
             port = listener.getsockname()[1]
 
-            manager = ProcessManager(
-                str(self.luker_dir), server_port=port
-            )
+            manager = ProcessManager(str(self.luker_dir), server_port=port)
             manager.add_log_callback(logs.append)
             self.assertFalse(manager.start())
 

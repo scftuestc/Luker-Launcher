@@ -2,7 +2,7 @@
 
 import ctypes
 import logging
-from ctypes import byref, c_int, sizeof, windll, wintypes, Structure, WINFUNCTYPE
+from ctypes import WINFUNCTYPE, Structure, byref, c_int, sizeof, windll, wintypes
 from threading import Event, Lock, Thread, current_thread
 from typing import Callable, Optional
 
@@ -26,7 +26,9 @@ NIF_MESSAGE = 0x01
 NIF_ICON = 0x02
 NIF_TIP = 0x04
 
-WNDPROC = WINFUNCTYPE(wintypes.LPARAM, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+WNDPROC = WINFUNCTYPE(
+    wintypes.LPARAM, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
+)
 
 
 class NOTIFYICONDATA(Structure):
@@ -70,23 +72,17 @@ class MSG(Structure):
 
 # 显式声明 64 位参数/返回值类型，避免 ctypes 默认按 32 位 int 转换
 _user32 = windll.user32
-_user32.DefWindowProcW.argtypes = [
-    wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
-]
+_user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
 _user32.DefWindowProcW.restype = wintypes.LPARAM
 _user32.CreateWindowExW.restype = wintypes.HWND
 _user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
 _user32.RegisterClassW.restype = wintypes.WORD
-_user32.GetMessageW.argtypes = [
-    ctypes.POINTER(MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT
-]
+_user32.GetMessageW.argtypes = [ctypes.POINTER(MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
 _user32.GetMessageW.restype = c_int
 _user32.TranslateMessage.argtypes = [ctypes.POINTER(MSG)]
 _user32.DispatchMessageW.argtypes = [ctypes.POINTER(MSG)]
 _user32.DispatchMessageW.restype = wintypes.LPARAM
-_user32.PostMessageW.argtypes = [
-    wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
-]
+_user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
 _user32.PostMessageW.restype = wintypes.BOOL
 _user32.DestroyWindow.argtypes = [wintypes.HWND]
 _user32.DestroyWindow.restype = wintypes.BOOL
@@ -130,28 +126,33 @@ class TrayIcon:
 
         def draw_rounded_rect(coords, radius, fill):
             x1, y1, x2, y2 = coords
-            if radius * 2 > min(x2-x1, y2-y1):
-                radius = min(x2-x1, y2-y1) // 2
+            if radius * 2 > min(x2 - x1, y2 - y1):
+                radius = min(x2 - x1, y2 - y1) // 2
             if radius < 1:
                 radius = 1
-            draw.rectangle([x1+radius, y1, x2-radius, y2], fill=fill)
-            draw.rectangle([x1, y1+radius, x2, y2-radius], fill=fill)
-            draw.ellipse([x1, y1, x1+radius*2, y1+radius*2], fill=fill)
-            draw.ellipse([x2-radius*2, y1, x2, y1+radius*2], fill=fill)
-            draw.ellipse([x1, y2-radius*2, x1+radius*2, y2], fill=fill)
-            draw.ellipse([x2-radius*2, y2-radius*2, x2, y2], fill=fill)
+            draw.rectangle([x1 + radius, y1, x2 - radius, y2], fill=fill)
+            draw.rectangle([x1, y1 + radius, x2, y2 - radius], fill=fill)
+            draw.ellipse([x1, y1, x1 + radius * 2, y1 + radius * 2], fill=fill)
+            draw.ellipse([x2 - radius * 2, y1, x2, y1 + radius * 2], fill=fill)
+            draw.ellipse([x1, y2 - radius * 2, x1 + radius * 2, y2], fill=fill)
+            draw.ellipse([x2 - radius * 2, y2 - radius * 2, x2, y2], fill=fill)
 
         if self._is_running:
             border_color = '#3fb950'
         else:
             border_color = '#6e7681'
 
-        draw_rounded_rect([margin, margin, size-margin, size-margin], corner_radius, border_color)
+        draw_rounded_rect(
+            [margin, margin, size - margin, size - margin], corner_radius, border_color
+        )
 
         inner_margin = margin + max(1, int(4 * scale))
-        inner_radius = max(1, corner_radius - int(4*scale))
-        draw_rounded_rect([inner_margin, inner_margin, size-inner_margin, size-inner_margin],
-                         inner_radius, '#161b22')
+        inner_radius = max(1, corner_radius - int(4 * scale))
+        draw_rounded_rect(
+            [inner_margin, inner_margin, size - inner_margin, size - inner_margin],
+            inner_radius,
+            '#161b22',
+        )
 
         bar_width = max(2, int(16 * scale))
         bar_height = max(8, int(80 * scale))
@@ -171,8 +172,13 @@ class TrayIcon:
 
             if bar_width >= 4:
                 draw.ellipse([x, y, x + bar_width, y + bar_width], fill=color)
-                draw.rectangle([x, y + bar_width//2, x + bar_width, y + bar_height - bar_width//2], fill=color)
-                draw.ellipse([x, y + bar_height - bar_width, x + bar_width, y + bar_height], fill=color)
+                draw.rectangle(
+                    [x, y + bar_width // 2, x + bar_width, y + bar_height - bar_width // 2],
+                    fill=color,
+                )
+                draw.ellipse(
+                    [x, y + bar_height - bar_width, x + bar_width, y + bar_height], fill=color
+                )
             else:
                 draw.rectangle([x, y, x + bar_width, y + bar_height], fill=color)
 
@@ -375,15 +381,7 @@ class TrayIcon:
                 return
 
             self._hwnd = windll.user32.CreateWindowExW(
-                0,
-                class_name,
-                "Luker Tray",
-                0,
-                0, 0, 0, 0,
-                None,
-                None,
-                hinstance,
-                None
+                0, class_name, "Luker Tray", 0, 0, 0, 0, 0, None, None, hinstance, None
             )
 
             if not self._hwnd:

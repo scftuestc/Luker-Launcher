@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from theme import DEFAULT_THEME, PRESET_THEMES, get_theme_colors as _get_theme_colors
+from theme import DEFAULT_THEME, PRESET_THEMES
+from theme import get_theme_colors as _get_theme_colors
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,7 @@ class Config:
 
     def __init__(self, config_path: Optional[Path] = None):
         self.config_path = (
-            Path(config_path) if config_path is not None
-            else get_app_dir() / self.CONFIG_FILE
+            Path(config_path) if config_path is not None else get_app_dir() / self.CONFIG_FILE
         )
         self._config = self._load_config()
         self._theme_change_callbacks: List[Callable[[Dict[str, str]], None]] = []
