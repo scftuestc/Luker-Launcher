@@ -45,6 +45,21 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 - 🚀 GCL 联动
 - 📁 Luker 安装路径
 
+### 配置文件
+
+大部分选项可以在设置窗口修改；需要手动调整时，编辑 exe 同目录的 `launcher_config.json`：
+
+| 键 | 说明 |
+| :--- | :--- |
+| `luker_path` | Luker 安装目录 |
+| `use_pwa_mode` | 是否使用 PWA 模式 |
+| `theme` | 主题 ID |
+| `gcl_enabled` | 是否启用 GCL |
+| `gcl_bat_path` | GCL 的 `start.bat` 路径 |
+| `gcl_url` | GCL 访问地址 |
+| `pwa_app_id` | Edge PWA App ID（可选） |
+| `pwa_appx_family_name` | 已安装 PWA 的 APPX PackageFamilyName（可选） |
+
 ---
 
 ## ❓ 常见问题
@@ -93,4 +108,4 @@ python -m unittest discover -s tests
 
 ## 📄 License
 
-MIT
+[MIT](LICENSE)

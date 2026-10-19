@@ -3,5 +3,8 @@
   "use_pwa_mode": false,
   "theme": "ocean_cyan",
   "gcl_enabled": false,
-  "gcl_url": "http://127.0.0.1:7861/"
+  "gcl_bat_path": "",
+  "gcl_url": "http://127.0.0.1:7861/",
+  "pwa_app_id": "",
+  "pwa_appx_family_name": ""
 }
