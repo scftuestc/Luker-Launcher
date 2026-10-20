@@ -86,6 +86,8 @@ class LukerLauncher:
         self.tray_menu: TrayMenu | None = None
         self._running = False
         self._process_busy = False  # 防止启停/重启操作重入
+        # 进程操作期间收到的 GCL 配置变更，等操作结束后再应用
+        self._pending_gcl_config: tuple[bool, str | None] | None = None
         self._browser_busy = False  # 防止重复启动 PWA 发现线程
         self._exiting = False  # 退出流程只执行一次
         self._last_status: bool | None = None  # 上一次通知给界面的运行状态
@@ -275,6 +277,13 @@ class LukerLauncher:
         self._process_busy = False
         self._update_status()
 
+        # 操作期间收到过 GCL 配置变更，现在才安全应用
+        pending = self._pending_gcl_config
+        if pending is not None:
+            self._pending_gcl_config = None
+            if not self._exiting:
+                self._apply_gcl_config_change(*pending)
+
     def _do_gcl_action(self, action: Callable[[GCLProcessManager], bool]) -> None:
         """GCL 启停也走统一的忙碌/退出保护。"""
         if self._process_busy or self._exiting:
@@ -348,34 +357,80 @@ class LukerLauncher:
         if self._exiting:
             return
 
+        # 启动/停止是异步的，进行中判断 is_running 可能尚未反映真实状态。
+        # 此时只记录最新配置，等操作结束再由 _finish_process_action 应用。
+        if self._process_busy:
+            self._pending_gcl_config = (enabled, bat_path)
+            return
+
+        self._apply_gcl_config_change(enabled, bat_path)
+
+    def _apply_gcl_config_change(self, enabled: bool, bat_path: str | None) -> None:
+        """在进程空闲时切换 GCL 管理器，旧进程确认停止前不安装新实例。"""
         active = bool(enabled and bat_path and config.is_valid_gcl_path(bat_path))
+        current = self.gcl_process_manager
 
-        if active:
-            # 如果之前没有 GCL 进程管理器，或者路径变了，需要重新创建
-            if self.gcl_process_manager is None or Path(self.gcl_process_manager.bat_path) != Path(
-                bat_path
-            ):
-                old_manager = self.gcl_process_manager
-                if old_manager and old_manager.is_running:
-                    self._run_async(old_manager.stop)
+        new_path = str(bat_path) if active else None
+        current_path = str(current.bat_path) if current is not None else None
+        if active and current_path == new_path:
+            return
+        if not active and current is None:
+            self._sync_gcl_ui(False)
+            return
 
-                self.gcl_process_manager = GCLProcessManager(bat_path)
-                self.gcl_process_manager.add_log_callback(self._on_gcl_log)
+        self._process_busy = True
 
-                if self.log_window:
-                    self._post_ui(lambda: self.log_window.set_gcl_enabled(True))
+        def worker() -> None:
+            try:
+                stopped = current is None or current.stop()
+            except Exception:
+                logger.exception("停止旧 GCL 进程失败")
+                stopped = False
+
+            if stopped:
+                self._post_ui(lambda: self._finish_gcl_config_change(current, new_path, True))
+            else:
+                self._post_ui(lambda: self._finish_gcl_config_change(current, None, False))
+
+        try:
+            self._run_async(worker)
+        except Exception:
+            self._process_busy = False
+            logger.exception("GCL 配置切换线程启动失败")
+            self._sync_gcl_ui(current is not None)
+
+    def _finish_gcl_config_change(
+        self,
+        old_manager: GCLProcessManager | None,
+        new_path: str | None,
+        stopped: bool,
+    ) -> None:
+        """在主线程安装或保留 GCL 管理器，并结束本次进程操作。"""
+        try:
+            if not stopped:
+                self._on_log("[错误] 旧 GCL 进程未停止，已取消配置切换")
+                # 保留旧实例，菜单里仍能看到并重试停止
+                self._sync_gcl_ui(old_manager is not None)
+                return
+
+            if new_path is None:
+                self.gcl_process_manager = None
+                if old_manager is not None:
+                    self._on_log("[启动器] GCL 功能已禁用")
+            else:
+                manager = GCLProcessManager(new_path)
+                manager.add_log_callback(self._on_gcl_log)
+                self.gcl_process_manager = manager
                 self._on_log("[启动器] GCL 功能已启用")
-        else:
-            # 禁用 GCL，或在没有有效路径时不创建管理器
-            old_manager = self.gcl_process_manager
-            self.gcl_process_manager = None
-            if old_manager and old_manager.is_running:
-                self._run_async(old_manager.stop)
 
-            if self.log_window:
-                self._post_ui(lambda: self.log_window.set_gcl_enabled(False))
-            if old_manager is not None:
-                self._on_log("[启动器] GCL 功能已禁用")
+            self._sync_gcl_ui(new_path is not None)
+        finally:
+            self._finish_process_action()
+
+    def _sync_gcl_ui(self, enabled: bool) -> None:
+        """同步日志窗口里的 GCL 控件状态。"""
+        if self.log_window:
+            self._post_ui(lambda: self.log_window.set_gcl_enabled(enabled))
 
     def _on_show_menu(self, x: int, y: int) -> None:
         if self._exiting:
