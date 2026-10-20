@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(2, 2, 0, 0),
-    prodvers=(2, 2, 0, 0),
+    filevers=(2, 3, 0, 0),
+    prodvers=(2, 3, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -17,12 +17,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'Yaoyao'),
             StringStruct('FileDescription', 'Luker Launcher'),
-            StringStruct('FileVersion', '2.2.0.0'),
+            StringStruct('FileVersion', '2.3.0.0'),
             StringStruct('InternalName', 'Luker-Launcher'),
             StringStruct('LegalCopyright', 'Copyright (c) 2026 Yaoyao'),
             StringStruct('OriginalFilename', 'Luker-Launcher.exe'),
             StringStruct('ProductName', 'Luker Launcher'),
-            StringStruct('ProductVersion', '2.2.0.0')
+            StringStruct('ProductVersion', '2.3.0.0')
           ]
         )
       ]

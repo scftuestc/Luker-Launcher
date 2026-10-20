@@ -23,7 +23,7 @@ def get_app_dir() -> Path:
     return Path(__file__).parent
 
 
-APP_VERSION = "2.2"
+APP_VERSION = "2.3"
 
 # Luker 默认端口（与 server.js 的默认配置一致，实际端口以 Luker config.yaml 为准）
 DEFAULT_PORT = 8000
