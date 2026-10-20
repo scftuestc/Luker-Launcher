@@ -3,7 +3,9 @@ import tempfile
 import unittest
 from collections.abc import Callable
 from pathlib import Path
+from threading import Lock
 
+import main
 from main import LukerLauncher
 
 
@@ -42,7 +44,9 @@ class GCLConfigTransitionTests(unittest.TestCase):
         launcher._exiting = False
         launcher._process_busy = False
         launcher._pending_gcl_config = None
-        launcher._ui_queue = queue.Queue()
+        launcher._ui_queue = queue.Queue(maxsize=main.UI_QUEUE_MAXSIZE)
+        launcher._ui_state = {}
+        launcher._ui_lock = Lock()
         launcher._ui_active = True
         launcher.gcl_process_manager = None
         launcher.process_manager = None

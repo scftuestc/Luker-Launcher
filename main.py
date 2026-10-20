@@ -11,7 +11,7 @@ import webbrowser
 from collections.abc import Callable
 from ctypes import windll
 from pathlib import Path
-from threading import Thread
+from threading import Lock, Thread
 
 import customtkinter as ctk
 
@@ -35,6 +35,16 @@ BROWSER_WAIT_TIMEOUT_SECONDS = 30
 BROWSER_WAIT_INTERVAL_SECONDS = 1
 # 后台线程投递的 UI 操作由主线程按此间隔取走
 UI_QUEUE_POLL_MS = 50
+# 普通 UI 事件上限；幂等的界面请求走合并槽，不占这里的容量
+UI_QUEUE_MAXSIZE = 256
+# 每次泵最多执行的普通事件数，避免突发回调长时间占用 Tk 线程
+UI_EVENTS_PER_TICK = 32
+# 合并键：同一键只保留最后一次请求
+UI_KEY_VISIBILITY = "visibility"
+UI_KEY_TRAY_MENU = "tray_menu"
+UI_KEY_SETTINGS = "settings"
+UI_KEY_GCL_UI = "gcl_ui"
+UI_KEY_EXIT = "exit"
 
 
 def setup_dpi_awareness() -> None:
@@ -92,37 +102,75 @@ class LukerLauncher:
         self._exiting = False  # 退出流程只执行一次
         self._last_status: bool | None = None  # 上一次通知给界面的运行状态
         # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
-        self._ui_queue: queue.Queue[Callable[[], None]] = queue.Queue()
+        self._ui_queue: queue.Queue[Callable[[], None]] = queue.Queue(maxsize=UI_QUEUE_MAXSIZE)
+        # 同一合并键的界面请求只保留最后一次，避免托盘连点堆积
+        self._ui_state: dict[str, Callable[[], None]] = {}
+        self._ui_lock = Lock()
         self._ui_active = False
 
         config.add_gcl_change_callback(self._on_gcl_config_change)
 
-    def _post_ui(self, callback: Callable[[], None]) -> None:
-        """从任意线程投递 UI 操作，由 Tk 主线程取出执行。"""
-        self._ui_queue.put(callback)
+    def _post_ui(
+        self,
+        callback: Callable[[], None],
+        coalesce_key: str | None = None,
+    ) -> None:
+        """从任意线程投递 UI 操作；同一 coalesce_key 只保留最后一次。"""
+        if not self._ui_active:
+            return
+
+        if coalesce_key is not None:
+            with self._ui_lock:
+                self._ui_state[coalesce_key] = callback
+            return
+
+        try:
+            self._ui_queue.put_nowait(callback)
+        except queue.Full:
+            logger.warning("UI 事件队列已满，丢弃最旧事件")
+            with contextlib.suppress(queue.Empty):
+                self._ui_queue.get_nowait()
+            with contextlib.suppress(queue.Full):
+                self._ui_queue.put_nowait(callback)
 
     def _pump_ui_queue(self) -> None:
-        """在主线程取出后台线程投递的界面操作并执行。"""
+        """在主线程执行合并后的界面状态和有界事件队列。"""
         if not self._ui_active:
             return
 
         try:
-            while self._ui_active:
+            with self._ui_lock:
+                pending_state = list(self._ui_state.values())
+                self._ui_state.clear()
+
+            for callback in pending_state:
+                if not self._ui_active:
+                    return
+                self._run_ui_callback(callback)
+
+            processed = 0
+            while self._ui_active and processed < UI_EVENTS_PER_TICK:
                 try:
                     callback = self._ui_queue.get_nowait()
                 except queue.Empty:
                     break
-
-                try:
-                    callback()
-                except Exception:
-                    logger.exception("界面操作执行失败")
+                self._run_ui_callback(callback)
+                processed += 1
         finally:
             if self._ui_active and self.log_window:
-                self.log_window.after(UI_QUEUE_POLL_MS, self._pump_ui_queue)
+                # 还有积压时快速续跑，空闲时恢复 50ms 轮询
+                delay = 1 if not self._ui_queue.empty() else UI_QUEUE_POLL_MS
+                self.log_window.after(delay, self._pump_ui_queue)
+
+    @staticmethod
+    def _run_ui_callback(callback: Callable[[], None]) -> None:
+        try:
+            callback()
+        except Exception:
+            logger.exception("界面操作执行失败")
 
     def _on_show_window(self) -> None:
-        self._post_ui(self._show_window)
+        self._post_ui(self._show_window, UI_KEY_VISIBILITY)
 
     def _show_window(self) -> None:
         if self.log_window:
@@ -131,7 +179,7 @@ class LukerLauncher:
             self.tray_icon.set_window_visible(True)
 
     def _on_hide_window(self) -> None:
-        self._post_ui(self._hide_window)
+        self._post_ui(self._hide_window, UI_KEY_VISIBILITY)
 
     def _hide_window(self) -> None:
         if self.log_window:
@@ -207,7 +255,7 @@ class LukerLauncher:
         def worker() -> None:
             for manager in managers:
                 manager.stop()
-            self._post_ui(self._finish_exit)
+            self._post_ui(self._finish_exit, UI_KEY_EXIT)
 
         try:
             self._run_async(worker)
@@ -306,7 +354,7 @@ class LukerLauncher:
     def _on_settings(self) -> None:
         if self._exiting:
             return
-        self._post_ui(self._open_settings_window)
+        self._post_ui(self._open_settings_window, UI_KEY_SETTINGS)
 
     def _on_open_browser(self) -> None:
         """打开浏览器；PWA 发现可能调用 PowerShell，放到后台避免卡住界面。"""
@@ -430,13 +478,19 @@ class LukerLauncher:
     def _sync_gcl_ui(self, enabled: bool) -> None:
         """同步日志窗口里的 GCL 控件状态。"""
         if self.log_window:
-            self._post_ui(lambda: self.log_window.set_gcl_enabled(enabled))
+            self._post_ui(
+                lambda: self.log_window.set_gcl_enabled(enabled),
+                UI_KEY_GCL_UI,
+            )
 
     def _on_show_menu(self, x: int, y: int) -> None:
         if self._exiting:
             return
         # 托盘线程只传坐标，状态读取和菜单显示都回到主线程
-        self._post_ui(lambda: self._show_tray_menu(x, y))
+        self._post_ui(
+            lambda: self._show_tray_menu(x, y),
+            UI_KEY_TRAY_MENU,
+        )
 
     def _show_tray_menu(self, x: int, y: int) -> None:
         if not (self.tray_menu and self.log_window):
