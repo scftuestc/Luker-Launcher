@@ -8,6 +8,14 @@
 
 ---
 
+## 🍀 关于 Luker
+
+[Luker](https://github.com/funnycups/Luker) 是一个面向进阶用户的 LLM 前端，基于 SillyTavern 并保持数据兼容，角色卡、世界书、预设和聊天记录可以直接沿用。项目主页：<https://luker.cups.moe/>。
+
+本仓库只提供 Windows 托盘启动器，不包含 Luker 本体。使用前请先安装 [Luker](https://github.com/funnycups/Luker) 和 Node.js。
+
+---
+
 ## 📥 下载
 
 从 [Releases](../../releases) 下载最新的 `Luker-Launcher.exe`。
@@ -18,7 +26,7 @@
 - 配置文件 `launcher_config.json` 会生成在 exe 同目录
 - 若被 SmartScreen 拦截，点“更多信息” → “仍要运行”
 
-**运行要求**：Windows 10 / 11，已安装 Node.js 和 Luker。
+**运行要求**：Windows 10 / 11，已安装 Node.js 和 [Luker](https://github.com/funnycups/Luker)。
 
 ---
 

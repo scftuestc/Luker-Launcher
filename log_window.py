@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # 每条队列每轮最多处理的日志行数
 MAX_LOG_LINES_PER_CYCLE = 10
-# 等待渲染的日志队列上限，极端刷屏时丢弃最旧的行
+# 等待渲染的日志队列上限，超出条数或字节时丢弃最旧的行
 MAX_LOG_QUEUE_SIZE = 5000
 # 隐藏窗口重放时每批插入的日志条数和让出主线程的间隔
 REPLAY_BATCH_SIZE = 200
@@ -185,6 +185,7 @@ class LogWindow(ctk.CTk):
         self._replay_active = False
         self._replay_entries: list[LogEntry] = []
         self._replay_index = 0
+        # 重放期间到达的当前源日志，等快照插完后再补
         self._replay_tail: deque[LogEntry] = deque(maxlen=MAX_LOG_ENTRIES)
 
         self._build_ui()
@@ -1062,6 +1063,7 @@ class LogWindow(ctk.CTk):
         self._replay_tail.clear()
 
     def _schedule_replay_chunk(self) -> None:
+        """调度下一批重放。"""
         self._replay_job = self.after(REPLAY_YIELD_MS, self._replay_chunk)
 
     def _replay_chunk(self) -> None:
@@ -1089,6 +1091,7 @@ class LogWindow(ctk.CTk):
         self._finish_replay()
 
     def _finish_replay(self) -> None:
+        """结束重放；有搜索词时重建高亮。"""
         self._replay_active = False
         self._replay_entries = []
         self._replay_index = 0
@@ -1401,6 +1404,7 @@ class LogWindow(ctk.CTk):
             pass
 
     def _search_count_text(self, index: int) -> str:
+        """生成“当前/总数”文本，结果被截断时追加 +。"""
         suffix = "+" if self._search_truncated else ""
         return f"{index + 1}/{len(self._search_results)}{suffix}"
 

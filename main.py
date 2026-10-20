@@ -389,6 +389,7 @@ class LukerLauncher:
             webbrowser.open(url)
 
     def _open_settings_window(self) -> None:
+        """打开或聚焦设置窗口；已打开时只置前，不移动。"""
         if self._exiting or not self.log_window:
             return
 
@@ -405,6 +406,7 @@ class LukerLauncher:
         self.settings_window.focus_force()
 
     def _on_settings_closed(self) -> None:
+        """设置窗口销毁后清理引用。"""
         self.settings_window = None
 
     def _on_gcl_start(self) -> None:
@@ -513,6 +515,7 @@ class LukerLauncher:
         if not (self.tray_menu and self.log_window):
             return
 
+        # 记录托盘点击位置，设置窗口按该显示器打开
         self._tray_anchor = (x, y)
         is_running = self.process_manager.is_running if self.process_manager else False
         window_visible = self.log_window.is_visible()

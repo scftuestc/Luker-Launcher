@@ -27,6 +27,8 @@ DISCOVERY_RETRY_SECONDS = 60
 POWERSHELL_TIMEOUT_SECONDS = 10
 
 _discovered_appx: tuple[str, str] | None = None
+# None 表示本次进程还没尝试过发现；不能用 0.0，否则开机不足 60 秒时
+# time.monotonic() 会落在退避窗口内，首次发现会被跳过。
 _discovery_checked_at: float | None = None
 _discovery_lock = Lock()
 

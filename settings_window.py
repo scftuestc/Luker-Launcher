@@ -149,6 +149,7 @@ class SettingsWindow(ctk.CTkToplevel):
                 self._on_close_callback()
 
     def is_alive(self) -> bool:
+        """窗口是否仍存在，供主窗口复用单例前检查。"""
         if self._destroyed:
             return False
         try:
