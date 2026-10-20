@@ -9,6 +9,7 @@ from dpi import (
     clamp_window_position,
     discard_window_scaling,
     fit_logical_window_size,
+    fit_window_with_minimum,
     format_geometry,
 )
 
@@ -52,6 +53,45 @@ class WindowSizeTests(unittest.TestCase):
         monitor = MonitorInfo(0, 0, 1366, 728, 144)
         logical_width, logical_height = fit_logical_window_size(960, 640, monitor, 1.5, margin=24)
         self.assertEqual((logical_width, logical_height), (878, 453))
+
+
+class WindowMinimumTests(unittest.TestCase):
+    def test_minimum_and_window_fit_large_monitor(self):
+        monitor = MonitorInfo(0, 0, 1920, 1040, 96)
+        self.assertEqual(
+            fit_window_with_minimum(960, 640, 700, 450, monitor, 1.0, margin=24),
+            (700, 450, 960, 640),
+        )
+
+    def test_minimum_shrinks_with_window_on_small_monitor(self):
+        monitor = MonitorInfo(0, 0, 1280, 672, 144)
+        min_width, min_height, width, height = fit_window_with_minimum(
+            960, 640, 700, 450, monitor, 1.5, margin=24
+        )
+
+        self.assertEqual((min_width, min_height, width, height), (700, 416, 821, 416))
+        self.assertLessEqual(min_width, width)
+        self.assertLessEqual(min_height, height)
+        self.assertLessEqual(round(height * 1.5) + 48, monitor.height)
+
+    def test_minimum_restores_after_returning_to_large_monitor(self):
+        small = MonitorInfo(0, 0, 1280, 672, 144)
+        _, _, width, height = fit_window_with_minimum(960, 640, 700, 450, small, 1.5, margin=24)
+        large = MonitorInfo(0, 0, 1920, 1040, 96)
+        min_width, min_height, new_width, new_height = fit_window_with_minimum(
+            width, height, 700, 450, large, 1.0, margin=24
+        )
+
+        self.assertEqual((min_width, min_height), (700, 450))
+        self.assertEqual((new_width, new_height), (821, 450))
+
+    def test_extreme_scale_keeps_minimum_inside_work_area(self):
+        monitor = MonitorInfo(0, 0, 800, 600, 192)
+        min_width, min_height, width, height = fit_window_with_minimum(
+            960, 640, 700, 450, monitor, 2.0, margin=24
+        )
+
+        self.assertEqual((min_width, min_height, width, height), (376, 276, 376, 276))
 
 
 class CenterPositionTests(unittest.TestCase):

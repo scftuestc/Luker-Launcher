@@ -18,7 +18,7 @@ from config import APP_VERSION, config
 from dpi import (
     centered_position,
     clamp_window_position,
-    fit_logical_window_size,
+    fit_window_with_minimum,
     format_geometry,
     get_monitor_info,
     sync_window_scaling,
@@ -71,19 +71,30 @@ class LogWindow(ctk.CTk):
         # 按主屏工作区和当前缩放限制初始尺寸，避免 150% 下落入任务栏
         monitor = get_monitor_info()
         scale = sync_window_scaling(self, monitor.scale)
-        logical_width, logical_height = fit_logical_window_size(960, 640, monitor, scale, margin=24)
-        physical_width = round(logical_width * scale)
-        physical_height = round(logical_height * scale)
+        self._desired_min_logical_width = 700
+        self._desired_min_logical_height = 450
+        (
+            self._min_logical_width,
+            self._min_logical_height,
+            self._logical_width,
+            self._logical_height,
+        ) = fit_window_with_minimum(
+            960,
+            640,
+            self._desired_min_logical_width,
+            self._desired_min_logical_height,
+            monitor,
+            scale,
+            margin=24,
+        )
+        physical_width = round(self._logical_width * scale)
+        physical_height = round(self._logical_height * scale)
         x, y = centered_position(physical_width, physical_height, monitor)
-        self.geometry(format_geometry(logical_width, logical_height, x, y))
+        self.geometry(format_geometry(self._logical_width, self._logical_height, x, y))
         # 最小尺寸保存为逻辑值，拖拽时按当前缩放换算
-        self._min_logical_width = min(700, logical_width)
-        self._min_logical_height = min(450, logical_height)
         self.minsize(self._min_logical_width, self._min_logical_height)
         # 防止 CTk 在 DPI 变化后把最大尺寸锁死为当前尺寸
         self.maxsize(10000, 10000)
-        self._logical_width = logical_width
-        self._logical_height = logical_height
         self._monitor_signature = (
             monitor.left,
             monitor.top,
@@ -392,10 +403,18 @@ class LogWindow(ctk.CTk):
 
         self._monitor_signature = signature
         scale = sync_window_scaling(self, monitor.scale)
-        # 使用保存的逻辑尺寸，避免 CTk 自动缩放后的物理尺寸被重复缩小
-        logical_width, logical_height = fit_logical_window_size(
-            max(self._min_logical_width, self._logical_width),
-            max(self._min_logical_height, self._logical_height),
+        # 使用保存的逻辑尺寸，避免 CTk 自动缩放后的物理尺寸被重复缩小。
+        # 最小尺寸也按当前显示器重算，否则旧的 minsize 会阻止窗口缩进工作区。
+        (
+            self._min_logical_width,
+            self._min_logical_height,
+            logical_width,
+            logical_height,
+        ) = fit_window_with_minimum(
+            self._logical_width,
+            self._logical_height,
+            self._desired_min_logical_width,
+            self._desired_min_logical_height,
             monitor,
             scale,
             margin=24,

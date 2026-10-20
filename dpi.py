@@ -160,6 +160,33 @@ def fit_logical_window_size(
     return min(desired_width, available_width), min(desired_height, available_height)
 
 
+def fit_window_with_minimum(
+    desired_width: int,
+    desired_height: int,
+    minimum_width: int,
+    minimum_height: int,
+    monitor: MonitorInfo,
+    scale: float,
+    margin: int = 0,
+) -> tuple[int, int, int, int]:
+    """返回当前显示器上的有效最小尺寸和受限后的窗口尺寸。
+
+    最小尺寸也要受工作区限制，否则从大屏移到小屏时旧的 minsize
+    会把已经缩小到工作区的窗口重新顶大。
+    """
+    min_width, min_height = fit_logical_window_size(
+        minimum_width, minimum_height, monitor, scale, margin
+    )
+    width, height = fit_logical_window_size(
+        max(min_width, desired_width),
+        max(min_height, desired_height),
+        monitor,
+        scale,
+        margin,
+    )
+    return min_width, min_height, width, height
+
+
 def centered_position(
     width: int,
     height: int,
