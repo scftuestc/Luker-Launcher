@@ -21,11 +21,28 @@ class FakeText:
     def tag_raise(self, *args) -> None:
         self.raised.append(args)
 
+    def tag_configure(self, *args, **kwargs) -> None:
+        pass
+
+    def see(self, *args) -> None:
+        pass
+
     def configure(self, **kwargs) -> None:
         pass
 
     def delete(self, start: str, end: str) -> None:
         self.deleted.append((start, end))
+
+
+class SearchText(FakeText):
+    def __init__(self, positions: list[str]) -> None:
+        super().__init__()
+        self._positions = iter(positions)
+        self.search_calls = 0
+
+    def search(self, *args, **kwargs) -> str:
+        self.search_calls += 1
+        return next(self._positions, "")
 
 
 class FakeLabel:
@@ -41,6 +58,9 @@ class SearchAdjustTests(unittest.TestCase):
         self.window = object.__new__(LogWindow)
         self.text = FakeText()
         self.label = FakeLabel()
+        self.window._search_results = []
+        self.window._search_current_index = -1
+        self.window._search_truncated = False
         self.window._get_textbox = lambda: self.text
         self.window._search_count_label = self.label
 
@@ -94,6 +114,38 @@ class DisplayTrimTests(unittest.TestCase):
         self.assertEqual(list(window._display_entry_lines), [1, 1])
         self.assertEqual(list(window._display_entry_bytes), [5, 5])
         self.assertEqual(window._display_bytes, 10)
+
+
+class SearchLimitTests(unittest.TestCase):
+    def _run_search(self, positions: list[str]):
+        window = object.__new__(LogWindow)
+        text = SearchText(positions)
+        window._get_textbox = lambda: text
+        window._search_results = []
+        window._search_current_index = -1
+        window._search_truncated = False
+        window._search_count_label = FakeLabel()
+        window.COLORS = {'warning': '#ffffff', 'accent': '#000000'}
+
+        with patch.object(log_window, "MAX_SEARCH_RESULTS", 3):
+            window._perform_search("x")
+        return window, text
+
+    def test_stops_at_limit_and_marks_truncated(self):
+        window, text = self._run_search(["1.0", "1.1", "1.2", "1.3"])
+
+        self.assertEqual(len(window._search_results), 3)
+        self.assertTrue(window._search_truncated)
+        self.assertEqual(window._search_count_label.text, "1/3+")
+        self.assertEqual(text.search_calls, 4)
+
+    def test_exact_limit_is_not_truncated(self):
+        window, text = self._run_search(["1.0", "1.1", "1.2"])
+
+        self.assertEqual(len(window._search_results), 3)
+        self.assertFalse(window._search_truncated)
+        self.assertEqual(window._search_count_label.text, "1/3")
+        self.assertEqual(text.search_calls, 4)
 
 
 if __name__ == "__main__":

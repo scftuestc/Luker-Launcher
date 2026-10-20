@@ -5,11 +5,11 @@ import datetime
 import logging
 import math
 import os
-import queue
 import tkinter as tk
 from collections import deque
 from collections.abc import Callable, Sequence
 from ctypes import windll
+from threading import Lock
 from types import TracebackType
 
 import customtkinter as ctk
@@ -37,6 +37,51 @@ REPLAY_BATCH_SIZE = 200
 REPLAY_YIELD_MS = 1
 # 搜索输入防抖时间（毫秒）
 SEARCH_DEBOUNCE_MS = 250
+# 单次搜索最多保留的结果和标签数，避免短查询生成无上限的标签范围
+MAX_SEARCH_RESULTS = 5000
+
+
+class BoundedLogQueue:
+    """线程安全的日志行队列，同时限制行数和 UTF-8 字节数。"""
+
+    def __init__(self, max_lines: int, max_bytes: int) -> None:
+        self._items: deque[tuple[str, int]] = deque()
+        self._bytes = 0
+        self._max_lines = max_lines
+        self._max_bytes = max_bytes
+        self._lock = Lock()
+
+    @staticmethod
+    def _size(line: str) -> int:
+        return len(line.encode("utf-8", errors="replace"))
+
+    def put(self, line: str) -> None:
+        size = self._size(line)
+        with self._lock:
+            self._items.append((line, size))
+            self._bytes += size
+            while self._items and (
+                len(self._items) > self._max_lines or self._bytes > self._max_bytes
+            ):
+                _, removed_size = self._items.popleft()
+                self._bytes -= removed_size
+
+    def get_nowait(self) -> str | None:
+        with self._lock:
+            if not self._items:
+                return None
+            line, size = self._items.popleft()
+            self._bytes -= size
+            return line
+
+    def empty(self) -> bool:
+        with self._lock:
+            return not self._items
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+            self._bytes = 0
 
 
 class LogWindow(ctk.CTk):
@@ -148,8 +193,8 @@ class LogWindow(ctk.CTk):
         self._is_running = False
         self._last_log_timestamp: datetime.datetime | None = None
 
-        self.log_queue: queue.Queue[str] = queue.Queue(maxsize=MAX_LOG_QUEUE_SIZE)
-        self.gcl_log_queue: queue.Queue[str] = queue.Queue(maxsize=MAX_LOG_QUEUE_SIZE)
+        self.log_queue: BoundedLogQueue = BoundedLogQueue(MAX_LOG_QUEUE_SIZE, MAX_LOG_BYTES)
+        self.gcl_log_queue: BoundedLogQueue = BoundedLogQueue(MAX_LOG_QUEUE_SIZE, MAX_LOG_BYTES)
 
         self._process_logs()
 
@@ -823,6 +868,7 @@ class LogWindow(ctk.CTk):
 
         self._search_results: list[tuple[str, str]] = []
         self._search_current_index = -1
+        self._search_truncated = False
         self._search_nav.pack_forget()
 
         right = ctk.CTkFrame(self._toolbar, fg_color="transparent")
@@ -935,15 +981,9 @@ class LogWindow(ctk.CTk):
             return 'success'
         return 'dim'
 
-    def _enqueue_log(self, log_queue: queue.Queue[str], line: str) -> None:
-        """入队；队列满时丢掉最旧的一行，避免极端刷屏时内存无限增长。"""
-        try:
-            log_queue.put_nowait(line)
-        except queue.Full:
-            with contextlib.suppress(queue.Empty):
-                log_queue.get_nowait()
-            with contextlib.suppress(queue.Full):
-                log_queue.put_nowait(line)
+    def _enqueue_log(self, log_queue: BoundedLogQueue, line: str) -> None:
+        """入队；超出限行或限字节时由队列丢弃最旧的一行。"""
+        log_queue.put(line)
 
     def add_log(self, line: str) -> None:
         """添加 Luker 日志。"""
@@ -955,16 +995,15 @@ class LogWindow(ctk.CTk):
 
     def _drain_log_queue(
         self,
-        log_queue: queue.Queue[str],
+        log_queue: BoundedLogQueue,
         log_store: LogStore,
         source: str,
     ) -> None:
         """从队列取一批日志写入存储；仅当前日志源且窗口可见时渲染。"""
         entries = []
         for _ in range(MAX_LOG_LINES_PER_CYCLE):
-            try:
-                line = log_queue.get_nowait()
-            except queue.Empty:
+            line = log_queue.get_nowait()
+            if line is None:
                 break
 
             entry = log_store.append(line)
@@ -1204,7 +1243,7 @@ class LogWindow(ctk.CTk):
             tb.tag_raise('search_current')
 
             self._search_count_label.configure(
-                text=f"{self._search_current_index + 1}/{len(adjusted)}"
+                text=self._search_count_text(self._search_current_index)
             )
         else:
             self._search_current_index = -1
@@ -1226,11 +1265,7 @@ class LogWindow(ctk.CTk):
 
         # 丢弃尚未处理的日志，避免清除后旧日志又冒出来
         for log_queue in (self.log_queue, self.gcl_log_queue):
-            while True:
-                try:
-                    log_queue.get_nowait()
-                except queue.Empty:
-                    break
+            log_queue.clear()
 
         self._last_log_timestamp = None
         self._display_dirty = False
@@ -1311,6 +1346,7 @@ class LogWindow(ctk.CTk):
         self._clear_search_highlights()
         self._search_results = []
         self._search_current_index = -1
+        self._search_truncated = False
         self._search_nav.pack_forget()
         self._search_count_label.configure(text="")
 
@@ -1326,9 +1362,10 @@ class LogWindow(ctk.CTk):
         tb.tag_configure('search_current', background=self.COLORS['accent'], foreground='#ffffff')
 
         self._search_results = []
+        self._search_truncated = False
         start_pos = "1.0"
 
-        while True:
+        while len(self._search_results) < MAX_SEARCH_RESULTS:
             pos = tb.search(search_text, start_pos, stopindex="end", nocase=True)
             if not pos:
                 break
@@ -1340,11 +1377,16 @@ class LogWindow(ctk.CTk):
 
             start_pos = end_pos
 
+        if len(self._search_results) >= MAX_SEARCH_RESULTS:
+            # 达到上限后再看一眼是否还有匹配，用于显示截断标记
+            self._search_truncated = bool(
+                tb.search(search_text, start_pos, stopindex="end", nocase=True)
+            )
+
         count = len(self._search_results)
         if count > 0:
             self._search_current_index = 0
             self._highlight_current_result()
-            self._search_count_label.configure(text=f"{1}/{count}")
         else:
             self._search_current_index = -1
             self._search_count_label.configure(text="0/0")
@@ -1357,6 +1399,10 @@ class LogWindow(ctk.CTk):
             tb.tag_remove('search_current', "1.0", "end")
         except tk.TclError:
             pass
+
+    def _search_count_text(self, index: int) -> str:
+        suffix = "+" if self._search_truncated else ""
+        return f"{index + 1}/{len(self._search_results)}{suffix}"
 
     def _highlight_current_result(self) -> None:
         """高亮当前选中的搜索结果"""
@@ -1376,9 +1422,7 @@ class LogWindow(ctk.CTk):
 
         tb.see(pos)
 
-        self._search_count_label.configure(
-            text=f"{self._search_current_index + 1}/{len(self._search_results)}"
-        )
+        self._search_count_label.configure(text=self._search_count_text(self._search_current_index))
 
     def _search_next(self) -> None:
         """跳转到下一个搜索结果"""

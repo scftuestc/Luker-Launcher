@@ -1,11 +1,10 @@
-import queue
 import unittest
 from collections import deque
 from unittest.mock import patch
 
 import log_window
 from log_store import MAX_LOG_ENTRIES, LogStore
-from log_window import LogWindow
+from log_window import BoundedLogQueue, LogWindow
 
 
 class FakeVar:
@@ -113,7 +112,7 @@ class ReplayTests(unittest.TestCase):
     def test_live_logs_wait_in_tail_during_replay(self):
         window, batches, after_calls, _cancel_calls = self._make_window(["old"])
         window._refresh_log_display()
-        pending = queue.Queue()
+        pending = BoundedLogQueue(max_lines=10, max_bytes=100)
         pending.put("live")
 
         window._drain_log_queue(pending, window._luker_store, "luker")
