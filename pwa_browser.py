@@ -8,6 +8,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
+from threading import Lock
 
 from config import config
 
@@ -26,7 +27,8 @@ DISCOVERY_RETRY_SECONDS = 60
 POWERSHELL_TIMEOUT_SECONDS = 10
 
 _discovered_appx: tuple[str, str] | None = None
-_discovery_checked_at = 0.0
+_discovery_checked_at: float | None = None
+_discovery_lock = Lock()
 
 
 def find_edge_path() -> str | None:
@@ -111,60 +113,71 @@ def discover_luker_appx() -> tuple[str, str] | None:
     global _discovered_appx, _discovery_checked_at
     if _discovered_appx:
         return _discovered_appx
-    # 退避期内直接返回，避免反复启动 PowerShell
-    if time.monotonic() - _discovery_checked_at < DISCOVERY_RETRY_SECONDS:
-        return None
-    _discovery_checked_at = time.monotonic()
 
-    try:
-        result = subprocess.run(
-            [
-                "powershell",
-                "-Command",
-                "Get-AppxPackage -Name '127.0.0.1-*' | "
-                "Select-Object Name, PackageFamilyName, InstallLocation | ConvertTo-Json -Compress",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=POWERSHELL_TIMEOUT_SECONDS,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        output = result.stdout.strip()
-        if not output:
-            return None
-
-        packages = json.loads(output)
-        # 只有一个结果时 ConvertTo-Json 返回对象而非数组
-        if isinstance(packages, dict):
-            packages = [packages]
-
-        for pkg in packages:
-            install_location = pkg.get('InstallLocation')
-            family_name = pkg.get('PackageFamilyName')
-            if not install_location or not family_name:
-                continue
-
-            manifest_path = Path(install_location) / "AppxManifest.xml"
-            try:
-                manifest = manifest_path.read_text(encoding='utf-8')
-            except Exception:
-                continue
-
-            # 匹配 <DisplayName>Luker</DisplayName> 或 DisplayName="Luker"
-            if not re.search(r'DisplayName[">]\s*Luker\s*[<"]', manifest, re.IGNORECASE):
-                continue
-
-            app_id_match = re.search(r'<Application[^>]*\sId="([^"]+)"', manifest)
-            app_id = app_id_match.group(1) if app_id_match else DEFAULT_APPX_APP_ID
-
-            _discovered_appx = (family_name, app_id)
-            logger.info("自动发现 Luker APPX 包: %s", family_name)
+    # 自动打开和手动打开可能同时触发，锁避免重复启动 PowerShell
+    with _discovery_lock:
+        if _discovered_appx:
             return _discovered_appx
 
-    except Exception as e:
-        logger.warning("自动发现 APPX 包失败: %s", e)
+        now = time.monotonic()
+        if (
+            _discovery_checked_at is not None
+            and now - _discovery_checked_at < DISCOVERY_RETRY_SECONDS
+        ):
+            return None
+        # 失败也从本次尝试开始退避，避免异常环境下反复查询
+        _discovery_checked_at = now
 
-    return None
+        try:
+            result = subprocess.run(
+                [
+                    "powershell",
+                    "-Command",
+                    "Get-AppxPackage -Name '127.0.0.1-*' | "
+                    "Select-Object Name, PackageFamilyName, InstallLocation | "
+                    "ConvertTo-Json -Compress",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=POWERSHELL_TIMEOUT_SECONDS,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            output = result.stdout.strip()
+            if not output:
+                return None
+
+            packages = json.loads(output)
+            # 只有一个结果时 ConvertTo-Json 返回对象而非数组
+            if isinstance(packages, dict):
+                packages = [packages]
+
+            for pkg in packages:
+                install_location = pkg.get('InstallLocation')
+                family_name = pkg.get('PackageFamilyName')
+                if not install_location or not family_name:
+                    continue
+
+                manifest_path = Path(install_location) / "AppxManifest.xml"
+                try:
+                    manifest = manifest_path.read_text(encoding='utf-8')
+                except Exception:
+                    continue
+
+                # 匹配 <DisplayName>Luker</DisplayName> 或 DisplayName="Luker"
+                if not re.search(r'DisplayName[">]\s*Luker\s*[<"]', manifest, re.IGNORECASE):
+                    continue
+
+                app_id_match = re.search(r'<Application[^>]*\sId="([^"]+)"', manifest)
+                app_id = app_id_match.group(1) if app_id_match else DEFAULT_APPX_APP_ID
+
+                _discovered_appx = (family_name, app_id)
+                logger.info("自动发现 Luker APPX 包: %s", family_name)
+                return _discovered_appx
+
+        except Exception as e:
+            logger.warning("自动发现 APPX 包失败: %s", e)
+
+        return None
 
 
 def open_as_appx(family_name: str, app_id: str = DEFAULT_APPX_APP_ID) -> bool:

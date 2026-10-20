@@ -658,7 +658,8 @@ class LukerLauncher:
 
                 if ready:
                     self._on_log("[启动器] 检测到 Luker 已启动，正在打开 PWA 浏览器...")
-                    self._open_browser_now()
+                    # 回到主线程复用 _browser_busy，避免自动和手动同时打开
+                    self._post_ui(self._on_open_browser)
                     return
 
                 time.sleep(BROWSER_WAIT_INTERVAL_SECONDS)
