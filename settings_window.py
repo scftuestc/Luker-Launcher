@@ -1,7 +1,9 @@
 """设置窗口。"""
 
+import contextlib
 import logging
 import tkinter as tk
+from collections.abc import Callable
 from ctypes import windll
 
 import customtkinter as ctk
@@ -22,14 +24,41 @@ from win_utils import apply_blur, get_mono_font, get_ui_font
 
 logger = logging.getLogger(__name__)
 
+# CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
+# 旧控件树会被 root 的绑定脚本一直引用。
+_SCROLL_BINDING_SEQUENCES = (
+    "<MouseWheel>",
+    "<KeyPress-Shift_L>",
+    "<KeyPress-Shift_R>",
+    "<KeyRelease-Shift_L>",
+    "<KeyRelease-Shift_R>",
+)
+
+
+def clear_scroll_bindings(widget: tk.Misc) -> None:
+    """清除 CTkScrollableFrame 留在 root 上的全局绑定。
+
+    应用同时只保留一个设置窗口，重建前清空这些序列，再由新的滚动区域
+    重新注册；如果以后新增其他滚动容器，需要改为按实例移除。
+    """
+    for sequence in _SCROLL_BINDING_SEQUENCES:
+        with contextlib.suppress(tk.TclError):
+            widget.tk.call("bind", "all", sequence, "")
+
 
 class SettingsWindow(ctk.CTkToplevel):
     """设置窗口：主题、PWA 模式、GCL 和 Luker 路径。"""
 
-    def __init__(self, parent: tk.Misc) -> None:
+    def __init__(
+        self,
+        parent: tk.Misc,
+        anchor_point: tuple[int, int] | None = None,
+        on_close: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__(parent)
 
         self._destroyed = False
+        self._on_close_callback = on_close
 
         self.COLORS = config.get_theme_colors()
         self.UI_FONT = get_ui_font()
@@ -37,8 +66,12 @@ class SettingsWindow(ctk.CTkToplevel):
         self.title("设置")
         self.resizable(False, False)
 
-        # 跟随父窗口所在显示器，并在工作区内居中
-        monitor = get_monitor_info(hwnd=parent.winfo_id())
+        # 托盘打开时跟随点击所在显示器；其他入口回退到父窗口显示器
+        monitor = (
+            get_monitor_info(point=anchor_point)
+            if anchor_point is not None
+            else get_monitor_info(hwnd=parent.winfo_id())
+        )
         scale = sync_window_scaling(self, monitor.scale)
         logical_width, logical_height = fit_logical_window_size(600, 720, monitor, scale, margin=16)
         # 高度不足时由窗口内部的滚动区域承载
@@ -111,6 +144,17 @@ class SettingsWindow(ctk.CTkToplevel):
             self._destroyed = True
             config.remove_theme_change_callback(self._on_theme_change)
             discard_window_scaling(self)
+            clear_scroll_bindings(self)
+            if self._on_close_callback is not None:
+                self._on_close_callback()
+
+    def is_alive(self) -> bool:
+        if self._destroyed:
+            return False
+        try:
+            return bool(self.winfo_exists())
+        except tk.TclError:
+            return False
 
     def _setup_blur(self) -> None:
         try:
@@ -295,6 +339,7 @@ class SettingsWindow(ctk.CTkToplevel):
         for child in self.winfo_children():
             child.destroy()
 
+        clear_scroll_bindings(self)
         self._build_ui()
         self.configure(fg_color=self.COLORS['bg'])
         self._setup_blur()

@@ -107,6 +107,9 @@ class LukerLauncher:
         self._ui_state: dict[str, Callable[[], None]] = {}
         self._ui_lock = Lock()
         self._ui_active = False
+        # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
+        self._tray_anchor: tuple[int, int] | None = None
+        self.settings_window: SettingsWindow | None = None
 
         config.add_gcl_change_callback(self._on_gcl_config_change)
 
@@ -386,9 +389,23 @@ class LukerLauncher:
             webbrowser.open(url)
 
     def _open_settings_window(self) -> None:
-        if self.log_window:
-            settings_win = SettingsWindow(self.log_window)
-            settings_win.focus_force()
+        if self._exiting or not self.log_window:
+            return
+
+        window = self.settings_window
+        if window is not None and window.is_alive():
+            window.focus_force()
+            return
+
+        self.settings_window = SettingsWindow(
+            self.log_window,
+            anchor_point=self._tray_anchor,
+            on_close=self._on_settings_closed,
+        )
+        self.settings_window.focus_force()
+
+    def _on_settings_closed(self) -> None:
+        self.settings_window = None
 
     def _on_gcl_start(self) -> None:
         self._do_gcl_action(lambda manager: manager.start())
@@ -496,6 +513,7 @@ class LukerLauncher:
         if not (self.tray_menu and self.log_window):
             return
 
+        self._tray_anchor = (x, y)
         is_running = self.process_manager.is_running if self.process_manager else False
         window_visible = self.log_window.is_visible()
         gcl_enabled = self.gcl_process_manager is not None
