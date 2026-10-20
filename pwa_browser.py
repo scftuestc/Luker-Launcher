@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 # AppxManifest.xml 未声明 Application Id 时的默认值
 DEFAULT_APPX_APP_ID = "App"
 
+# PackageFamilyName 形如 Name_PublisherId，PublisherId 为 13 位字母数字。
+# 白名单同时保证值可以安全嵌入 PowerShell 单引号字符串。
+APPX_FAMILY_NAME_PATTERN = re.compile(r"^[A-Za-z0-9.-]+_[A-Za-z0-9]{13}$")
+
 # 自动发现失败后的重试间隔；成功结果永久缓存，失败按此间隔退避
 DISCOVERY_RETRY_SECONDS = 60
 # PowerShell 查询超时，避免异常环境下无限挂起
@@ -66,9 +70,18 @@ def is_pwa_installed(app_id: str) -> bool:
     return False
 
 
+def is_valid_appx_family_name(family_name: str) -> bool:
+    """校验 APPX PackageFamilyName 的格式，避免拼接进 PowerShell 命令。"""
+    return bool(APPX_FAMILY_NAME_PATTERN.fullmatch(family_name.strip()))
+
+
 def is_appx_installed(family_name: str) -> bool:
     """通过 PowerShell 查询指定 APPX 包是否已安装。"""
-    package_name = family_name.split('_')[0]
+    if not is_valid_appx_family_name(family_name):
+        logger.warning("APPX 包族名格式无效: %r", family_name)
+        return False
+
+    package_name = family_name.strip().split('_', 1)[0]
     try:
         command = (
             f"Get-AppxPackage -Name '{package_name}' | "
@@ -179,9 +192,12 @@ def open_as_pwa(url: str | None = None) -> bool:
     # 优先使用配置文件中手动指定的 APPX 包
     configured_family = config.pwa_appx_family_name
     if configured_family:
-        if is_appx_installed(configured_family):
+        family_name = configured_family.strip()
+        if not is_valid_appx_family_name(family_name):
+            logger.warning("配置的 APPX 包族名格式无效，已跳过: %s", configured_family)
+        elif is_appx_installed(family_name):
             logger.info("使用配置文件中指定的 APPX 包")
-            if open_as_appx(configured_family):
+            if open_as_appx(family_name):
                 return True
             logger.warning("配置的 APPX 启动失败，尝试其他方式")
         else:
