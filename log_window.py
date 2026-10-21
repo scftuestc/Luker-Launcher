@@ -1,7 +1,6 @@
 """主日志窗口：日志渲染、搜索和主题切换。"""
 
 import contextlib
-import datetime
 import logging
 import math
 import os
@@ -22,10 +21,10 @@ from dpi import (
     get_monitor_info,
     sync_window_scaling,
 )
+from log_display import LogDisplay
 from log_queue import BoundedLogQueue
 from log_search import LogSearch
 from log_store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry, LogStore
-from log_tags import get_tag_for_line
 from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
 from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
 
@@ -129,10 +128,6 @@ class LogWindow(ctk.CTk):
         # 分别存储两个日志源的历史记录，容量由 LogStore 统一限制
         self._luker_store = LogStore()
         self._gcl_store = LogStore()
-        # 日志窗口中每条日志占用的行数，用于裁剪旧日志时同步删除文本
-        self._display_entry_lines: deque[int] = deque()
-        self._display_entry_bytes: deque[int] = deque()
-        self._display_bytes = 0
         self._display_dirty = False
         self._search_job: str | None = None
         # 隐藏窗口重新显示时按批插入历史，避免一次性阻塞 Tk 线程
@@ -148,7 +143,6 @@ class LogWindow(ctk.CTk):
 
         self._auto_scroll = True
         self._is_running = False
-        self._last_log_timestamp: datetime.datetime | None = None
 
         self.log_queue: BoundedLogQueue = BoundedLogQueue(MAX_LOG_QUEUE_SIZE, MAX_LOG_BYTES)
         self.gcl_log_queue: BoundedLogQueue = BoundedLogQueue(MAX_LOG_QUEUE_SIZE, MAX_LOG_BYTES)
@@ -519,6 +513,7 @@ class LogWindow(ctk.CTk):
             self._search_nav,
             lambda: self.COLORS,
         )
+        self._display = LogDisplay(self._get_textbox, self.count_label)
 
     def _build_titlebar(self, parent: tk.Misc) -> None:
         self._titlebar = ctk.CTkFrame(
@@ -864,10 +859,6 @@ class LogWindow(ctk.CTk):
         )
         self._version_label.pack(side="right", padx=16, pady=10)
 
-    def _get_tag_for_line(self, line: str) -> str:
-        """按日志内容选择颜色标签。"""
-        return get_tag_for_line(line)
-
     def _enqueue_log(self, log_queue: BoundedLogQueue, line: str) -> None:
         """入队；超出限行或限字节时由队列丢弃最旧的一行。"""
         log_queue.put(line)
@@ -999,17 +990,13 @@ class LogWindow(ctk.CTk):
         tb.delete("1.0", "end")
         tb.configure(state="disabled")
 
-        self._display_entry_lines.clear()
-        self._display_entry_bytes.clear()
-        self._display_bytes = 0
-        self._last_log_timestamp = None
+        self._display.reset()
         self._display_dirty = False
 
         # 只重放当前日志源，容量由 LogStore 限制
         store = self._luker_store if self._log_source == 'luker' else self._gcl_store
         logs = store.snapshot()
         if not logs:
-            self.count_label.configure(text="📝 0 条日志")
             if self._search_var.get().strip():
                 self._run_search()
             return
@@ -1033,70 +1020,10 @@ class LogWindow(ctk.CTk):
                 self._refresh_log_display()
 
     def _add_log_lines(self, entries: Sequence[LogEntry]) -> None:
-        """批量插入日志，减少 Text 控件的状态切换和计数刷新次数。"""
-        if not entries:
-            return
-
-        tb = self._get_textbox()
-        tb.configure(state="normal")
-        for entry in entries:
-            self._insert_log_entry(tb, entry.text, entry.timestamp)
-
-        if self._auto_scroll:
-            tb.see("end")
-        tb.configure(state="disabled")
-
-        self._trim_display()
-        self.count_label.configure(text=f"📝 {len(self._display_entry_lines)} 条日志")
-
-    def _insert_log_entry(self, tb: tk.Text, text: str, timestamp: datetime.datetime) -> None:
-        """插入一条日志，并记录它占用的行数供裁剪时同步删除。"""
-        now = timestamp
-        ts = now.strftime("%H:%M:%S")
-        tag = self._get_tag_for_line(text)
-
-        lines_before = int(tb.index("end-1c").split(".")[0])
-
-        if (
-            self._last_log_timestamp is not None
-            and (now - self._last_log_timestamp).total_seconds() >= 60
-        ):
-            tb.insert("end", "\n")
-            tb.insert("end", "─" * 40 + "\n", "separator")
-
-        self._last_log_timestamp = now
-
-        tb.insert("end", f"[{ts}] ", "time")
-        tb.insert("end", f"{text}\n", tag)
-
-        lines_after = int(tb.index("end-1c").split(".")[0])
-        self._display_entry_lines.append(lines_after - lines_before)
-        self._display_entry_bytes.append(len(text.encode("utf-8", errors="replace")))
-        self._display_bytes += self._display_entry_bytes[-1]
-
-    def _trim_display(self) -> None:
-        """超过条数或字节上限时从 Text 头部删除最旧的日志。"""
-        if (
-            len(self._display_entry_lines) <= MAX_LOG_ENTRIES
-            and self._display_bytes <= MAX_LOG_BYTES
-        ):
-            return
-
-        removed_lines = 0
-        while self._display_entry_lines and (
-            len(self._display_entry_lines) > MAX_LOG_ENTRIES or self._display_bytes > MAX_LOG_BYTES
-        ):
-            removed_lines += self._display_entry_lines.popleft()
-            self._display_bytes -= self._display_entry_bytes.popleft()
-
-        if removed_lines <= 0:
-            return
-
-        tb = self._get_textbox()
-        tb.configure(state="normal")
-        tb.delete("1.0", f"{removed_lines + 1}.0")
-        tb.configure(state="disabled")
-        self._adjust_search_positions(removed_lines)
+        """批量插入日志，并在裁剪后同步搜索结果位置。"""
+        removed_lines = self._display.add_entries(entries, auto_scroll=self._auto_scroll)
+        if removed_lines:
+            self._search.adjust(removed_lines)
 
     def clear_logs(self) -> None:
         self._cancel_replay()
@@ -1108,17 +1035,13 @@ class LogWindow(ctk.CTk):
         # 同步清空底层存储，否则切换日志源后已清除的内容会重新出现
         self._luker_store.clear()
         self._gcl_store.clear()
-        self._display_entry_lines.clear()
-        self._display_entry_bytes.clear()
-        self._display_bytes = 0
+        self._display.reset()
 
         # 丢弃尚未处理的日志，避免清除后旧日志又冒出来
         for log_queue in (self.log_queue, self.gcl_log_queue):
             log_queue.clear()
 
-        self._last_log_timestamp = None
         self._display_dirty = False
-        self.count_label.configure(text="📝 0 条日志")
 
         self._clear_search()
 

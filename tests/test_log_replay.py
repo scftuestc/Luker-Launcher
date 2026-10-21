@@ -3,6 +3,7 @@ from collections import deque
 from unittest.mock import patch
 
 import log_window
+from log_display import LogDisplay
 from log_queue import BoundedLogQueue
 from log_search import LogSearch
 from log_store import MAX_LOG_ENTRIES, LogStore
@@ -64,10 +65,7 @@ class ReplayTests(unittest.TestCase):
         for line in lines:
             window._luker_store.append(line)
         window._log_source = "luker"
-        window._display_entry_lines = deque()
-        window._display_entry_bytes = deque()
-        window._display_bytes = 0
-        window._last_log_timestamp = None
+        window._display = LogDisplay(lambda: FakeText(), FakeLabel())
         window._display_dirty = True
         window._replay_job = None
         window._replay_active = False

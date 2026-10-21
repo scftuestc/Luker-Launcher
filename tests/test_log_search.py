@@ -2,10 +2,10 @@ import unittest
 from collections import deque
 from unittest.mock import patch
 
+import log_display
 import log_search
-import log_window
+from log_display import LogDisplay
 from log_search import LogSearch
-from log_window import LogWindow
 
 
 class FakeText:
@@ -112,19 +112,19 @@ class SearchAdjustTests(unittest.TestCase):
 
 class DisplayTrimTests(unittest.TestCase):
     def test_byte_limit_removes_oldest_entries(self):
-        window = object.__new__(LogWindow)
-        window._display_entry_lines = deque([1, 1, 1])
-        window._display_entry_bytes = deque([5, 5, 5])
-        window._display_bytes = 15
-        window._get_textbox = lambda: FakeText()
-        window._search = make_search(FakeText())
+        text = FakeText()
+        display = LogDisplay(lambda: text, FakeLabel())
+        display.entry_lines = deque([1, 1, 1])
+        display.entry_bytes = deque([5, 5, 5])
+        display.bytes = 15
 
-        with patch.object(log_window, "MAX_LOG_BYTES", 10):
-            window._trim_display()
+        with patch.object(log_display, "MAX_LOG_BYTES", 10):
+            removed = display.trim()
 
-        self.assertEqual(list(window._display_entry_lines), [1, 1])
-        self.assertEqual(list(window._display_entry_bytes), [5, 5])
-        self.assertEqual(window._display_bytes, 10)
+        self.assertEqual(removed, 1)
+        self.assertEqual(list(display.entry_lines), [1, 1])
+        self.assertEqual(list(display.entry_bytes), [5, 5])
+        self.assertEqual(display.bytes, 10)
 
 
 class SearchLimitTests(unittest.TestCase):
