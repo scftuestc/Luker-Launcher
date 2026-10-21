@@ -20,6 +20,20 @@ class MonitorInfoTests(unittest.TestCase):
         self.assertEqual(MonitorInfo(0, 0, 1920, 1080, 120).scale, 1.25)
         self.assertEqual(MonitorInfo(0, 0, 1920, 1080, 144).scale, 1.5)
 
+    def test_signature_changes_with_work_area_or_dpi(self):
+        self.assertEqual(
+            MonitorInfo(0, 0, 1920, 1080, 96).signature(),
+            (0, 0, 1920, 1080, 96),
+        )
+        self.assertNotEqual(
+            MonitorInfo(0, 0, 1920, 1080, 96).signature(),
+            MonitorInfo(0, 0, 1920, 1040, 96).signature(),
+        )
+        self.assertNotEqual(
+            MonitorInfo(0, 0, 1920, 1080, 96).signature(),
+            MonitorInfo(0, 0, 1920, 1080, 120).signature(),
+        )
+
 
 class WindowSizeTests(unittest.TestCase):
     def test_settings_fit_at_100_percent(self):

@@ -75,13 +75,7 @@ class SettingsWindow(ctk.CTkToplevel):
         physical_height = round(logical_height * scale)
         x, y = centered_position(physical_width, physical_height, monitor)
         self.geometry(format_geometry(logical_width, logical_height, x, y))
-        self._monitor_signature = (
-            monitor.left,
-            monitor.top,
-            monitor.right,
-            monitor.bottom,
-            monitor.dpi,
-        )
+        self._monitor_signature = monitor.signature()
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
@@ -94,7 +88,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         config.add_theme_change_callback(self._on_theme_change)
 
-        self.bind('<Configure>', self._on_configure)
+        self.bind('<Configure>', self._on_configure, add='+')
         self.bind('<Destroy>', self._on_destroy)
 
     def _on_configure(self, event: tk.Event) -> None:
@@ -108,13 +102,7 @@ class SettingsWindow(ctk.CTkToplevel):
             return
 
         monitor = get_monitor_info(hwnd=self.winfo_id())
-        signature = (
-            monitor.left,
-            monitor.top,
-            monitor.right,
-            monitor.bottom,
-            monitor.dpi,
-        )
+        signature = monitor.signature()
         if signature == self._monitor_signature:
             return
 

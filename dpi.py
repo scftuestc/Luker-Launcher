@@ -84,6 +84,10 @@ class MonitorInfo:
     def scale(self) -> float:
         return self.dpi / BASE_DPI
 
+    def signature(self) -> tuple[int, int, int, int, int]:
+        """返回用于判断显示器变化的标识。"""
+        return (self.left, self.top, self.right, self.bottom, self.dpi)
+
 
 def _monitor_handle(hwnd: int | None, point: tuple[int, int] | None) -> int:
     """按屏幕点、窗口或主屏选择显示器句柄。"""

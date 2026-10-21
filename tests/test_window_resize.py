@@ -34,14 +34,16 @@ class FakeWindow:
         self.viewable = True
         self.exists = True
         self.binds: dict[str, object] = {}
+        self.bind_add: dict[str, str | None] = {}
         self.geometry_specs: list[str] = []
         self.minsize_args: tuple[int, int] | None = None
         self.maxsize_args: tuple[int, int] | None = None
         self.cursor = ''
         self.idle_calls = 0
 
-    def bind(self, sequence: str, callback: object) -> None:
+    def bind(self, sequence: str, callback: object, add: str | None = None) -> None:
         self.binds[sequence] = callback
+        self.bind_add[sequence] = add
 
     def geometry(self, spec: str) -> None:
         match = re.fullmatch(r'(\d+)x(\d+)([+-]\d+)([+-]\d+)', spec)
@@ -228,6 +230,14 @@ class WindowResizerTests(unittest.TestCase):
         window.binds['<B1-Motion>'](FakeEvent(window, x_root=0, y_root=320))
 
         self.assertEqual(len(window.geometry_specs), before)
+
+    def test_configure_binding_preserves_existing_handlers(self):
+        window, resizer = self.make_resizer()
+
+        resizer.bind_events()
+
+        self.assertEqual(window.bind_add['<Configure>'], '+')
+        self.assertIsNone(window.bind_add['<Motion>'])
 
     def test_configure_only_reacts_to_root_window(self):
         window, resizer = self.make_resizer()

@@ -96,13 +96,7 @@ class WindowResizer:
         self._window.minsize(self._min_logical_width, self._min_logical_height)
         # 防止 CTk 在 DPI 变化后把最大尺寸锁死为当前尺寸
         self._window.maxsize(10000, 10000)
-        self._monitor_signature = (
-            monitor.left,
-            monitor.top,
-            monitor.right,
-            monitor.bottom,
-            monitor.dpi,
-        )
+        self._monitor_signature = monitor.signature()
 
     def bind_events(self) -> None:
         """绑定缩放光标、拖拽和跨屏适配所需的窗口事件。"""
@@ -110,7 +104,7 @@ class WindowResizer:
         self._window.bind('<Button-1>', self._start_resize)
         self._window.bind('<B1-Motion>', self._do_resize)
         self._window.bind('<ButtonRelease-1>', self._end_resize)
-        self._window.bind('<Configure>', self._on_configure)
+        self._window.bind('<Configure>', self._on_configure, add='+')
 
     def fit_to_current_monitor(self) -> None:
         """移动到不同 DPI 的显示器后重新限制尺寸和位置。"""
@@ -118,13 +112,7 @@ class WindowResizer:
             return
 
         monitor = get_monitor_info(hwnd=self._window.winfo_id())
-        signature = (
-            monitor.left,
-            monitor.top,
-            monitor.right,
-            monitor.bottom,
-            monitor.dpi,
-        )
+        signature = monitor.signature()
         if signature == self._monitor_signature:
             return
 
