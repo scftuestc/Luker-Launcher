@@ -17,6 +17,7 @@ from log_queue import BoundedLogQueue
 from log_replay import LogReplay
 from log_search import LogSearch
 from log_store import MAX_LOG_BYTES, LogEntry, LogStore
+from log_tags import configure_log_tags
 from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
 from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
 from window_resize import WindowResizer
@@ -208,15 +209,7 @@ class LogWindow(ctk.CTk):
                     scrollbar_button_color=self.COLORS['border'],
                     scrollbar_button_hover_color=self.COLORS['accent'],
                 )
-                tb = self._get_textbox()
-                tb.tag_configure('time', foreground=self.COLORS['text_muted'])
-                tb.tag_configure('info', foreground=self.COLORS['info'])
-                tb.tag_configure('success', foreground=self.COLORS['success'])
-                tb.tag_configure('error', foreground=self.COLORS['error'])
-                tb.tag_configure('warn', foreground=self.COLORS['warning'])
-                tb.tag_configure('accent', foreground=self.COLORS['accent'])
-                tb.tag_configure('dim', foreground=self.COLORS['text_dim'])
-                tb.tag_configure('separator', foreground=self.COLORS['accent'], elide=False)
+                configure_log_tags(self._get_textbox(), self.COLORS)
 
             if hasattr(self, '_statusbar'):
                 self._statusbar.configure(fg_color=self.COLORS['card'])
@@ -619,15 +612,7 @@ class LogWindow(ctk.CTk):
         )
         self.log_text.pack(fill="both", expand=True, padx=12, pady=12)
 
-        tb = self._get_textbox()
-        tb.tag_configure('time', foreground=self.COLORS['text_muted'])
-        tb.tag_configure('info', foreground=self.COLORS['info'])
-        tb.tag_configure('success', foreground=self.COLORS['success'])
-        tb.tag_configure('error', foreground=self.COLORS['error'])
-        tb.tag_configure('warn', foreground=self.COLORS['warning'])
-        tb.tag_configure('accent', foreground=self.COLORS['accent'])
-        tb.tag_configure('dim', foreground=self.COLORS['text_dim'])
-        tb.tag_configure('separator', foreground=self.COLORS['accent'], elide=False)
+        configure_log_tags(self._get_textbox(), self.COLORS)
 
     def _get_textbox(self) -> tk.Text:
         """返回 CTkTextbox 内部的 Text 控件；私有属性只在这里访问。"""
@@ -870,10 +855,6 @@ class LogWindow(ctk.CTk):
         self._search_nav.pack(side="left", padx=(4, 0))
 
         self._search.perform(search_text)
-
-    def _adjust_search_positions(self, removed_lines: int) -> None:
-        """文本头部被裁剪后，同步平移已保存的搜索结果位置。"""
-        self._search.adjust(removed_lines)
 
     def _search_next(self) -> None:
         """跳转到下一个搜索结果"""

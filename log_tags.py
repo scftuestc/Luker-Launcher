@@ -1,5 +1,25 @@
 """日志文本到颜色标签的映射。"""
 
+import tkinter as tk
+from collections.abc import Mapping
+
+_TAG_COLOR_KEYS = {
+    'time': 'text_muted',
+    'info': 'info',
+    'success': 'success',
+    'error': 'error',
+    'warn': 'warning',
+    'accent': 'accent',
+    'dim': 'text_dim',
+}
+
+
+def configure_log_tags(textbox: tk.Text, colors: Mapping[str, str]) -> None:
+    """把日志级别映射到文本标签颜色。"""
+    for tag, color_key in _TAG_COLOR_KEYS.items():
+        textbox.tag_configure(tag, foreground=colors[color_key])
+    textbox.tag_configure('separator', foreground=colors['accent'], elide=False)
+
 
 def get_tag_for_line(line: str) -> str:
     """按日志内容选择颜色标签。"""
