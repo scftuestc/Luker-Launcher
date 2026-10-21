@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class WindowsBlur:
-    """Win32 模糊/圆角效果封装；系统不支持时静默降级为普通窗口。"""
+    """Win32 模糊/圆角效果封装；系统不支持时由调用者记录并降级为普通窗口。"""
 
     class ACCENT_POLICY(ctypes.Structure):
         _fields_ = [
@@ -38,32 +38,29 @@ class WindowsBlur:
 
     @staticmethod
     def enable_blur(hwnd: int, color: int = 0xCC000000) -> None:
+        """应用 DWM 模糊；失败时抛出异常，由调用者统一记录。"""
         user32 = windll.user32
         dwmapi = windll.dwmapi
         build = sys.getwindowsversion().build
 
-        try:
-            value = c_int(1)
-            dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(value), sizeof(value))
+        value = c_int(1)
+        dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(value), sizeof(value))
 
-            if build >= 22000:
-                corner = c_int(2)
-                dwmapi.DwmSetWindowAttribute(hwnd, 33, byref(corner), sizeof(corner))
+        if build >= 22000:
+            corner = c_int(2)
+            dwmapi.DwmSetWindowAttribute(hwnd, 33, byref(corner), sizeof(corner))
 
-            accent = WindowsBlur.ACCENT_POLICY()
-            accent.AccentState = 4
-            accent.AccentFlags = 2
-            accent.GradientColor = color
+        accent = WindowsBlur.ACCENT_POLICY()
+        accent.AccentState = 4
+        accent.AccentFlags = 2
+        accent.GradientColor = color
 
-            data = WindowsBlur.WINDOWCOMPOSITIONATTRIBDATA()
-            data.Attrib = 19
-            data.pvData = ctypes.cast(ctypes.pointer(accent), ctypes.c_void_p)
-            data.cbData = sizeof(accent)
+        data = WindowsBlur.WINDOWCOMPOSITIONATTRIBDATA()
+        data.Attrib = 19
+        data.pvData = ctypes.cast(ctypes.pointer(accent), ctypes.c_void_p)
+        data.cbData = sizeof(accent)
 
-            user32.SetWindowCompositionAttribute(hwnd, byref(data))
-
-        except Exception as e:
-            logger.warning("应用毛玻璃失败: %s", e)
+        user32.SetWindowCompositionAttribute(hwnd, byref(data))
 
     @staticmethod
     def extend_frame(hwnd: int) -> None:
@@ -86,22 +83,22 @@ def hex_to_colorref(hex_color: str, alpha: int = 0xDD) -> int:
 
 
 def apply_blur(hwnd: int, bg_color: str, alpha: int = 0xDD) -> None:
-    """给窗口应用与当前主题背景一致的毛玻璃效果。"""
-    try:
-        WindowsBlur.extend_frame(hwnd)
-        WindowsBlur.enable_blur(hwnd, hex_to_colorref(bg_color, alpha))
-    except Exception as e:
-        logger.warning("窗口毛玻璃失败: %s", e)
+    """给窗口应用与当前主题背景一致的毛玻璃；失败时抛出异常。"""
+    WindowsBlur.extend_frame(hwnd)
+    WindowsBlur.enable_blur(hwnd, hex_to_colorref(bg_color, alpha))
 
 
 def apply_window_blur(
-    window: tk.Misc,
+    window: tk.Tk | tk.Toplevel,
     bg_color: str,
     alpha: int = 0xDD,
     *,
     context: str = "窗口",
 ) -> None:
-    """给 Tk 顶层窗口应用毛玻璃；失败只记录日志，不影响窗口显示。"""
+    """给顶层窗口应用毛玻璃；失败只记录日志，不影响窗口显示。
+
+    只接受顶层窗口；子控件会解析到错误的父句柄。
+    """
     try:
         hwnd = windll.user32.GetParent(window.winfo_id())
         apply_blur(hwnd, bg_color, alpha=alpha)
