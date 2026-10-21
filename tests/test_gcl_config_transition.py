@@ -1,12 +1,10 @@
-import queue
 import tempfile
 import unittest
 from collections.abc import Callable
 from pathlib import Path
-from threading import Lock
 
-import main
 from main import LukerLauncher
+from ui_dispatch import UiDispatcher
 
 
 class FakeGCLManager:
@@ -44,10 +42,8 @@ class GCLConfigTransitionTests(unittest.TestCase):
         launcher._exiting = False
         launcher._process_busy = False
         launcher._pending_gcl_config = None
-        launcher._ui_queue = queue.Queue(maxsize=main.UI_QUEUE_MAXSIZE)
-        launcher._ui_state = {}
-        launcher._ui_lock = Lock()
-        launcher._ui_active = True
+        launcher._ui = UiDispatcher(lambda _delay, _callback: None)
+        launcher._ui.start()
         launcher.gcl_process_manager = None
         launcher.process_manager = None
         launcher.log_window = None
@@ -75,7 +71,7 @@ class GCLConfigTransitionTests(unittest.TestCase):
 
         launcher._process_busy = False
         launcher._finish_process_action()
-        launcher._pump_ui_queue()
+        launcher._ui.pump()
 
         self.assertEqual(old.stop_calls, 1)
         self.assertIsNone(launcher.gcl_process_manager)
@@ -88,7 +84,7 @@ class GCLConfigTransitionTests(unittest.TestCase):
         launcher.gcl_process_manager = old
 
         launcher._on_gcl_config_change(True, str(self.new_bat))
-        launcher._pump_ui_queue()
+        launcher._ui.pump()
 
         self.assertEqual(old.stop_calls, 1)
         self.assertIsNot(launcher.gcl_process_manager, old)
@@ -101,7 +97,7 @@ class GCLConfigTransitionTests(unittest.TestCase):
         launcher.gcl_process_manager = old
 
         launcher._on_gcl_config_change(False, None)
-        launcher._pump_ui_queue()
+        launcher._ui.pump()
 
         self.assertIs(launcher.gcl_process_manager, old)
         self.assertFalse(launcher._process_busy)
@@ -131,7 +127,7 @@ class GCLConfigTransitionTests(unittest.TestCase):
 
         launcher._process_busy = False
         launcher._finish_process_action()
-        launcher._pump_ui_queue()
+        launcher._ui.pump()
 
         self.assertEqual(old.stop_calls, 1)
         self.assertEqual(Path(launcher.gcl_process_manager.bat_path), self.new_bat)

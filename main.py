@@ -3,14 +3,13 @@
 import contextlib
 import ctypes
 import logging
-import queue
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
 from ctypes import windll
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Thread
 
 import customtkinter as ctk
 
@@ -25,6 +24,7 @@ from pwa_browser import open_in_browser
 from settings_window import SettingsWindow
 from tray_icon import TrayIcon
 from tray_menu import TrayMenu
+from ui_dispatch import UiDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +32,6 @@ logger = logging.getLogger(__name__)
 STATUS_POLL_INTERVAL = 2
 BROWSER_WAIT_TIMEOUT_SECONDS = 30
 BROWSER_WAIT_INTERVAL_SECONDS = 1
-# 后台线程投递的 UI 操作由主线程按此间隔取走
-UI_QUEUE_POLL_MS = 50
-# 普通 UI 事件上限；幂等的界面请求走合并槽，不占这里的容量
-UI_QUEUE_MAXSIZE = 256
-# 每次泵最多执行的普通事件数，避免突发回调长时间占用 Tk 线程
-UI_EVENTS_PER_TICK = 32
 # 合并键：同一键只保留最后一次请求
 UI_KEY_VISIBILITY = "visibility"
 UI_KEY_TRAY_MENU = "tray_menu"
@@ -101,16 +95,17 @@ class LukerLauncher:
         self._exiting = False  # 退出流程只执行一次
         self._last_status: bool | None = None  # 上一次通知给界面的运行状态
         # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
-        self._ui_queue: queue.Queue[Callable[[], None]] = queue.Queue(maxsize=UI_QUEUE_MAXSIZE)
-        # 同一合并键的界面请求只保留最后一次，避免托盘连点堆积
-        self._ui_state: dict[str, Callable[[], None]] = {}
-        self._ui_lock = Lock()
-        self._ui_active = False
+        self._ui = UiDispatcher(self._schedule_ui)
         # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
         self._tray_anchor: tuple[int, int] | None = None
         self.settings_window: SettingsWindow | None = None
 
         config.add_gcl_change_callback(self._on_gcl_config_change)
+
+    def _schedule_ui(self, delay_ms: int, callback: Callable[[], None]) -> None:
+        """在 Tk 主线程安排下一次 UI 泵；窗口未创建时不再续排。"""
+        if self.log_window is not None:
+            self.log_window.after(delay_ms, callback)
 
     def _post_ui(
         self,
@@ -118,58 +113,7 @@ class LukerLauncher:
         coalesce_key: str | None = None,
     ) -> None:
         """从任意线程投递 UI 操作；同一 coalesce_key 只保留最后一次。"""
-        if not self._ui_active:
-            return
-
-        if coalesce_key is not None:
-            with self._ui_lock:
-                self._ui_state[coalesce_key] = callback
-            return
-
-        try:
-            self._ui_queue.put_nowait(callback)
-        except queue.Full:
-            logger.warning("UI 事件队列已满，丢弃最旧事件")
-            with contextlib.suppress(queue.Empty):
-                self._ui_queue.get_nowait()
-            with contextlib.suppress(queue.Full):
-                self._ui_queue.put_nowait(callback)
-
-    def _pump_ui_queue(self) -> None:
-        """在主线程执行合并后的界面状态和有界事件队列。"""
-        if not self._ui_active:
-            return
-
-        try:
-            with self._ui_lock:
-                pending_state = list(self._ui_state.values())
-                self._ui_state.clear()
-
-            for callback in pending_state:
-                if not self._ui_active:
-                    return
-                self._run_ui_callback(callback)
-
-            processed = 0
-            while self._ui_active and processed < UI_EVENTS_PER_TICK:
-                try:
-                    callback = self._ui_queue.get_nowait()
-                except queue.Empty:
-                    break
-                self._run_ui_callback(callback)
-                processed += 1
-        finally:
-            if self._ui_active and self.log_window:
-                # 还有积压时快速续跑，空闲时恢复 50ms 轮询
-                delay = 1 if not self._ui_queue.empty() else UI_QUEUE_POLL_MS
-                self.log_window.after(delay, self._pump_ui_queue)
-
-    @staticmethod
-    def _run_ui_callback(callback: Callable[[], None]) -> None:
-        try:
-            callback()
-        except Exception:
-            logger.exception("界面操作执行失败")
+        self._ui.post(callback, coalesce_key)
 
     def _on_show_window(self) -> None:
         self._post_ui(self._show_window, UI_KEY_VISIBILITY)
@@ -268,7 +212,7 @@ class LukerLauncher:
     def _finish_exit(self) -> None:
         """停止托盘并结束 Tk 主循环。"""
         try:
-            self._ui_active = False
+            self._ui.stop()
             if self.tray_icon:
                 self.tray_icon.stop()
         finally:
@@ -564,8 +508,7 @@ class LukerLauncher:
         app_logging.add_ui_log_sink(self._on_log)
 
         # 启动主线程 UI 队列泵，后台线程才能安全地请求界面操作
-        self._ui_active = True
-        self._pump_ui_queue()
+        self._ui.start()
 
         # PWA 模式下禁止 Luker 自己打开浏览器，改由启动器接管
         self._ensure_process_manager()
@@ -630,7 +573,7 @@ class LukerLauncher:
         self.log_window.mainloop()
 
         # 与 _finish_exit 互为兜底，正常退出时这里已是幂等操作
-        self._ui_active = False
+        self._ui.stop()
         self._running = False
         if self.tray_icon:
             self.tray_icon.stop()
