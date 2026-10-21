@@ -12,14 +12,6 @@ from types import TracebackType
 import customtkinter as ctk
 
 from config import APP_VERSION, config
-from dpi import (
-    centered_position,
-    clamp_window_position,
-    fit_window_with_minimum,
-    format_geometry,
-    get_monitor_info,
-    sync_window_scaling,
-)
 from log_display import LogDisplay
 from log_queue import BoundedLogQueue
 from log_replay import LogReplay
@@ -27,6 +19,7 @@ from log_search import LogSearch
 from log_store import MAX_LOG_BYTES, LogEntry, LogStore
 from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
 from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
+from window_resize import WindowResizer
 
 logger = logging.getLogger(__name__)
 
@@ -71,39 +64,8 @@ class LogWindow(ctk.CTk):
 
         self.title("Luker 日志")
         # 按主屏工作区和当前缩放限制初始尺寸，避免 150% 下落入任务栏
-        monitor = get_monitor_info()
-        scale = sync_window_scaling(self, monitor.scale)
-        self._desired_min_logical_width = 700
-        self._desired_min_logical_height = 450
-        (
-            self._min_logical_width,
-            self._min_logical_height,
-            self._logical_width,
-            self._logical_height,
-        ) = fit_window_with_minimum(
-            960,
-            640,
-            self._desired_min_logical_width,
-            self._desired_min_logical_height,
-            monitor,
-            scale,
-            margin=24,
-        )
-        physical_width = round(self._logical_width * scale)
-        physical_height = round(self._logical_height * scale)
-        x, y = centered_position(physical_width, physical_height, monitor)
-        self.geometry(format_geometry(self._logical_width, self._logical_height, x, y))
-        # 最小尺寸保存为逻辑值，拖拽时按当前缩放换算
-        self.minsize(self._min_logical_width, self._min_logical_height)
-        # 防止 CTk 在 DPI 变化后把最大尺寸锁死为当前尺寸
-        self.maxsize(10000, 10000)
-        self._monitor_signature = (
-            monitor.left,
-            monitor.top,
-            monitor.right,
-            monitor.bottom,
-            monitor.dpi,
-        )
+        self._resizer = WindowResizer(self)
+        self._resizer.apply_initial_geometry()
 
         self._set_window_icon()
 
@@ -113,8 +75,6 @@ class LogWindow(ctk.CTk):
         self.after(150, self._setup_blur)
 
         self.bind('<Map>', self._on_map)
-
-        self._resize_edge: str | None = None
 
         self._animation_phase = 0.0
         self._glow_intensity = 0.0
@@ -139,7 +99,7 @@ class LogWindow(ctk.CTk):
 
         self._process_logs()
 
-        self._setup_resize()
+        self._resizer.bind_events()
 
         self._check_window_state()
 
@@ -328,166 +288,6 @@ class LogWindow(ctk.CTk):
 
         self.after(100, self._animate_status_pulse)
 
-    def _setup_resize(self) -> None:
-        self.bind('<Motion>', self._check_resize_edge)
-        self.bind('<Button-1>', self._start_resize)
-        self.bind('<B1-Motion>', self._do_resize)
-        self.bind('<ButtonRelease-1>', self._end_resize)
-        self.bind('<Configure>', self._on_configure)
-
-    def _on_configure(self, event: tk.Event) -> None:
-        # 合并拖动过程中连续的 Configure 事件，空闲时只检查一次显示器
-        if event.widget == self:
-            self.after_idle(self._fit_to_current_monitor)
-
-    def _fit_to_current_monitor(self) -> None:
-        """移动到不同 DPI 的显示器后重新限制尺寸和位置。"""
-        if not self.winfo_exists() or not self.winfo_viewable():
-            return
-
-        monitor = get_monitor_info(hwnd=self.winfo_id())
-        signature = (
-            monitor.left,
-            monitor.top,
-            monitor.right,
-            monitor.bottom,
-            monitor.dpi,
-        )
-        if signature == self._monitor_signature:
-            return
-
-        self._monitor_signature = signature
-        scale = sync_window_scaling(self, monitor.scale)
-        # 使用保存的逻辑尺寸，避免 CTk 自动缩放后的物理尺寸被重复缩小。
-        # 最小尺寸也按当前显示器重算，否则旧的 minsize 会阻止窗口缩进工作区。
-        (
-            self._min_logical_width,
-            self._min_logical_height,
-            logical_width,
-            logical_height,
-        ) = fit_window_with_minimum(
-            self._logical_width,
-            self._logical_height,
-            self._desired_min_logical_width,
-            self._desired_min_logical_height,
-            monitor,
-            scale,
-            margin=24,
-        )
-        physical_width = round(logical_width * scale)
-        physical_height = round(logical_height * scale)
-        x, y = clamp_window_position(
-            self.winfo_x(),
-            self.winfo_y(),
-            physical_width,
-            physical_height,
-            monitor,
-        )
-
-        self.minsize(self._min_logical_width, self._min_logical_height)
-        self.maxsize(10000, 10000)
-        self.geometry(format_geometry(logical_width, logical_height, x, y))
-        self._logical_width = logical_width
-        self._logical_height = logical_height
-
-    def _check_resize_edge(self, e: tk.Event) -> None:
-        # 距离窗口边缘 8px（按当前缩放换算）内显示缩放光标
-        if e.widget != self:
-            self.configure(cursor='')
-            self._resize_edge = None
-            return
-
-        scale = ctk.ScalingTracker.get_window_scaling(self)
-        margin = max(4, round(8 * scale))
-        w, h = self.winfo_width(), self.winfo_height()
-        x, y = e.x, e.y
-
-        edge = None
-        if x < margin and y < margin:
-            edge = 'nw'
-        elif x > w - margin and y < margin:
-            edge = 'ne'
-        elif x < margin and y > h - margin:
-            edge = 'sw'
-        elif x > w - margin and y > h - margin:
-            edge = 'se'
-        elif y < margin:
-            edge = 'n'
-        elif x < margin:
-            edge = 'w'
-        elif x > w - margin:
-            edge = 'e'
-        elif y > h - margin:
-            edge = 's'
-
-        cursors = {
-            'nw': 'size_nw_se',
-            'se': 'size_nw_se',
-            'ne': 'size_ne_sw',
-            'sw': 'size_ne_sw',
-            'n': 'size_ns',
-            's': 'size_ns',
-            'w': 'size_we',
-            'e': 'size_we',
-        }
-
-        if edge:
-            self.configure(cursor=cursors.get(edge, ''))
-        else:
-            self.configure(cursor='')
-
-        self._resize_edge = edge
-
-    def _start_resize(self, e: tk.Event) -> None:
-        if e.widget != self or not self._resize_edge:
-            return
-        self._resize_start = (
-            e.x_root,
-            e.y_root,
-            self.winfo_width(),
-            self.winfo_height(),
-            self.winfo_x(),
-            self.winfo_y(),
-        )
-
-    def _do_resize(self, e: tk.Event) -> None:
-        if not self._resize_edge or not hasattr(self, '_resize_start'):
-            return
-        if e.widget != self:
-            return
-
-        sx, sy, sw, sh, wx, wy = self._resize_start
-        dx = e.x_root - sx
-        dy = e.y_root - sy
-        scale = ctk.ScalingTracker.get_window_scaling(self)
-        min_width = round(self._min_logical_width * scale)
-        min_height = round(self._min_logical_height * scale)
-
-        nw, nh, nx, ny = sw, sh, wx, wy
-
-        if 'e' in self._resize_edge:
-            nw = max(min_width, sw + dx)
-        if 's' in self._resize_edge:
-            nh = max(min_height, sh + dy)
-        if 'w' in self._resize_edge:
-            nw = max(min_width, sw - dx)
-            if nw != sw:
-                nx = wx + (sw - nw)
-        if 'n' in self._resize_edge:
-            nh = max(min_height, sh - dy)
-            if nh != sh:
-                ny = wy + (sh - nh)
-
-        # 物理像素先换算回 CTk 的逻辑尺寸，避免 geometry() 再次缩放
-        logical_width = max(self._min_logical_width, round(nw / scale))
-        logical_height = max(self._min_logical_height, round(nh / scale))
-        self.geometry(format_geometry(logical_width, logical_height, nx, ny))
-        self._logical_width = logical_width
-        self._logical_height = logical_height
-
-    def _end_resize(self, e: tk.Event) -> None:
-        self._resize_edge = None
-
     def _build_ui(self) -> None:
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=12, pady=12)
@@ -607,7 +407,7 @@ class LogWindow(ctk.CTk):
             self.lift()
             self.focus_force()
         # 显示/恢复后再检查一次，处理隐藏期间切换显示器的情况
-        self.after_idle(self._fit_to_current_monitor)
+        self.after_idle(self._resizer.fit_to_current_monitor)
 
     def _check_window_state(self) -> None:
         with contextlib.suppress(Exception):
