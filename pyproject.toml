@@ -9,3 +9,20 @@ quote-style = "preserve"
 select = ["E", "F", "W", "I", "UP", "SIM", "B", "RUF"]
 # 中文全角标点不是错误
 ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.12"
+platform = "win32"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+exclude = '^(tests|build|release|\.zcode)([/\\]|$)'
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "build/*", "release/*", ".zcode/*"]
+
+[tool.coverage.report]
+fail_under = 34
+show_missing = true
+skip_covered = true

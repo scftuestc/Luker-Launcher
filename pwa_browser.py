@@ -233,11 +233,11 @@ def open_as_pwa(url: str | None = None) -> bool:
         return False
 
     # 再尝试 Edge 的 --app-id 模式
-    app_id = config.pwa_app_id
-    if app_id and is_pwa_installed(app_id):
+    configured_app_id = config.pwa_app_id
+    if configured_app_id and is_pwa_installed(configured_app_id):
         args = [
             edge_path,
-            f"--app-id={app_id}",
+            f"--app-id={configured_app_id}",
             "--profile-directory=Default",
         ]
         logger.info("使用 --app-id 模式启动")

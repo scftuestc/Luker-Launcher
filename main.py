@@ -491,9 +491,10 @@ class LukerLauncher:
 
     def _sync_gcl_ui(self, enabled: bool) -> None:
         """同步日志窗口里的 GCL 控件状态。"""
-        if self.log_window:
+        window = self.log_window
+        if window is not None:
             self._post_ui(
-                lambda: self.log_window.set_gcl_enabled(enabled),
+                lambda: window.set_gcl_enabled(enabled),
                 UI_KEY_GCL_UI,
             )
 

@@ -109,7 +109,7 @@ def apply_window_blur(
         logger.warning("%s毛玻璃失败", context, exc_info=True)
 
 
-def bind_window_drag(window: tk.Misc, *widgets: tk.Misc) -> None:
+def bind_window_drag(window: tk.Tk | tk.Toplevel, *widgets: tk.Misc) -> None:
     """让无边框窗口可以通过标题栏等控件拖动。"""
     offset_x = 0
     offset_y = 0

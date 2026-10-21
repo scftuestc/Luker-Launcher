@@ -161,10 +161,10 @@ class LogWindow(ctk.CTk):
 
         self.bind('<Map>', self._on_map)
 
-        self._resize_edge = None
+        self._resize_edge: str | None = None
 
-        self._animation_phase = 0
-        self._glow_intensity = 0
+        self._animation_phase = 0.0
+        self._glow_intensity = 0.0
         self._glow_direction = 1
 
         # 日志源切换状态：'luker' 或 'gcl'

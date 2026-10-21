@@ -115,7 +115,7 @@ class TrayIcon:
         self._thread: Thread | None = None
         self._hwnd: int | None = None
         self._running = False
-        self._hicon: int | None = None
+        self._hicon: wintypes.HICON | None = None
         self._nid: NOTIFYICONDATA | None = None
         self._ready = Event()
         self._icon_added = False
@@ -123,7 +123,8 @@ class TrayIcon:
         # Explorer 重启后会广播 TaskbarCreated，需要据此重新添加图标
         self._taskbar_created_msg = _user32.RegisterWindowMessageW("TaskbarCreated")
 
-        self._wndproc_ref: WNDPROC | None = None
+        # WNDPROC 是 ctypes 运行时生成的函数类型，mypy 不把它当类型
+        self._wndproc_ref: WNDPROC | None = None  # type: ignore[valid-type]
 
     def _create_icon_image(self) -> Image.Image:
         size = 64
@@ -140,7 +141,7 @@ class TrayIcon:
         ) -> None:
             x1, y1, x2, y2 = coords
             if radius * 2 > min(x2 - x1, y2 - y1):
-                radius = min(x2 - x1, y2 - y1) // 2
+                radius = int(min(x2 - x1, y2 - y1) // 2)
             if radius < 1:
                 radius = 1
             draw.rectangle([x1 + radius, y1, x2 - radius, y2], fill=fill)
@@ -172,7 +173,7 @@ class TrayIcon:
         start_y = (size - bar_height) // 2
 
         if self._is_running:
-            colors = LOGO_BAR_COLORS
+            colors: Sequence[str] = LOGO_BAR_COLORS
         else:
             colors = ['#6e7681', '#6e7681', '#6e7681', '#6e7681']
 
@@ -211,7 +212,7 @@ class TrayIcon:
         if image.mode != 'RGBA':
             image = image.convert('RGBA')
 
-        image = image.resize((size, size), Image.LANCZOS)
+        image = image.resize((size, size), Image.Resampling.LANCZOS)
 
         width, height = image.size
         pixels = image.tobytes()

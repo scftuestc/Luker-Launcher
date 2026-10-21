@@ -46,11 +46,13 @@ def _excepthook(
 
 
 def _thread_excepthook(args: threading.ExceptHookArgs) -> None:
-    logger.critical(
-        "线程 %s 未捕获异常",
-        args.thread.name if args.thread else "?",
-        exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
-    )
+    exc = args.exc_value
+    if exc is not None:
+        logger.critical(
+            "线程 %s 未捕获异常",
+            args.thread.name if args.thread else "?",
+            exc_info=(args.exc_type, exc, args.exc_traceback),
+        )
     threading.__excepthook__(args)
 
 

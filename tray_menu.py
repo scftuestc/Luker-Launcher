@@ -57,7 +57,7 @@ class TrayMenu(ctk.CTkToplevel):
 
         self.configure(fg_color=self.COLORS['bg'])
 
-        self._animation_phase = 0
+        self._animation_phase = 0.0
         self._menu_animation_id: str | None = None
         self._menu_animation_active = False
         self._mouse_poll_id: str | None = None

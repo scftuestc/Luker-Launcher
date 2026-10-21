@@ -99,8 +99,8 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 - Windows 10 / 11 x64（依赖 Win32 托盘与窗口接口，不支持其他平台）
 - Python 3.12（本项目以此版本开发和验证）
 - 运行依赖：`pip install -r requirements.txt`
+- 开发与检查：`pip install -r requirements-dev.txt`
 - 打包：`pip install pyinstaller==6.22.2`（与 CI 一致）
-- 代码检查（可选）：`pip install ruff==0.16.10`
 
 ### 运行
 
@@ -118,10 +118,14 @@ pyinstaller launcher.spec --noconfirm --distpath .
 
 也可以直接运行 `打包.bat`，两种方式生成的 exe 都会放在项目根目录。
 
-### 测试
+### 测试与检查
 
 ```bash
-python -m unittest discover -s tests
+python -m coverage run -m unittest discover -s tests
+python -m coverage report
+mypy .
+ruff check .
+ruff format --check .
 ```
 
 ---

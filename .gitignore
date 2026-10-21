@@ -5,6 +5,10 @@ __pycache__/
 # 本地工具与虚拟环境
 .ruff_cache/
 .pytest_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
 .venv/
 .idea/
 .vscode/
