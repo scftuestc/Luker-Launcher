@@ -9,7 +9,6 @@ import tkinter as tk
 from collections import deque
 from collections.abc import Callable, Sequence
 from ctypes import windll
-from threading import Lock
 from types import TracebackType
 
 import customtkinter as ctk
@@ -23,7 +22,9 @@ from dpi import (
     get_monitor_info,
     sync_window_scaling,
 )
+from log_queue import BoundedLogQueue
 from log_store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry, LogStore
+from log_tags import get_tag_for_line
 from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
 from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
 
@@ -40,49 +41,6 @@ REPLAY_YIELD_MS = 1
 SEARCH_DEBOUNCE_MS = 250
 # 单次搜索最多保留的结果和标签数，避免短查询生成无上限的标签范围
 MAX_SEARCH_RESULTS = 5000
-
-
-class BoundedLogQueue:
-    """线程安全的日志行队列，同时限制行数和 UTF-8 字节数。"""
-
-    def __init__(self, max_lines: int, max_bytes: int) -> None:
-        self._items: deque[tuple[str, int]] = deque()
-        self._bytes = 0
-        self._max_lines = max_lines
-        self._max_bytes = max_bytes
-        self._lock = Lock()
-
-    @staticmethod
-    def _size(line: str) -> int:
-        return len(line.encode("utf-8", errors="replace"))
-
-    def put(self, line: str) -> None:
-        size = self._size(line)
-        with self._lock:
-            self._items.append((line, size))
-            self._bytes += size
-            while self._items and (
-                len(self._items) > self._max_lines or self._bytes > self._max_bytes
-            ):
-                _, removed_size = self._items.popleft()
-                self._bytes -= removed_size
-
-    def get_nowait(self) -> str | None:
-        with self._lock:
-            if not self._items:
-                return None
-            line, size = self._items.popleft()
-            self._bytes -= size
-            return line
-
-    def empty(self) -> bool:
-        with self._lock:
-            return not self._items
-
-    def clear(self) -> None:
-        with self._lock:
-            self._items.clear()
-            self._bytes = 0
 
 
 class LogWindow(ctk.CTk):
@@ -905,25 +863,7 @@ class LogWindow(ctk.CTk):
 
     def _get_tag_for_line(self, line: str) -> str:
         """按日志内容选择颜色标签。"""
-        line_lower = line.lower()
-        # GCL 日志带 [GCL 错误] 这类作用域前缀，归一化后复用同一套匹配
-        normalized = line.replace('[GCL ', '[')
-        if '[错误]' in normalized or 'error' in line_lower or 'fail' in line_lower:
-            return 'error'
-        elif '[警告]' in normalized or 'warn' in line_lower:
-            return 'warn'
-        elif '[信息]' in normalized or 'info' in line_lower:
-            return 'info'
-        elif '[启动器]' in line:
-            return 'accent'
-        elif (
-            'success' in line_lower
-            or '成功' in line
-            or 'listening' in line_lower
-            or 'compiled' in line_lower
-        ):
-            return 'success'
-        return 'dim'
+        return get_tag_for_line(line)
 
     def _enqueue_log(self, log_queue: BoundedLogQueue, line: str) -> None:
         """入队；超出限行或限字节时由队列丢弃最旧的一行。"""

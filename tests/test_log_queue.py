@@ -1,6 +1,6 @@
 import unittest
 
-from log_window import BoundedLogQueue
+from log_queue import BoundedLogQueue
 
 
 class BoundedLogQueueTests(unittest.TestCase):

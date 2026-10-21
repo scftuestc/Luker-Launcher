@@ -3,8 +3,9 @@ from collections import deque
 from unittest.mock import patch
 
 import log_window
+from log_queue import BoundedLogQueue
 from log_store import MAX_LOG_ENTRIES, LogStore
-from log_window import BoundedLogQueue, LogWindow
+from log_window import LogWindow
 
 
 class FakeVar:
