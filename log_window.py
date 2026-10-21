@@ -1,11 +1,10 @@
-"""主日志窗口：日志渲染、搜索和主题切换。"""
+"""主日志窗口：UI 构建、窗口交互和日志泵调度。"""
 
 import contextlib
 import logging
 import math
 import os
 import tkinter as tk
-from collections import deque
 from collections.abc import Callable, Sequence
 from ctypes import windll
 from types import TracebackType
@@ -23,8 +22,9 @@ from dpi import (
 )
 from log_display import LogDisplay
 from log_queue import BoundedLogQueue
+from log_replay import LogReplay
 from log_search import LogSearch
-from log_store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry, LogStore
+from log_store import MAX_LOG_BYTES, LogEntry, LogStore
 from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
 from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
 
@@ -34,9 +34,6 @@ logger = logging.getLogger(__name__)
 MAX_LOG_LINES_PER_CYCLE = 10
 # 等待渲染的日志队列上限，超出条数或字节时丢弃最旧的行
 MAX_LOG_QUEUE_SIZE = 5000
-# 隐藏窗口重放时每批插入的日志条数和让出主线程的间隔
-REPLAY_BATCH_SIZE = 200
-REPLAY_YIELD_MS = 1
 # 搜索输入防抖时间（毫秒）
 SEARCH_DEBOUNCE_MS = 250
 
@@ -130,13 +127,6 @@ class LogWindow(ctk.CTk):
         self._gcl_store = LogStore()
         self._display_dirty = False
         self._search_job: str | None = None
-        # 隐藏窗口重新显示时按批插入历史，避免一次性阻塞 Tk 线程
-        self._replay_job: str | None = None
-        self._replay_active = False
-        self._replay_entries: list[LogEntry] = []
-        self._replay_index = 0
-        # 重放期间到达的当前源日志，等快照插完后再补
-        self._replay_tail: deque[LogEntry] = deque(maxlen=MAX_LOG_ENTRIES)
 
         self._build_ui()
         self._search_var.trace_add('write', self._on_search_change)
@@ -514,6 +504,13 @@ class LogWindow(ctk.CTk):
             lambda: self.COLORS,
         )
         self._display = LogDisplay(self._get_textbox, self.count_label)
+        self._replay = LogReplay(
+            schedule=self.after,
+            cancel=self._cancel_after_job,
+            add_entries=self._add_log_lines,
+            exists=self.winfo_exists,
+            on_finished=self._on_replay_finished,
+        )
 
     def _build_titlebar(self, parent: tk.Misc) -> None:
         self._titlebar = ctk.CTkFrame(
@@ -886,9 +883,9 @@ class LogWindow(ctk.CTk):
 
             entry = log_store.append(line)
             if self._log_source == source:
-                if self._replay_active:
+                if self._replay.active:
                     # 重放的是开始时的快照，新日志留到快照结束后再插入
-                    self._replay_tail.append(entry)
+                    self._replay.append(entry)
                 else:
                     entries.append(entry)
 
@@ -928,50 +925,13 @@ class LogWindow(ctk.CTk):
 
         self._refresh_log_display()
 
-    def _cancel_replay(self) -> None:
-        """取消进行中的重放并释放快照和 tail。"""
-        if self._replay_job is not None:
-            with contextlib.suppress(tk.TclError):
-                self.after_cancel(self._replay_job)
-            self._replay_job = None
-        self._replay_active = False
-        self._replay_entries = []
-        self._replay_index = 0
-        self._replay_tail.clear()
+    def _cancel_after_job(self, job: str) -> None:
+        """取消 Tk after 任务；任务已执行时忽略 TclError。"""
+        with contextlib.suppress(tk.TclError):
+            self.after_cancel(job)
 
-    def _schedule_replay_chunk(self) -> None:
-        """调度下一批重放。"""
-        self._replay_job = self.after(REPLAY_YIELD_MS, self._replay_chunk)
-
-    def _replay_chunk(self) -> None:
-        """插入一批历史日志；快照处理完后继续处理重放期间的新日志。"""
-        self._replay_job = None
-        if not self._replay_active or not self.winfo_exists():
-            return
-
-        end = min(self._replay_index + REPLAY_BATCH_SIZE, len(self._replay_entries))
-        if self._replay_index < end:
-            self._add_log_lines(self._replay_entries[self._replay_index : end])
-            self._replay_index = end
-
-        if self._replay_index < len(self._replay_entries):
-            self._schedule_replay_chunk()
-            return
-
-        if self._replay_tail:
-            self._replay_entries = list(self._replay_tail)
-            self._replay_tail.clear()
-            self._replay_index = 0
-            self._schedule_replay_chunk()
-            return
-
-        self._finish_replay()
-
-    def _finish_replay(self) -> None:
-        """结束重放；有搜索词时重建高亮。"""
-        self._replay_active = False
-        self._replay_entries = []
-        self._replay_index = 0
+    def _on_replay_finished(self) -> None:
+        """重放结束；有搜索词时重建高亮。"""
         self._display_dirty = False
         if self._search_var.get().strip():
             self._run_search()
@@ -982,7 +942,7 @@ class LogWindow(ctk.CTk):
             self.after_cancel(self._search_job)
             self._search_job = None
 
-        self._cancel_replay()
+        self._replay.cancel()
         self._search.clear_state()
 
         tb = self._get_textbox()
@@ -1001,10 +961,7 @@ class LogWindow(ctk.CTk):
                 self._run_search()
             return
 
-        self._replay_entries = logs
-        self._replay_index = 0
-        self._replay_active = True
-        self._schedule_replay_chunk()
+        self._replay.start(logs)
 
     def set_gcl_enabled(self, enabled: bool) -> None:
         """设置 GCL 功能是否启用，控制切换按钮的显示"""
@@ -1026,7 +983,7 @@ class LogWindow(ctk.CTk):
             self._search.adjust(removed_lines)
 
     def clear_logs(self) -> None:
-        self._cancel_replay()
+        self._replay.cancel()
         tb = self._get_textbox()
         tb.configure(state="normal")
         tb.delete("1.0", "end")
@@ -1075,14 +1032,14 @@ class LogWindow(ctk.CTk):
         self.lift()
         self.focus_force()
         # 隐藏期间只存不渲染，显示时分批补上
-        if self._display_dirty and not self._replay_active:
+        if self._display_dirty and not self._replay.active:
             self._refresh_log_display()
 
     def hide(self) -> None:
-        if self._replay_active:
+        if self._replay.active:
             # 显示到一半被隐藏，下次显示时重新构建
             self._display_dirty = True
-        self._cancel_replay()
+        self._replay.cancel()
         self.withdraw()
 
     def is_visible(self) -> bool:
