@@ -22,7 +22,11 @@ _ui_handler: logging.Handler | None = None
 
 
 class _UiLogHandler(logging.Handler):
-    """把 WARNING 及以上日志转发到日志窗口；回调内部自行保证线程安全。"""
+    """把 WARNING 及以上日志转发到日志窗口。
+
+    只转发消息文本，异常 traceback 仍保留在文件日志中；
+    回调内部自行保证线程安全。
+    """
 
     def __init__(self, callback: Callable[[str], None]) -> None:
         super().__init__(level=logging.WARNING)

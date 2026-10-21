@@ -299,6 +299,8 @@ class SettingsWindow(ctk.CTkToplevel):
 
         card.bind('<Button-1>', on_click)
         inner.bind('<Button-1>', on_click)
+        # 覆盖 inner 的直接子控件和它们的子控件，包括 preview 内的色块；
+        # 若以后增加更深层控件，需要改为递归绑定。
         for child in inner.winfo_children():
             child.bind('<Button-1>', on_click)
             for subchild in child.winfo_children():

@@ -113,14 +113,14 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
 
 DEFAULT_THEME = 'deep_blue'
 
-# 启动器 logo 的四条竖条颜色，不随主题变化
-LOGO_BAR_COLORS = ('#ff6b6b', '#feca57', '#48dbfb', '#1dd1a1')
+# 启动器 logo 的四条竖条颜色，不随主题变化；RGB 是唯一数据源
 LOGO_BAR_RGB = (
     (0xFF, 0x6B, 0x6B),
     (0xFE, 0xCA, 0x57),
     (0x48, 0xDB, 0xFB),
     (0x1D, 0xD1, 0xA1),
 )
+LOGO_BAR_COLORS = tuple(f'#{r:02x}{g:02x}{b:02x}' for r, g, b in LOGO_BAR_RGB)
 
 
 def get_theme_colors(name: str) -> dict[str, str]:

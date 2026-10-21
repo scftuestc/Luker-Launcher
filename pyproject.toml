@@ -23,6 +23,7 @@ source = ["."]
 omit = ["tests/*", "build/*", "release/*", ".zcode/*"]
 
 [tool.coverage.report]
-fail_under = 34
+# 覆盖率只升不降；提高后同步上调阈值
+fail_under = 38
 show_missing = true
 skip_covered = true
