@@ -2,7 +2,9 @@ import unittest
 from collections import deque
 from unittest.mock import patch
 
+import log_search
 import log_window
+from log_search import LogSearch
 from log_window import LogWindow
 
 
@@ -53,49 +55,58 @@ class FakeLabel:
         self.text = kwargs.get("text", "")
 
 
+class FakeNav:
+    def pack_forget(self) -> None:
+        pass
+
+
+def make_search(text: FakeText, label: FakeLabel | None = None) -> LogSearch:
+    return LogSearch(
+        lambda: text,
+        label or FakeLabel(),
+        FakeNav(),
+        lambda: {"warning": "#ffffff", "accent": "#000000"},
+    )
+
+
 class SearchAdjustTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.window = object.__new__(LogWindow)
         self.text = FakeText()
         self.label = FakeLabel()
-        self.window._search_results = []
-        self.window._search_current_index = -1
-        self.window._search_truncated = False
-        self.window._get_textbox = lambda: self.text
-        self.window._search_count_label = self.label
+        self.search = make_search(self.text, self.label)
 
     @staticmethod
     def _results(lines: range) -> list[tuple[str, str]]:
         return [(f"{line}.0", f"{line}.1") for line in lines]
 
     def test_index_moves_back_when_earlier_results_are_removed(self):
-        self.window._search_results = self._results(range(1, 11))
-        self.window._search_current_index = 5
+        self.search.results = self._results(range(1, 11))
+        self.search.current_index = 5
 
-        self.window._adjust_search_positions(3)
+        self.search.adjust(3)
 
-        self.assertEqual(self.window._search_current_index, 2)
+        self.assertEqual(self.search.current_index, 2)
         self.assertEqual(self.text.added, [("search_current", "3.0", "3.1")])
         self.assertEqual(self.label.text, "3/7")
 
     def test_current_result_removed_selects_next_result(self):
-        self.window._search_results = self._results(range(1, 4))
-        self.window._search_current_index = 1
+        self.search.results = self._results(range(1, 4))
+        self.search.current_index = 1
 
-        self.window._adjust_search_positions(2)
+        self.search.adjust(2)
 
-        self.assertEqual(self.window._search_current_index, 0)
+        self.assertEqual(self.search.current_index, 0)
         self.assertEqual(self.text.added, [("search_current", "1.0", "1.1")])
         self.assertEqual(self.label.text, "1/1")
 
     def test_all_results_removed_clears_state(self):
-        self.window._search_results = self._results(range(1, 3))
-        self.window._search_current_index = 0
+        self.search.results = self._results(range(1, 3))
+        self.search.current_index = 0
 
-        self.window._adjust_search_positions(5)
+        self.search.adjust(5)
 
-        self.assertEqual(self.window._search_results, [])
-        self.assertEqual(self.window._search_current_index, -1)
+        self.assertEqual(self.search.results, [])
+        self.assertEqual(self.search.current_index, -1)
         self.assertEqual(self.label.text, "0/0")
 
 
@@ -105,8 +116,8 @@ class DisplayTrimTests(unittest.TestCase):
         window._display_entry_lines = deque([1, 1, 1])
         window._display_entry_bytes = deque([5, 5, 5])
         window._display_bytes = 15
-        window._search_results = []
         window._get_textbox = lambda: FakeText()
+        window._search = make_search(FakeText())
 
         with patch.object(log_window, "MAX_LOG_BYTES", 10):
             window._trim_display()
@@ -117,34 +128,28 @@ class DisplayTrimTests(unittest.TestCase):
 
 
 class SearchLimitTests(unittest.TestCase):
-    def _run_search(self, positions: list[str]):
-        window = object.__new__(LogWindow)
+    def _run_search(self, positions: list[str]) -> tuple[LogSearch, SearchText]:
         text = SearchText(positions)
-        window._get_textbox = lambda: text
-        window._search_results = []
-        window._search_current_index = -1
-        window._search_truncated = False
-        window._search_count_label = FakeLabel()
-        window.COLORS = {'warning': '#ffffff', 'accent': '#000000'}
+        search = make_search(text)
 
-        with patch.object(log_window, "MAX_SEARCH_RESULTS", 3):
-            window._perform_search("x")
-        return window, text
+        with patch.object(log_search, "MAX_SEARCH_RESULTS", 3):
+            search.perform("x")
+        return search, text
 
     def test_stops_at_limit_and_marks_truncated(self):
-        window, text = self._run_search(["1.0", "1.1", "1.2", "1.3"])
+        search, text = self._run_search(["1.0", "1.1", "1.2", "1.3"])
 
-        self.assertEqual(len(window._search_results), 3)
-        self.assertTrue(window._search_truncated)
-        self.assertEqual(window._search_count_label.text, "1/3+")
+        self.assertEqual(len(search.results), 3)
+        self.assertTrue(search.truncated)
+        self.assertEqual(search.count_text(0), "1/3+")
         self.assertEqual(text.search_calls, 4)
 
     def test_exact_limit_is_not_truncated(self):
-        window, text = self._run_search(["1.0", "1.1", "1.2"])
+        search, text = self._run_search(["1.0", "1.1", "1.2"])
 
-        self.assertEqual(len(window._search_results), 3)
-        self.assertFalse(window._search_truncated)
-        self.assertEqual(window._search_count_label.text, "1/3")
+        self.assertEqual(len(search.results), 3)
+        self.assertFalse(search.truncated)
+        self.assertEqual(search.count_text(0), "1/3")
         self.assertEqual(text.search_calls, 4)
 
 

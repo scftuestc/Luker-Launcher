@@ -23,6 +23,7 @@ from dpi import (
     sync_window_scaling,
 )
 from log_queue import BoundedLogQueue
+from log_search import LogSearch
 from log_store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry, LogStore
 from log_tags import get_tag_for_line
 from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
@@ -39,8 +40,6 @@ REPLAY_BATCH_SIZE = 200
 REPLAY_YIELD_MS = 1
 # 搜索输入防抖时间（毫秒）
 SEARCH_DEBOUNCE_MS = 250
-# 单次搜索最多保留的结果和标签数，避免短查询生成无上限的标签范围
-MAX_SEARCH_RESULTS = 5000
 
 
 class LogWindow(ctk.CTk):
@@ -145,6 +144,7 @@ class LogWindow(ctk.CTk):
         self._replay_tail: deque[LogEntry] = deque(maxlen=MAX_LOG_ENTRIES)
 
         self._build_ui()
+        self._search_var.trace_add('write', self._on_search_change)
 
         self._auto_scroll = True
         self._is_running = False
@@ -513,6 +513,13 @@ class LogWindow(ctk.CTk):
         self._build_log_area(main)
         self._build_statusbar(main)
 
+        self._search = LogSearch(
+            self._get_textbox,
+            self._search_count_label,
+            self._search_nav,
+            lambda: self.COLORS,
+        )
+
     def _build_titlebar(self, parent: tk.Misc) -> None:
         self._titlebar = ctk.CTkFrame(
             parent, height=52, fg_color=self.COLORS['card'], corner_radius=14
@@ -698,7 +705,6 @@ class LogWindow(ctk.CTk):
         ).pack(side="left", padx=(4, 4))
 
         self._search_var = ctk.StringVar()
-        self._search_var.trace_add('write', self._on_search_change)
 
         self._search_entry = ctk.CTkEntry(
             search_inner,
@@ -768,9 +774,6 @@ class LogWindow(ctk.CTk):
         )
         self._search_clear_btn.pack(side="left", padx=1)
 
-        self._search_results: list[tuple[str, str]] = []
-        self._search_current_index = -1
-        self._search_truncated = False
         self._search_nav.pack_forget()
 
         right = ctk.CTkFrame(self._toolbar, fg_color="transparent")
@@ -989,7 +992,7 @@ class LogWindow(ctk.CTk):
             self._search_job = None
 
         self._cancel_replay()
-        self._clear_search_state()
+        self._search.clear_state()
 
         tb = self._get_textbox()
         tb.configure(state="normal")
@@ -1095,46 +1098,6 @@ class LogWindow(ctk.CTk):
         tb.configure(state="disabled")
         self._adjust_search_positions(removed_lines)
 
-    def _adjust_search_positions(self, removed_lines: int) -> None:
-        """文本头部被裁剪后，同步平移已保存的搜索结果位置。"""
-        if not self._search_results:
-            return
-
-        adjusted = []
-        removed_before_current = 0
-        for index, (start, end) in enumerate(self._search_results):
-            start_line, start_col = map(int, start.split("."))
-            end_base, sep, end_offset = end.partition("+")
-            end_line, end_col = map(int, end_base.split("."))
-            start_line -= removed_lines
-            end_line -= removed_lines
-            if start_line >= 1:
-                new_end = f"{end_line}.{end_col}"
-                if sep:
-                    new_end += f"+{end_offset}"
-                adjusted.append((f"{start_line}.{start_col}", new_end))
-            elif index < self._search_current_index:
-                removed_before_current += 1
-
-        self._search_results = adjusted
-        if adjusted:
-            new_index = self._search_current_index - removed_before_current
-            self._search_current_index = max(0, min(new_index, len(adjusted) - 1))
-
-            # 不滚动窗口，只把“当前结果”标记移到仍然有效的位置
-            tb = self._get_textbox()
-            tb.tag_remove('search_current', "1.0", "end")
-            start, end = adjusted[self._search_current_index]
-            tb.tag_add('search_current', start, end)
-            tb.tag_raise('search_current')
-
-            self._search_count_label.configure(
-                text=self._search_count_text(self._search_current_index)
-            )
-        else:
-            self._search_current_index = -1
-            self._search_count_label.configure(text="0/0")
-
     def clear_logs(self) -> None:
         self._cancel_replay()
         tb = self._get_textbox()
@@ -1211,7 +1174,7 @@ class LogWindow(ctk.CTk):
             self._search_job = None
 
         if not self._search_var.get().strip():
-            self._clear_search_state()
+            self._search.clear_state()
             return
 
         self._search_job = self.after(SEARCH_DEBOUNCE_MS, self._run_search)
@@ -1221,111 +1184,24 @@ class LogWindow(ctk.CTk):
         self._search_job = None
         search_text = self._search_var.get().strip()
         if not search_text:
-            self._clear_search_state()
+            self._search.clear_state()
             return
 
         self._search_nav.pack(side="left", padx=(4, 0))
 
-        self._perform_search(search_text)
+        self._search.perform(search_text)
 
-    def _clear_search_state(self) -> None:
-        self._clear_search_highlights()
-        self._search_results = []
-        self._search_current_index = -1
-        self._search_truncated = False
-        self._search_nav.pack_forget()
-        self._search_count_label.configure(text="")
-
-    def _perform_search(self, search_text: str) -> None:
-        """执行搜索并高亮结果"""
-        tb = self._get_textbox()
-
-        self._clear_search_highlights()
-
-        tb.tag_configure(
-            'search_highlight', background=self.COLORS['warning'], foreground='#000000'
-        )
-        tb.tag_configure('search_current', background=self.COLORS['accent'], foreground='#ffffff')
-
-        self._search_results = []
-        self._search_truncated = False
-        start_pos = "1.0"
-
-        while len(self._search_results) < MAX_SEARCH_RESULTS:
-            pos = tb.search(search_text, start_pos, stopindex="end", nocase=True)
-            if not pos:
-                break
-
-            end_pos = f"{pos}+{len(search_text)}c"
-            self._search_results.append((pos, end_pos))
-
-            tb.tag_add('search_highlight', pos, end_pos)
-
-            start_pos = end_pos
-
-        if len(self._search_results) >= MAX_SEARCH_RESULTS:
-            # 达到上限后再看一眼是否还有匹配，用于显示截断标记
-            self._search_truncated = bool(
-                tb.search(search_text, start_pos, stopindex="end", nocase=True)
-            )
-
-        count = len(self._search_results)
-        if count > 0:
-            self._search_current_index = 0
-            self._highlight_current_result()
-        else:
-            self._search_current_index = -1
-            self._search_count_label.configure(text="0/0")
-
-    def _clear_search_highlights(self) -> None:
-        """清除所有搜索高亮"""
-        tb = self._get_textbox()
-        try:
-            tb.tag_remove('search_highlight', "1.0", "end")
-            tb.tag_remove('search_current', "1.0", "end")
-        except tk.TclError:
-            pass
-
-    def _search_count_text(self, index: int) -> str:
-        """生成“当前/总数”文本，结果被截断时追加 +。"""
-        suffix = "+" if self._search_truncated else ""
-        return f"{index + 1}/{len(self._search_results)}{suffix}"
-
-    def _highlight_current_result(self) -> None:
-        """高亮当前选中的搜索结果"""
-        if not self._search_results or self._search_current_index < 0:
-            return
-
-        tb = self._get_textbox()
-
-        tb.tag_remove('search_current', "1.0", "end")
-
-        pos, end_pos = self._search_results[self._search_current_index]
-
-        tb.tag_add('search_current', pos, end_pos)
-
-        # 确保当前高亮在所有高亮之上
-        tb.tag_raise('search_current')
-
-        tb.see(pos)
-
-        self._search_count_label.configure(text=self._search_count_text(self._search_current_index))
+    def _adjust_search_positions(self, removed_lines: int) -> None:
+        """文本头部被裁剪后，同步平移已保存的搜索结果位置。"""
+        self._search.adjust(removed_lines)
 
     def _search_next(self) -> None:
         """跳转到下一个搜索结果"""
-        if not self._search_results:
-            return
-
-        self._search_current_index = (self._search_current_index + 1) % len(self._search_results)
-        self._highlight_current_result()
+        self._search.next()
 
     def _search_prev(self) -> None:
         """跳转到上一个搜索结果"""
-        if not self._search_results:
-            return
-
-        self._search_current_index = (self._search_current_index - 1) % len(self._search_results)
-        self._highlight_current_result()
+        self._search.prev()
 
     def _clear_search(self) -> None:
         """清除搜索"""
@@ -1333,5 +1209,5 @@ class LogWindow(ctk.CTk):
             self.after_cancel(self._search_job)
             self._search_job = None
         self._search_var.set("")
-        self._clear_search_state()
+        self._search.clear_state()
         self._search_entry.focus_set()

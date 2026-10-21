@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import log_window
 from log_queue import BoundedLogQueue
+from log_search import LogSearch
 from log_store import MAX_LOG_ENTRIES, LogStore
 from log_window import LogWindow
 
@@ -49,10 +50,14 @@ class ReplayTests(unittest.TestCase):
         window._get_textbox = lambda: FakeText()
         window._search_var = FakeVar()
         window._search_job = None
-        window._search_results = []
-        window._search_current_index = -1
         window._search_nav = FakeNav()
         window._search_count_label = FakeLabel()
+        window._search = LogSearch(
+            lambda: FakeText(),
+            window._search_count_label,
+            window._search_nav,
+            lambda: {},
+        )
         window.count_label = FakeLabel()
         window._luker_store = LogStore()
         window._gcl_store = LogStore()
