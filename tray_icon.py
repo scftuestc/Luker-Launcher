@@ -8,6 +8,8 @@ from threading import Event, Lock, Thread, current_thread
 
 from PIL import Image, ImageDraw
 
+from theme import LOGO_BAR_COLORS
+
 logger = logging.getLogger(__name__)
 
 WM_USER = 0x0400
@@ -170,7 +172,7 @@ class TrayIcon:
         start_y = (size - bar_height) // 2
 
         if self._is_running:
-            colors = ['#ff6b6b', '#feca57', '#48dbfb', '#1dd1a1']
+            colors = LOGO_BAR_COLORS
         else:
             colors = ['#6e7681', '#6e7681', '#6e7681', '#6e7681']
 

@@ -1,10 +1,8 @@
 """设置窗口。"""
 
 import contextlib
-import logging
 import tkinter as tk
 from collections.abc import Callable
-from ctypes import windll
 
 import customtkinter as ctk
 
@@ -20,9 +18,7 @@ from dpi import (
 )
 from path_dialogs import select_gcl_bat_path, select_luker_path
 from theme import PRESET_THEMES
-from win_utils import apply_blur, get_mono_font, get_ui_font
-
-logger = logging.getLogger(__name__)
+from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
 
 # CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
 # 旧控件树会被 root 的绑定脚本一直引用。
@@ -92,9 +88,6 @@ class SettingsWindow(ctk.CTkToplevel):
         self.attributes('-alpha', 0.98)
         self.configure(fg_color=self.COLORS['bg'])
 
-        self._drag_x = 0
-        self._drag_y = 0
-
         self._build_ui()
 
         self.after(100, self._setup_blur)
@@ -158,11 +151,7 @@ class SettingsWindow(ctk.CTkToplevel):
             return False
 
     def _setup_blur(self) -> None:
-        try:
-            hwnd = windll.user32.GetParent(self.winfo_id())
-            apply_blur(hwnd, self.COLORS['bg'], alpha=0xEE)
-        except Exception:
-            logger.warning("设置窗口毛玻璃失败", exc_info=True)
+        apply_window_blur(self, self.COLORS['bg'], alpha=0xEE, context="设置窗口")
 
     def _on_theme_change(self, new_colors: dict[str, str]) -> None:
         if self._destroyed:
@@ -200,8 +189,7 @@ class SettingsWindow(ctk.CTkToplevel):
         bar.pack(fill="x", pady=(0, 16))
         bar.pack_propagate(False)
 
-        bar.bind('<Button-1>', self._start_drag)
-        bar.bind('<B1-Motion>', self._on_drag)
+        bind_window_drag(self, bar)
 
         ctk.CTkLabel(
             bar,
@@ -222,13 +210,6 @@ class SettingsWindow(ctk.CTkToplevel):
             corner_radius=8,
             command=self.destroy,
         ).pack(side="right", padx=10)
-
-    def _start_drag(self, e: tk.Event) -> None:
-        self._drag_x = e.x_root - self.winfo_x()
-        self._drag_y = e.y_root - self.winfo_y()
-
-    def _on_drag(self, e: tk.Event) -> None:
-        self.geometry(f"+{e.x_root - self._drag_x}+{e.y_root - self._drag_y}")
 
     def _build_theme_section(self, parent: tk.Misc) -> None:
         section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=12)
@@ -320,9 +301,8 @@ class SettingsWindow(ctk.CTkToplevel):
         inner.bind('<Button-1>', on_click)
         for child in inner.winfo_children():
             child.bind('<Button-1>', on_click)
-            if hasattr(child, 'winfo_children'):
-                for subchild in child.winfo_children():
-                    subchild.bind('<Button-1>', on_click)
+            for subchild in child.winfo_children():
+                subchild.bind('<Button-1>', on_click)
 
         return card
 

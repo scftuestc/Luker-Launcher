@@ -24,7 +24,8 @@ from dpi import (
     sync_window_scaling,
 )
 from log_store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry, LogStore
-from win_utils import apply_blur, get_mono_font, get_ui_font
+from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
+from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
 
 logger = logging.getLogger(__name__)
 
@@ -160,9 +161,6 @@ class LogWindow(ctk.CTk):
 
         self.bind('<Map>', self._on_map)
 
-        self._drag_x = 0
-        self._drag_y = 0
-
         self._resize_edge = None
 
         self._animation_phase = 0
@@ -227,46 +225,11 @@ class LogWindow(ctk.CTk):
                     photo = ImageTk.PhotoImage(img)
                     self.iconphoto(True, photo)
                     self._icon_photo = photo
-                else:
-                    self._create_dynamic_icon()
         except Exception:
             logger.warning("设置窗口图标失败", exc_info=True)
 
-    def _create_dynamic_icon(self) -> None:
-        try:
-            from PIL import Image, ImageDraw, ImageTk
-
-            size = 64
-            img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-            draw = ImageDraw.Draw(img)
-
-            margin = 4
-            draw.rounded_rectangle(
-                [margin, margin, size - margin, size - margin], radius=12, fill=(13, 17, 23, 255)
-            )
-
-            bar_colors = [(255, 107, 107), (254, 202, 87), (72, 219, 251), (29, 209, 161)]
-            bar_width = 6
-            bar_height = 28
-            start_x = 14
-            start_y = (size - bar_height) // 2
-
-            for i, color in enumerate(bar_colors):
-                x = start_x + i * (bar_width + 4)
-                draw.rounded_rectangle(
-                    [x, start_y, x + bar_width, start_y + bar_height], radius=2, fill=(*color, 255)
-                )
-
-            photo = ImageTk.PhotoImage(img)
-            self.iconphoto(True, photo)
-            self._icon_photo = photo
-
-        except Exception:
-            logger.warning("动态生成图标失败", exc_info=True)
-
     def _setup_blur(self) -> None:
-        hwnd = windll.user32.GetParent(self.winfo_id())
-        apply_blur(hwnd, self.COLORS['bg'], alpha=0xDD)
+        apply_window_blur(self, self.COLORS['bg'], alpha=0xDD, context="日志窗口")
         self.update()
 
     def _on_theme_change(self, new_colors: dict[str, str]) -> None:
@@ -382,12 +345,7 @@ class LogWindow(ctk.CTk):
             self._glow_direction = 1
 
         if hasattr(self, '_logo_bars'):
-            colors_start = [
-                (0xFF, 0x6B, 0x6B),
-                (0xFE, 0xCA, 0x57),
-                (0x48, 0xDB, 0xFB),
-                (0x1D, 0xD1, 0xA1),
-            ]
+            colors_start = LOGO_BAR_RGB
             colors_end = [
                 (0xF8, 0x71, 0x71),
                 (0xFF, 0xB7, 0x4D),
@@ -604,22 +562,14 @@ class LogWindow(ctk.CTk):
         self._titlebar.pack(fill="x", pady=(0, 10))
         self._titlebar.pack_propagate(False)
 
-        self._titlebar.bind('<Button-1>', self._start_drag)
-        self._titlebar.bind('<B1-Motion>', self._on_drag)
-
         left = ctk.CTkFrame(self._titlebar, fg_color="transparent")
         left.pack(side="left", padx=16, pady=12)
-        left.bind('<Button-1>', self._start_drag)
-        left.bind('<B1-Motion>', self._on_drag)
 
         logo = ctk.CTkFrame(left, fg_color="transparent")
         logo.pack(side="left")
-        logo.bind('<Button-1>', self._start_drag)
-        logo.bind('<B1-Motion>', self._on_drag)
 
         self._logo_bars = []
-        gradient_colors = ['#ff6b6b', '#feca57', '#48dbfb', '#1dd1a1']
-        for c in gradient_colors:
+        for c in LOGO_BAR_COLORS:
             bar_item = ctk.CTkFrame(logo, width=4, height=22, fg_color=c, corner_radius=2)
             bar_item.pack(side="left", padx=1)
             self._logo_bars.append(bar_item)
@@ -631,8 +581,8 @@ class LogWindow(ctk.CTk):
             text_color=self.COLORS['text'],
         )
         self._title_label.pack(side="left", padx=(14, 0))
-        self._title_label.bind('<Button-1>', self._start_drag)
-        self._title_label.bind('<B1-Motion>', self._on_drag)
+
+        bind_window_drag(self, self._titlebar, left, logo, self._title_label)
 
         right = ctk.CTkFrame(self._titlebar, fg_color="transparent")
         right.pack(side="right", padx=10)
@@ -678,13 +628,6 @@ class LogWindow(ctk.CTk):
             command=self._on_close,
         )
         self._close_btn.pack(side="left", padx=2)
-
-    def _start_drag(self, e: tk.Event) -> None:
-        self._drag_x = e.x_root - self.winfo_x()
-        self._drag_y = e.y_root - self.winfo_y()
-
-    def _on_drag(self, e: tk.Event) -> None:
-        self.geometry(f"+{e.x_root - self._drag_x}+{e.y_root - self._drag_y}")
 
     def _on_minimize(self) -> None:
         if not self._tray_available:

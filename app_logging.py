@@ -14,7 +14,7 @@ from config import get_app_dir
 logger = logging.getLogger(__name__)
 
 LOG_FILE_NAME = "launcher.log"
-_MAX_LOG_BYTES = 1_000_000
+_LOG_FILE_MAX_BYTES = 1_000_000
 _BACKUP_COUNT = 2
 
 _configured = False
@@ -70,7 +70,7 @@ def setup_logging() -> None:
             log_path = directory / LOG_FILE_NAME
             handler = RotatingFileHandler(
                 log_path,
-                maxBytes=_MAX_LOG_BYTES,
+                maxBytes=_LOG_FILE_MAX_BYTES,
                 backupCount=_BACKUP_COUNT,
                 encoding='utf-8',
             )

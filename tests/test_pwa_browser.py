@@ -156,5 +156,23 @@ class AutoOpenRoutingTests(unittest.TestCase):
         self.assertIs(posted[0].__func__, LukerLauncher._on_open_browser)
 
 
+class BrowserOpenDelegationTests(unittest.TestCase):
+    def test_open_browser_now_delegates_pwa_preference(self):
+        for prefer_pwa in (True, False):
+            with self.subTest(prefer_pwa=prefer_pwa):
+                launcher = object.__new__(LukerLauncher)
+                fake_config = Mock()
+                fake_config.use_pwa_mode = prefer_pwa
+                fake_config.get_server_url.return_value = "http://127.0.0.1:8000"
+
+                with (
+                    patch.object(main, "config", fake_config),
+                    patch.object(main, "open_in_browser", return_value=True) as open_mock,
+                ):
+                    launcher._open_browser_now()
+
+                open_mock.assert_called_once_with("http://127.0.0.1:8000", prefer_pwa=prefer_pwa)
+
+
 if __name__ == "__main__":
     unittest.main()

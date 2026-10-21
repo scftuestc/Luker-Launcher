@@ -3,6 +3,7 @@
 import ctypes
 import logging
 import sys
+import tkinter as tk
 import tkinter.font as tkfont
 from ctypes import byref, c_int, sizeof, windll
 
@@ -74,13 +75,13 @@ def hex_to_colorref(hex_color: str, alpha: int = 0xDD) -> int:
     """把 #RRGGBB 转换成 SetWindowCompositionAttribute 使用的 0xAABBGGRR。"""
     value = hex_color.lstrip('#')
     if len(value) != 6:
-        return 0xDD000000
+        return (alpha & 0xFF) << 24
     try:
         r = int(value[0:2], 16)
         g = int(value[2:4], 16)
         b = int(value[4:6], 16)
     except ValueError:
-        return 0xDD000000
+        return (alpha & 0xFF) << 24
     return ((alpha & 0xFF) << 24) | (b << 16) | (g << 8) | r
 
 
@@ -90,7 +91,40 @@ def apply_blur(hwnd: int, bg_color: str, alpha: int = 0xDD) -> None:
         WindowsBlur.extend_frame(hwnd)
         WindowsBlur.enable_blur(hwnd, hex_to_colorref(bg_color, alpha))
     except Exception as e:
-        logger.warning("设置窗口毛玻璃失败: %s", e)
+        logger.warning("窗口毛玻璃失败: %s", e)
+
+
+def apply_window_blur(
+    window: tk.Misc,
+    bg_color: str,
+    alpha: int = 0xDD,
+    *,
+    context: str = "窗口",
+) -> None:
+    """给 Tk 顶层窗口应用毛玻璃；失败只记录日志，不影响窗口显示。"""
+    try:
+        hwnd = windll.user32.GetParent(window.winfo_id())
+        apply_blur(hwnd, bg_color, alpha=alpha)
+    except Exception:
+        logger.warning("%s毛玻璃失败", context, exc_info=True)
+
+
+def bind_window_drag(window: tk.Misc, *widgets: tk.Misc) -> None:
+    """让无边框窗口可以通过标题栏等控件拖动。"""
+    offset_x = 0
+    offset_y = 0
+
+    def start_drag(event: tk.Event) -> None:
+        nonlocal offset_x, offset_y
+        offset_x = event.x_root - window.winfo_x()
+        offset_y = event.y_root - window.winfo_y()
+
+    def drag(event: tk.Event) -> None:
+        window.geometry(f"+{event.x_root - offset_x}+{event.y_root - offset_y}")
+
+    for widget in widgets:
+        widget.bind('<Button-1>', start_drag)
+        widget.bind('<B1-Motion>', drag)
 
 
 def get_ui_font() -> str:

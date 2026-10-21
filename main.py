@@ -7,7 +7,6 @@ import queue
 import time
 import urllib.error
 import urllib.request
-import webbrowser
 from collections.abc import Callable
 from ctypes import windll
 from pathlib import Path
@@ -382,11 +381,7 @@ class LukerLauncher:
         self._browser_busy = False
 
     def _open_browser_now(self) -> None:
-        url = config.get_server_url()
-        if config.use_pwa_mode:
-            open_in_browser(url, prefer_pwa=True)
-        else:
-            webbrowser.open(url)
+        open_in_browser(config.get_server_url(), prefer_pwa=config.use_pwa_mode)
 
     def _open_settings_window(self) -> None:
         """打开或聚焦设置窗口；已打开时只置前，不移动。"""

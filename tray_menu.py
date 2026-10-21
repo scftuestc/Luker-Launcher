@@ -13,7 +13,8 @@ import customtkinter as ctk
 
 from config import config
 from dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
-from win_utils import apply_blur, get_ui_font
+from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
+from win_utils import apply_window_blur, get_ui_font
 
 logger = logging.getLogger(__name__)
 
@@ -132,11 +133,7 @@ class TrayMenu(ctk.CTkToplevel):
         self._mouse_poll_id = self.after(100, self._check_mouse_outside)
 
     def _setup_blur(self) -> None:
-        try:
-            hwnd = windll.user32.GetParent(self.winfo_id())
-            apply_blur(hwnd, self.COLORS['bg'], alpha=0xEE)
-        except Exception:
-            pass
+        apply_window_blur(self, self.COLORS['bg'], alpha=0xEE, context="托盘菜单")
 
     def _start_menu_animation(self) -> None:
         if self._menu_animation_active:
@@ -157,13 +154,7 @@ class TrayMenu(ctk.CTkToplevel):
                 phase = (self._animation_phase + i * 0.25) % 1.0
                 brightness = 0.7 + 0.3 * math.sin(phase * 2 * 3.14159)
 
-                colors = [
-                    (0xFF, 0x6B, 0x6B),
-                    (0xFE, 0xCA, 0x57),
-                    (0x48, 0xDB, 0xFB),
-                    (0x1D, 0xD1, 0xA1),
-                ]
-                r, g, b = colors[i]
+                r, g, b = LOGO_BAR_RGB[i]
                 r = int(r * brightness)
                 g = int(g * brightness)
                 b = int(b * brightness)
@@ -182,8 +173,7 @@ class TrayMenu(ctk.CTkToplevel):
         logo.pack(side="left")
 
         self._menu_logo_bars = []
-        colors = ['#ff6b6b', '#feca57', '#48dbfb', '#1dd1a1']
-        for c in colors:
+        for c in LOGO_BAR_COLORS:
             bar = ctk.CTkFrame(logo, width=3, height=18, fg_color=c, corner_radius=2)
             bar.pack(side="left", padx=1)
             self._menu_logo_bars.append(bar)
