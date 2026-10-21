@@ -20,10 +20,10 @@
 
 从 [Releases](../../releases) 下载最新的 `Luker-Launcher.exe`。
 
-> **建议**：把 exe 放到 Luker 根目录（与 `Start.bat` 同级）。启动器会优先自动识别该目录；如果首次运行仍提示选择路径，选中这个目录即可。
+> **建议**：把 exe 放到 Luker 根目录（与 `Start.bat` 同级）。首次运行会自动识别该目录；已有有效配置时优先使用配置。如果仍提示选择路径，选中这个目录即可。
 
 - 双击运行，无需安装
-- 配置文件 `launcher_config.json` 会生成在 exe 同目录
+- 配置文件 `launcher_config.json` 会生成在 exe 同目录（模板见 `launcher_config.example.json`）
 - 若被 SmartScreen 拦截，点“更多信息” → “仍要运行”
 
 **运行要求**：Windows 10 / 11，已安装 Node.js 和 [Luker](https://github.com/funnycups/Luker)。
@@ -40,6 +40,8 @@
 | 右键托盘图标 | 启动、停止、重启、打开 Luker 页面、设置、退出 |
 | 关闭日志窗口 | 隐藏到托盘；退出请用托盘菜单 |
 
+如果托盘创建失败，关闭日志窗口会直接退出，避免窗口隐藏后无法恢复。
+
 Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置。
 
 ---
@@ -55,7 +57,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 
 ### 配置文件
 
-大部分选项可以在设置窗口修改；需要手动调整时，编辑 exe 同目录的 `launcher_config.json`：
+大部分选项可以在设置窗口修改；需要手动调整时，编辑 exe 同目录的 `launcher_config.json`。可参考仓库中的 [`launcher_config.example.json`](launcher_config.example.json)；空字符串表示未设置，首次运行会提示选择 Luker 目录。
 
 | 键 | 说明 |
 | :--- | :--- |
@@ -86,7 +88,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 
 ### 启动失败或提示找不到 node？
 
-先在 Luker 目录运行 `Start.bat`，确认 Luker 本身能启动；再检查 `node -v` 是否正常。如果仍然失败，查看 exe 同目录的 `launcher.log`，里面有详细错误信息。
+先在 Luker 目录运行 `Start.bat`，确认 Luker 本身能启动；再检查 `node -v` 是否正常。如果仍然失败，查看 exe 同目录的 `launcher.log`，里面有详细错误信息；如果该目录不可写，日志会写到 `%TEMP%\launcher.log`。
 
 ---
 
@@ -97,7 +99,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 - Windows 10 / 11 x64（依赖 Win32 托盘与窗口接口，不支持其他平台）
 - Python 3.12（本项目以此版本开发和验证）
 - 运行依赖：`pip install -r requirements.txt`
-- 打包：`pip install pyinstaller`（已用 PyInstaller 6.22 验证）
+- 打包：`pip install pyinstaller==6.22.2`（与 CI 一致）
 - 代码检查（可选）：`pip install ruff==0.16.10`
 
 ### 运行
@@ -110,11 +112,11 @@ python main.py
 ### 打包
 
 ```bash
-pip install pyinstaller
-pyinstaller launcher.spec
+pip install pyinstaller==6.22.2
+pyinstaller launcher.spec --noconfirm --distpath .
 ```
 
-也可以直接运行 `打包.bat`，生成的 exe 会放在项目根目录。
+也可以直接运行 `打包.bat`，两种方式生成的 exe 都会放在项目根目录。
 
 ### 测试
 

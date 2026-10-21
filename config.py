@@ -23,6 +23,7 @@ def get_app_dir() -> Path:
     return Path(__file__).parent
 
 
+# 修改版本号时同步更新 version_info.txt；tests/test_version.py 会校验一致性
 APP_VERSION = "2.3"
 
 # Luker 默认端口（与 server.js 的默认配置一致，实际端口以 Luker config.yaml 为准）

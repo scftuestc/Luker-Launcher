@@ -1,3 +1,4 @@
+# 与 config.APP_VERSION 保持同步；tests/test_version.py 会校验一致性
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=(2, 3, 0, 0),
