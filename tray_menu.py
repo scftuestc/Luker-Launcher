@@ -21,11 +21,10 @@ MENU_WIDTH = 220
 
 
 class MenuItem(TypedDict):
-    """菜单项的控件与初始文字颜色。"""
+    """菜单项的控件。"""
 
     frame: ctk.CTkFrame
     btn: ctk.CTkButton
-    color: str | None
 
 
 class TrayMenu(ctk.CTkToplevel):
@@ -286,7 +285,7 @@ class TrayMenu(ctk.CTkToplevel):
         )
         btn.pack(fill="x", padx=4)
 
-        return {'frame': frame, 'btn': btn, 'color': color}
+        return {'frame': frame, 'btn': btn}
 
     def _on_toggle_window(self) -> None:
         self.hide()

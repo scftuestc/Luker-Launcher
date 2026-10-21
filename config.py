@@ -242,12 +242,6 @@ class Config:
         self._config.pop('sillytavern_path', None)
         self._save_config()
 
-    @property
-    def start_bat_path(self) -> Path | None:
-        if self.luker_path:
-            return Path(self.luker_path) / "Start.bat"
-        return None
-
     def get_server_port(self) -> int:
         """从 Luker 的 config.yaml 读取服务端口，读取失败时返回默认端口"""
         if not self.luker_path:

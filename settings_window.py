@@ -254,7 +254,6 @@ class SettingsWindow(ctk.CTkToplevel):
         grid = ctk.CTkFrame(section, fg_color="transparent")
         grid.pack(fill="x", padx=12, pady=(0, 16))
 
-        self.theme_cards: dict[str, ctk.CTkFrame] = {}
         current_theme = config.theme_name
 
         row = 0
@@ -262,7 +261,6 @@ class SettingsWindow(ctk.CTkToplevel):
         for theme_id, colors in PRESET_THEMES.items():
             card = self._create_theme_card(grid, theme_id, colors, current_theme == theme_id)
             card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
-            self.theme_cards[theme_id] = card
 
             col += 1
             if col >= 3:
