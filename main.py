@@ -157,7 +157,6 @@ class LukerLauncher:
 
     def _restart_with_path(self, path: str) -> None:
         """路径变化时先停旧进程，再创建并启动新管理器。"""
-        self._process_busy = True
         old_manager = self.process_manager
 
         def worker() -> None:
@@ -183,7 +182,7 @@ class LukerLauncher:
             finally:
                 self._post_ui(self._finish_process_action)
 
-        self._run_async(worker)
+        self._start_process_worker(worker, context="路径切换")
 
     def _adopt_process_manager(self, manager: LukerProcessManager) -> None:
         self.process_manager = manager
@@ -223,6 +222,25 @@ class LukerLauncher:
         """在守护线程中执行耗时操作，不阻塞 Tk 主循环。"""
         Thread(target=func, daemon=True).start()
 
+    def _start_process_worker(
+        self,
+        worker: Callable[[], None],
+        *,
+        on_failure: Callable[[], None] | None = None,
+        context: str = "进程操作",
+    ) -> bool:
+        """启动一次进程操作；线程创建失败时复位 busy 并执行 on_failure。"""
+        self._process_busy = True
+        try:
+            self._run_async(worker)
+        except Exception:
+            self._process_busy = False
+            logger.exception("%s线程启动失败", context)
+            if on_failure is not None:
+                on_failure()
+            return False
+        return True
+
     def _ensure_process_manager(self) -> LukerProcessManager | None:
         """确保进程管理器与当前配置的 Luker 路径保持一致。"""
         if not config.luker_path:
@@ -257,17 +275,20 @@ class LukerLauncher:
             self._on_log("[错误] 未配置 Luker 路径")
             return
 
-        self._process_busy = True
-
         def worker() -> None:
             try:
                 action(manager)
             finally:
                 self._post_ui(self._finish_process_action)
 
-        self._run_async(worker)
+        self._start_process_worker(worker)
 
     def _finish_process_action(self) -> None:
+        """结束一次进程操作：复位 busy 并应用等待中的 GCL 配置。
+
+        每个把 busy 置 True 的操作都必须且只能在 finally 中投递一次本方法；
+        漏投或重复投递会让后续启停和 GCL 配置切换失去保护。
+        """
         self._process_busy = False
         self._update_status()
 
@@ -287,15 +308,13 @@ class LukerLauncher:
         if manager is None:
             return
 
-        self._process_busy = True
-
         def worker() -> None:
             try:
                 action(manager)
             finally:
                 self._post_ui(self._finish_process_action)
 
-        self._run_async(worker)
+        self._start_process_worker(worker, context="GCL 进程操作")
 
     def _on_settings(self) -> None:
         if self._exiting:
@@ -384,8 +403,6 @@ class LukerLauncher:
             self._sync_gcl_ui(False)
             return
 
-        self._process_busy = True
-
         def worker() -> None:
             try:
                 stopped = current is None or current.stop()
@@ -398,12 +415,11 @@ class LukerLauncher:
             else:
                 self._post_ui(lambda: self._finish_gcl_config_change(current, None, False))
 
-        try:
-            self._run_async(worker)
-        except Exception:
-            self._process_busy = False
-            logger.exception("GCL 配置切换线程启动失败")
-            self._sync_gcl_ui(current is not None)
+        self._start_process_worker(
+            worker,
+            on_failure=lambda: self._sync_gcl_ui(current is not None),
+            context="GCL 配置切换",
+        )
 
     def _finish_gcl_config_change(
         self,

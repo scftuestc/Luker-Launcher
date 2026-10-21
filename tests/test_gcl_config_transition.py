@@ -69,7 +69,6 @@ class GCLConfigTransitionTests(unittest.TestCase):
         self.assertIs(launcher.gcl_process_manager, old)
         self.assertEqual(launcher._pending_gcl_config, (False, None))
 
-        launcher._process_busy = False
         launcher._finish_process_action()
         launcher._ui.pump()
 
@@ -125,13 +124,27 @@ class GCLConfigTransitionTests(unittest.TestCase):
 
         self.assertEqual(launcher._pending_gcl_config, (True, str(self.new_bat)))
 
-        launcher._process_busy = False
         launcher._finish_process_action()
         launcher._ui.pump()
 
         self.assertEqual(old.stop_calls, 1)
         self.assertEqual(Path(launcher.gcl_process_manager.bat_path), self.new_bat)
         self.assertFalse(launcher._process_busy)
+
+    def test_finish_resets_busy_and_applies_pending_config(self):
+        launcher = self._make_launcher()
+        old = FakeGCLManager(self.old_bat)
+        launcher.gcl_process_manager = old
+        launcher._process_busy = True
+        launcher._pending_gcl_config = (False, None)
+
+        launcher._finish_process_action()
+        launcher._ui.pump()
+
+        self.assertFalse(launcher._process_busy)
+        self.assertIsNone(launcher.gcl_process_manager)
+        self.assertEqual(old.stop_calls, 1)
+        self.assertIn("[启动器] GCL 功能已禁用", self.logs)
 
 
 if __name__ == "__main__":
