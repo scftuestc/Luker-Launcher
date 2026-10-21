@@ -1,11 +1,11 @@
-"""隐藏日志窗口的分批重放调度。"""
+"""日志文本的分批重放调度。"""
 
 from collections import deque
 from collections.abc import Callable, Sequence
 
 from log_store import MAX_LOG_ENTRIES, LogEntry
 
-# 隐藏窗口重放时每批插入的日志条数和让出主线程的间隔
+# 重放时每批插入的日志条数和让出主线程的间隔
 REPLAY_BATCH_SIZE = 200
 REPLAY_YIELD_MS = 1
 

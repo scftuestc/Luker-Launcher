@@ -1,4 +1,4 @@
-"""主日志窗口：UI 构建、窗口交互和日志泵调度。"""
+"""主日志窗口：UI 构建、主题切换和日志泵调度。"""
 
 import contextlib
 import logging
@@ -18,7 +18,7 @@ from log_replay import LogReplay
 from log_search import LogSearch
 from log_store import MAX_LOG_BYTES, LogEntry, LogStore
 from log_tags import configure_log_tags
-from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
+from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB, shade_color
 from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
 from window_resize import WindowResizer
 
@@ -33,7 +33,7 @@ SEARCH_DEBOUNCE_MS = 250
 
 
 class LogWindow(ctk.CTk):
-    """Tk 根窗口，负责日志显示、搜索、主题切换和窗口边框交互。"""
+    """Tk 根窗口，负责日志显示、搜索和主题切换；几何由 WindowResizer 管理。"""
 
     def __init__(
         self,
@@ -51,6 +51,10 @@ class LogWindow(ctk.CTk):
         self.on_start_callback = on_start
         self.on_stop_callback = on_stop
         self._tray_available = True
+        # 最小化状态同时用于 <Map> 恢复和托盘点击的状态同步
+        self._minimized = False
+        self._was_minimized = False
+        self._icon_photo: object | None = None
 
         self.COLORS = config.get_theme_colors()
 
@@ -179,6 +183,8 @@ class LogWindow(ctk.CTk):
 
             if hasattr(self, '_search_frame'):
                 self._search_frame.configure(fg_color=self.COLORS['card'])
+            if hasattr(self, '_search_icon'):
+                self._search_icon.configure(text_color=self.COLORS['text_muted'])
             if hasattr(self, '_search_entry'):
                 self._search_entry.configure(
                     text_color=self.COLORS['text'], placeholder_text_color=self.COLORS['text_muted']
@@ -210,6 +216,8 @@ class LogWindow(ctk.CTk):
                     scrollbar_button_hover_color=self.COLORS['accent'],
                 )
                 configure_log_tags(self._get_textbox(), self.COLORS)
+                if hasattr(self, '_search'):
+                    self._search.refresh_colors()
 
             if hasattr(self, '_statusbar'):
                 self._statusbar.configure(fg_color=self.COLORS['card'])
@@ -270,11 +278,7 @@ class LogWindow(ctk.CTk):
         if hasattr(self, 'status_dot') and self._is_running:
             self._animation_phase = (self._animation_phase + 0.1) % (2 * 3.14159)
             alpha = 0.5 + 0.5 * math.sin(self._animation_phase)
-
-            r = int(0x3F + (0x2E - 0x3F) * alpha)
-            g = int(0xB9 + (0xA0 - 0xB9) * alpha)
-            b = int(0x50 + (0x43 - 0x50) * alpha)
-            pulse_color = f"#{r:02x}{g:02x}{b:02x}"
+            pulse_color = shade_color(self.COLORS['success'], 1.0 - 0.25 * alpha)
 
             with contextlib.suppress(tk.TclError):
                 self.status_dot.configure(text_color=pulse_color)
@@ -395,7 +399,7 @@ class LogWindow(ctk.CTk):
             logger.warning("最小化窗口失败", exc_info=True)
 
     def _on_map(self, event: tk.Event) -> None:
-        if hasattr(self, '_minimized') and self._minimized:
+        if self._minimized:
             self._minimized = False
             self.lift()
             self.focus_force()
@@ -407,7 +411,7 @@ class LogWindow(ctk.CTk):
             hwnd = windll.user32.GetParent(self.winfo_id())
             is_minimized = windll.user32.IsIconic(hwnd)
 
-            if getattr(self, '_was_minimized', False) and not is_minimized:
+            if self._was_minimized and not is_minimized:
                 self.after(50, self._restore_window)
 
             self._was_minimized = is_minimized
@@ -424,7 +428,7 @@ class LogWindow(ctk.CTk):
             self.lift()
             self.focus_force()
         except Exception:
-            pass
+            logger.warning("恢复窗口失败", exc_info=True)
 
     def _on_close(self) -> None:
         if not self._tray_available:
@@ -485,9 +489,10 @@ class LogWindow(ctk.CTk):
         search_inner = ctk.CTkFrame(self._search_frame, fg_color="transparent")
         search_inner.pack(padx=8, pady=4)
 
-        ctk.CTkLabel(
+        self._search_icon = ctk.CTkLabel(
             search_inner, text="🔍", font=ctk.CTkFont(size=14), text_color=self.COLORS['text_muted']
-        ).pack(side="left", padx=(4, 4))
+        )
+        self._search_icon.pack(side="left", padx=(4, 4))
 
         self._search_var = ctk.StringVar()
 

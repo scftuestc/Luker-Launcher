@@ -13,6 +13,7 @@ class FakeText:
         self.added: list[tuple[str, str, str]] = []
         self.raised: list[tuple[str, ...]] = []
         self.deleted: list[tuple[str, str]] = []
+        self.tag_configs: list[tuple[str, dict]] = []
 
     def tag_remove(self, *args) -> None:
         pass
@@ -23,8 +24,8 @@ class FakeText:
     def tag_raise(self, *args) -> None:
         self.raised.append(args)
 
-    def tag_configure(self, *args, **kwargs) -> None:
-        pass
+    def tag_configure(self, tag: str, **kwargs) -> None:
+        self.tag_configs.append((tag, kwargs))
 
     def see(self, *args) -> None:
         pass
@@ -67,6 +68,22 @@ def make_search(text: FakeText, label: FakeLabel | None = None) -> LogSearch:
         FakeNav(),
         lambda: {"warning": "#ffffff", "accent": "#000000"},
     )
+
+
+class SearchColorTests(unittest.TestCase):
+    def test_refresh_colors_reconfigures_highlight_tags(self):
+        text = FakeText()
+        search = make_search(text)
+
+        search.refresh_colors()
+
+        self.assertEqual(
+            text.tag_configs,
+            [
+                ("search_highlight", {"background": "#ffffff", "foreground": "#000000"}),
+                ("search_current", {"background": "#000000", "foreground": "#ffffff"}),
+            ],
+        )
 
 
 class SearchAdjustTests(unittest.TestCase):

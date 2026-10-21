@@ -113,7 +113,7 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
 
 DEFAULT_THEME = 'deep_blue'
 
-# 启动器 logo 的四条竖条颜色，不随主题变化；RGB 是唯一数据源
+# 启动器 logo 的四条竖条基础颜色；动画在 log_window._animate_glow 中按亮度插值
 LOGO_BAR_RGB = (
     (0xFF, 0x6B, 0x6B),
     (0xFE, 0xCA, 0x57),
@@ -127,3 +127,15 @@ def get_theme_colors(name: str) -> dict[str, str]:
     """返回主题颜色副本；主题名无效时使用默认主题。"""
     theme = PRESET_THEMES.get(name, PRESET_THEMES[DEFAULT_THEME])
     return theme.copy()
+
+
+def shade_color(color: str, factor: float) -> str:
+    """按比例调暗或调亮 #RRGGBB；factor 小于 1 调暗，大于 1 调亮。"""
+    if len(color) != 7 or not color.startswith('#'):
+        return color
+    try:
+        red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
+    except ValueError:
+        return color
+    channels = (max(0, min(255, round(channel * factor))) for channel in (red, green, blue))
+    return '#{:02x}{:02x}{:02x}'.format(*channels)

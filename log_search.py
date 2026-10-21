@@ -35,14 +35,15 @@ class LogSearch:
         self._nav_frame.pack_forget()
         self._count_label.configure(text="")
 
+    def refresh_colors(self) -> None:
+        """主题切换后重配高亮标签，保留已有搜索结果。"""
+        self._configure_highlight_tags()
+
     def perform(self, search_text: str) -> None:
         """执行搜索并高亮全部结果。"""
         tb = self._get_textbox()
         self._clear_highlights()
-
-        colors = self._get_colors()
-        tb.tag_configure('search_highlight', background=colors['warning'], foreground='#000000')
-        tb.tag_configure('search_current', background=colors['accent'], foreground='#ffffff')
+        self._configure_highlight_tags()
 
         self.results = []
         self.truncated = False
@@ -138,6 +139,12 @@ class LogSearch:
             return
         self.current_index = (self.current_index - 1) % len(self.results)
         self.highlight_current()
+
+    def _configure_highlight_tags(self) -> None:
+        colors = self._get_colors()
+        tb = self._get_textbox()
+        tb.tag_configure('search_highlight', background=colors['warning'], foreground='#000000')
+        tb.tag_configure('search_current', background=colors['accent'], foreground='#ffffff')
 
     def _clear_highlights(self) -> None:
         tb = self._get_textbox()

@@ -1,6 +1,6 @@
 import unittest
 
-from theme import DEFAULT_THEME, PRESET_THEMES, get_theme_colors
+from theme import DEFAULT_THEME, PRESET_THEMES, get_theme_colors, shade_color
 
 REQUIRED_COLOR_KEYS = (
     "bg",
@@ -40,6 +40,18 @@ class ThemeTests(unittest.TestCase):
         colors = get_theme_colors(DEFAULT_THEME)
         colors["bg"] = "#000000"
         self.assertNotEqual(PRESET_THEMES[DEFAULT_THEME]["bg"], "#000000")
+
+
+class ShadeColorTests(unittest.TestCase):
+    def test_darkens_each_channel(self):
+        self.assertEqual(shade_color("#3fb950", 0.75), "#2f8b3c")
+
+    def test_clamps_brightness(self):
+        self.assertEqual(shade_color("#ffffff", 2), "#ffffff")
+        self.assertEqual(shade_color("#000000", 10), "#000000")
+
+    def test_invalid_color_is_returned_unchanged(self):
+        self.assertEqual(shade_color("not-a-color", 0.5), "not-a-color")
 
 
 if __name__ == "__main__":

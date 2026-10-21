@@ -1,4 +1,4 @@
-"""主线程 UI 操作投递：有界队列、同键合并和按帧泵。"""
+"""主线程 UI 操作投递：有界队列、同键合并和定时泵。"""
 
 import contextlib
 import logging
