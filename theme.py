@@ -215,3 +215,23 @@ def shade_color(color: str, factor: float) -> str:
         return color
     channels = (max(0, min(255, round(channel * factor))) for channel in (red, green, blue))
     return '#{:02x}{:02x}{:02x}'.format(*channels)
+
+
+def mix_color(base: str, overlay: str, ratio: float) -> str:
+    """按 ratio 把 overlay 混入 base，返回 #rrggbb；用于柔和的悬停底色。"""
+    if len(base) != 7 or not base.startswith('#'):
+        return base
+    if len(overlay) != 7 or not overlay.startswith('#'):
+        return base
+    try:
+        base_rgb = tuple(int(base[index : index + 2], 16) for index in (1, 3, 5))
+        overlay_rgb = tuple(int(overlay[index : index + 2], 16) for index in (1, 3, 5))
+    except ValueError:
+        return base
+
+    factor = max(0.0, min(1.0, ratio))
+    channels = (
+        round(start + (end - start) * factor)
+        for start, end in zip(base_rgb, overlay_rgb, strict=True)
+    )
+    return '#{:02x}{:02x}{:02x}'.format(*channels)

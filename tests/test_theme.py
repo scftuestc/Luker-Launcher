@@ -10,6 +10,7 @@ from theme import (
     get_theme_colors,
     is_light_color,
     logo_bar_brightness,
+    mix_color,
     shade_color,
 )
 
@@ -102,6 +103,20 @@ class ShadeColorTests(unittest.TestCase):
 
     def test_invalid_color_is_returned_unchanged(self):
         self.assertEqual(shade_color("not-a-color", 0.5), "not-a-color")
+
+
+class MixColorTests(unittest.TestCase):
+    def test_blends_channels(self):
+        self.assertEqual(mix_color("#000000", "#ffffff", 0.5), "#808080")
+        self.assertEqual(mix_color("#ff0000", "#0000ff", 0.5), "#800080")
+
+    def test_ratio_is_clamped(self):
+        self.assertEqual(mix_color("#102030", "#ffffff", 2), "#ffffff")
+        self.assertEqual(mix_color("#102030", "#ffffff", -1), "#102030")
+
+    def test_invalid_colors_return_base(self):
+        self.assertEqual(mix_color("not-a-color", "#ffffff", 0.5), "not-a-color")
+        self.assertEqual(mix_color("#102030", "not-a-color", 0.5), "#102030")
 
 
 class LightColorTests(unittest.TestCase):

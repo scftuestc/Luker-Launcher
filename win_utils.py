@@ -11,6 +11,11 @@ from theme import is_light_color
 
 logger = logging.getLogger(__name__)
 
+# DwmSetWindowAttribute 的窗口圆角偏好；Win11 22000 起支持
+DWMWA_WINDOW_CORNER_PREFERENCE = 33
+DWMWCP_ROUND = 2
+CORNER_PREFERENCE_MIN_BUILD = 22000
+
 
 class WindowsBlur:
     """Win32 模糊/圆角效果封装；系统不支持时由调用者记录并降级为普通窗口。"""
@@ -47,14 +52,9 @@ class WindowsBlur:
         """应用 DWM 模糊；失败时抛出异常，由调用者统一记录。"""
         user32 = windll.user32
         dwmapi = windll.dwmapi
-        build = sys.getwindowsversion().build
 
         value = c_int(1)
         dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(value), sizeof(value))
-
-        if build >= 22000:
-            corner = c_int(2)
-            dwmapi.DwmSetWindowAttribute(hwnd, 33, byref(corner), sizeof(corner))
 
         accent = WindowsBlur.ACCENT_POLICY()
         accent.AccentState = accent_state
@@ -156,6 +156,28 @@ def disable_window_blur(window: tk.Tk | tk.Toplevel, *, context: str = "窗口")
         logger.warning("%s关闭毛玻璃失败", context, exc_info=True)
 
 
+def apply_window_rounding(window: tk.Tk | tk.Toplevel, *, context: str = "窗口") -> None:
+    """请求 Win11 的系统圆角，与毛玻璃开关无关；旧系统静默跳过。"""
+    try:
+        if sys.getwindowsversion().build < CORNER_PREFERENCE_MIN_BUILD:
+            return
+        hwnd = windll.user32.GetParent(window.winfo_id())
+        if not hwnd:
+            return
+
+        corner = c_int(DWMWCP_ROUND)
+        result = windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, byref(corner), sizeof(corner)
+        )
+        if result != 0:
+            logger.warning("%s圆角设置被系统拒绝: %s", context, result)
+            return
+        # 已经显示的窗口需要一次 frame change 才会重新取整
+        windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, WindowsBlur.SWP_FLAGS)
+    except Exception:
+        logger.warning("%s设置圆角失败", context, exc_info=True)
+
+
 def sync_window_blur(
     window: tk.Tk | tk.Toplevel,
     bg_color: str,
@@ -169,6 +191,7 @@ def sync_window_blur(
     if not enabled:
         window.attributes('-alpha', 1.0)
         disable_window_blur(window, context=context)
+        apply_window_rounding(window, context=context)
         return
 
     # 先重置再设置透明度，确保从关闭状态切回时重新启用分层窗口
@@ -183,6 +206,7 @@ def sync_window_blur(
         accent_state=accent_state,
         context=context,
     )
+    apply_window_rounding(window, context=context)
 
 
 def bind_window_drag(window: tk.Tk | tk.Toplevel, *widgets: tk.Misc) -> None:

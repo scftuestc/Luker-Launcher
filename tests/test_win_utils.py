@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import win_utils
@@ -104,6 +105,7 @@ class SyncWindowBlurTests(unittest.TestCase):
         with (
             patch.object(win_utils, 'apply_window_blur') as apply_mock,
             patch.object(win_utils, 'disable_window_blur') as disable_mock,
+            patch.object(win_utils, 'apply_window_rounding') as rounding_mock,
         ):
             sync_window_blur(
                 window,
@@ -123,10 +125,14 @@ class SyncWindowBlurTests(unittest.TestCase):
             context="测试窗口",
         )
         disable_mock.assert_not_called()
+        rounding_mock.assert_called_once_with(window, context="测试窗口")
 
     def test_enabled_light_background_uses_blur_behind(self):
         window = FakeAlphaWindow()
-        with patch.object(win_utils, 'apply_window_blur') as apply_mock:
+        with (
+            patch.object(win_utils, 'apply_window_blur') as apply_mock,
+            patch.object(win_utils, 'apply_window_rounding') as rounding_mock,
+        ):
             sync_window_blur(
                 window,
                 "#f0ede8",
@@ -142,12 +148,14 @@ class SyncWindowBlurTests(unittest.TestCase):
             accent_state=3,
             context="测试窗口",
         )
+        rounding_mock.assert_called_once_with(window, context="测试窗口")
 
     def test_disabled_sets_opaque_alpha_and_disables_blur(self):
         window = FakeAlphaWindow()
         with (
             patch.object(win_utils, 'apply_window_blur') as apply_mock,
             patch.object(win_utils, 'disable_window_blur') as disable_mock,
+            patch.object(win_utils, 'apply_window_rounding') as rounding_mock,
         ):
             sync_window_blur(
                 window,
@@ -160,6 +168,85 @@ class SyncWindowBlurTests(unittest.TestCase):
         self.assertEqual(window.alphas, [1.0])
         apply_mock.assert_not_called()
         disable_mock.assert_called_once_with(window, context="测试窗口")
+        rounding_mock.assert_called_once_with(window, context="测试窗口")
+
+
+class WindowRoundingTests(unittest.TestCase):
+    def test_skips_systems_without_corner_preference(self):
+        with (
+            patch.object(
+                win_utils.sys,
+                'getwindowsversion',
+                return_value=SimpleNamespace(build=19045),
+            ),
+            patch.object(win_utils, 'windll') as windll_mock,
+        ):
+            win_utils.apply_window_rounding(FakeWindow())
+
+        windll_mock.dwmapi.DwmSetWindowAttribute.assert_not_called()
+
+    def test_sets_round_preference_and_forces_frame_change(self):
+        with (
+            patch.object(
+                win_utils.sys,
+                'getwindowsversion',
+                return_value=SimpleNamespace(build=22621),
+            ),
+            patch.object(win_utils, 'windll') as windll_mock,
+        ):
+            windll_mock.user32.GetParent.return_value = 42
+            windll_mock.dwmapi.DwmSetWindowAttribute.return_value = 0
+
+            win_utils.apply_window_rounding(FakeWindow(), context="测试窗口")
+
+        windll_mock.dwmapi.DwmSetWindowAttribute.assert_called_once()
+        hwnd, attribute, _, size = windll_mock.dwmapi.DwmSetWindowAttribute.call_args.args
+        self.assertEqual(hwnd, 42)
+        self.assertEqual(attribute, 33)
+        self.assertEqual(size, 4)
+        windll_mock.user32.SetWindowPos.assert_called_once_with(
+            42,
+            0,
+            0,
+            0,
+            0,
+            0,
+            win_utils.WindowsBlur.SWP_FLAGS,
+        )
+
+    def test_rejected_corner_preference_is_logged(self):
+        with (
+            patch.object(
+                win_utils.sys,
+                'getwindowsversion',
+                return_value=SimpleNamespace(build=22621),
+            ),
+            patch.object(win_utils, 'windll') as windll_mock,
+            self.assertLogs('win_utils', level='WARNING') as logs,
+        ):
+            windll_mock.user32.GetParent.return_value = 42
+            windll_mock.dwmapi.DwmSetWindowAttribute.return_value = -1
+
+            win_utils.apply_window_rounding(FakeWindow(), context="测试窗口")
+
+        self.assertIn("测试窗口圆角设置被系统拒绝", logs.output[0])
+        windll_mock.user32.SetWindowPos.assert_not_called()
+
+    def test_failure_is_logged(self):
+        with (
+            patch.object(
+                win_utils.sys,
+                'getwindowsversion',
+                return_value=SimpleNamespace(build=22621),
+            ),
+            patch.object(win_utils, 'windll') as windll_mock,
+            self.assertLogs('win_utils', level='WARNING') as logs,
+        ):
+            windll_mock.user32.GetParent.side_effect = OSError("boom")
+
+            win_utils.apply_window_rounding(FakeWindow(), context="测试窗口")
+
+        self.assertIn("测试窗口设置圆角失败", logs.output[0])
 
 
 class FakeWidget:
