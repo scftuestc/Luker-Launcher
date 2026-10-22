@@ -74,22 +74,22 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
         'warning': '#eab308',
         'info': '#34d399',
     },
-    'bright_white': {
-        'name': '皓白霜华',
-        'short_name': '皓白',
-        'icon': '🤍',
-        'bg': '#f5f5f4',
-        'card': '#ffffff',
-        'card_hover': '#e7e5e4',
-        'border': '#d6d3d1',
+    'cloud_gray': {
+        'name': '云灰微光',
+        'short_name': '云灰',
+        'icon': '🌫️',
+        'bg': '#d8d5d0',
+        'card': '#f0ede8',
+        'card_hover': '#e4e0da',
+        'border': '#bdb8b0',
         'text': '#1c1917',
-        'text_dim': '#57534e',
-        'text_muted': '#78716c',
-        'accent': '#334155',
+        'text_dim': '#4e4943',
+        'text_muted': '#716b63',
+        'accent': '#475569',
         'on_accent': '#ffffff',
         'success': '#15803d',
         'error': '#b91c1c',
-        'warning': '#b45309',
+        'warning': '#92400e',
         'info': '#1d4ed8',
     },
     'ocean_cyan': {
@@ -136,7 +136,8 @@ DEFAULT_THEME = 'summer'
 LEGACY_THEME_ALIASES: dict[str, str] = {
     'deep_blue': 'summer',
     'rose_pink': 'crimson',
-    'warm_orange': 'bright_white',
+    'warm_orange': 'cloud_gray',
+    'bright_white': 'cloud_gray',
 }
 
 # 启动器 logo 的四条竖条基础颜色；动画在 log_window._animate_glow 中按亮度插值
@@ -182,7 +183,7 @@ def blend_color(
 
 
 def is_light_color(color: str) -> bool:
-    """判断 #RRGGBB 是否为浅色；浅色窗口不使用 DWM 毛玻璃。"""
+    """判断 #RRGGBB 是否为浅色；用于选择窗口的模糊方式。"""
     if len(color) != 7 or not color.startswith('#'):
         return False
     try:

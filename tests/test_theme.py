@@ -106,7 +106,7 @@ class ShadeColorTests(unittest.TestCase):
 
 class LightColorTests(unittest.TestCase):
     def test_light_and_dark_backgrounds(self):
-        self.assertTrue(is_light_color(PRESET_THEMES["bright_white"]["bg"]))
+        self.assertTrue(is_light_color(PRESET_THEMES["cloud_gray"]["bg"]))
         self.assertTrue(is_light_color("#ffffff"))
         self.assertFalse(is_light_color(PRESET_THEMES["summer"]["bg"]))
         self.assertFalse(is_light_color("#000000"))
