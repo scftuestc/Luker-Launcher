@@ -91,7 +91,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
-        self.attributes('-alpha', 0.98 if config.blur_enabled else 1.0)
+        self.attributes('-alpha', 0.95 if config.blur_enabled else 1.0)
         self.configure(fg_color=self.COLORS['bg'])
 
         self._build_ui()
@@ -157,7 +157,7 @@ class SettingsWindow(ctk.CTkToplevel):
             self,
             self.COLORS['bg'],
             enabled=config.blur_enabled,
-            window_alpha=0.98,
+            window_alpha=0.95,
             tint_alpha=0xEE,
             context="设置窗口",
         )
@@ -345,8 +345,9 @@ class SettingsWindow(ctk.CTkToplevel):
             child.destroy()
 
         clear_scroll_bindings(self)
-        self._build_ui()
+        # 透明 frame 在创建时继承根窗口背景，必须先更新根背景再重建
         self.configure(fg_color=self.COLORS['bg'])
+        self._build_ui()
         self._setup_blur()
 
     def _build_pwa_section(self, parent: tk.Misc) -> None:

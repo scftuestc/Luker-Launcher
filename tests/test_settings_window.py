@@ -171,6 +171,45 @@ class BlurToggleTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class FakeChild:
+    def __init__(self, calls: list[tuple[str, ...]]) -> None:
+        self.calls = calls
+
+    def destroy(self) -> None:
+        self.calls.append(('destroy',))
+
+
+class RebuildOrderTests(unittest.TestCase):
+    def test_root_background_updates_before_rebuilding_children(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window.COLORS = {'bg': '#123456'}
+        calls = []
+        window.winfo_exists = lambda: True
+        window.winfo_children = lambda: [FakeChild(calls)]
+        window.configure = lambda **options: calls.append(('configure', options))
+        window._build_ui = lambda: calls.append(('build',))
+        window._setup_blur = lambda: calls.append(('blur',))
+
+        with patch.object(
+            settings_window,
+            'clear_scroll_bindings',
+            lambda _widget: calls.append(('clear',)),
+        ):
+            window._rebuild_ui()
+
+        self.assertEqual(
+            calls,
+            [
+                ('destroy',),
+                ('clear',),
+                ('configure', {'fg_color': '#123456'}),
+                ('build',),
+                ('blur',),
+            ],
+        )
+
+
 class SettingsWindowTests(unittest.TestCase):
     def setUp(self) -> None:
         FakeSettingsWindow.instances.clear()

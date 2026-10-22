@@ -63,7 +63,7 @@ class TrayMenu(ctk.CTkToplevel):
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
-        self.attributes('-alpha', 0.97 if config.blur_enabled else 1.0)
+        self.attributes('-alpha', 0.95 if config.blur_enabled else 1.0)
 
         self.configure(fg_color=self.COLORS['bg'])
 
@@ -152,7 +152,7 @@ class TrayMenu(ctk.CTkToplevel):
             self,
             self.COLORS['bg'],
             enabled=config.blur_enabled,
-            window_alpha=0.97,
+            window_alpha=0.95,
             tint_alpha=0xEE,
             context="托盘菜单",
         )

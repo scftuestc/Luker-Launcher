@@ -42,7 +42,7 @@ class BlurChangeTests(unittest.TestCase):
             window,
             '#112233',
             enabled=False,
-            window_alpha=0.97,
+            window_alpha=0.95,
             tint_alpha=0xEE,
             context='托盘菜单',
         )
