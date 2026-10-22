@@ -1,6 +1,22 @@
 """主题预设：颜色、显示名称与设置窗口使用的元数据。"""
 
 import math
+from typing import Literal
+
+ThemeColorKey = Literal[
+    'bg',
+    'card',
+    'card_hover',
+    'border',
+    'text',
+    'text_dim',
+    'text_muted',
+    'accent',
+    'success',
+    'error',
+    'warning',
+    'info',
+]
 
 PRESET_THEMES: dict[str, dict[str, str]] = {
     'deep_blue': {
