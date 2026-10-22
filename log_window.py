@@ -26,7 +26,7 @@ from theme import (
     logo_bar_glow_color,
     shade_color,
 )
-from ui_icons import TransportIcon, transport_icon
+from ui_icons import TransportIcon, toolbar_icon, transport_icon
 from ui_style import ButtonRole, button_colors, make_button
 from win_utils import (
     apply_window_rounding,
@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 # 搜索输入防抖时间（毫秒）
 SEARCH_DEBOUNCE_MS = 250
+SEARCH_HINT_TEXT = "搜索日志..."
 
 
 class LogWindow(ctk.CTk):
@@ -109,12 +110,14 @@ class LogWindow(ctk.CTk):
         self._glow_job: str | None = None
 
         self._search_job: str | None = None
+        self._search_focused = False
+        self._search_hint: ctk.CTkLabel | None = None
+        self._auto_scroll = True
 
         self._build_ui()
         self._ui_ready = True
         self._search_var.trace_add('write', self._on_search_change)
 
-        self._auto_scroll = True
         self._is_running = False
         self._luker_state = LukerState.STOPPED
         self._logo_is_gray = True
@@ -192,6 +195,8 @@ class LogWindow(ctk.CTk):
 
             for button, role in self._styled_buttons:
                 button.configure(**button_colors(role, self.COLORS))
+
+            self._refresh_toolbar_icons()
 
             # 动态状态依赖静态颜色，必须放在绑定之后
             self._apply_log_source_ui()
@@ -388,6 +393,8 @@ class LogWindow(ctk.CTk):
         self.after_idle(self._resizer.fit_to_current_monitor)
         # 立即恢复呼吸，避免隐藏期的 500ms 轮询造成可见延迟
         self._restart_glow()
+        # 缩放此时已注册，重新对齐搜索 hint
+        self._update_search_hint()
 
     def _check_window_state(self) -> None:
         with contextlib.suppress(Exception):
@@ -445,8 +452,11 @@ class LogWindow(ctk.CTk):
             left,
             'secondary',
             self.COLORS,
-            text="🗑️ 清除",
+            text="清除",
+            image=toolbar_icon('trash', self.COLORS['text']),
+            compound='left',
             font_family=self.UI_FONT,
+            font_size=14,
             width=100,
             height=40,
             command=self.clear_logs,
@@ -458,8 +468,11 @@ class LogWindow(ctk.CTk):
             left,
             'secondary',
             self.COLORS,
-            text="📜 自动滚动",
+            text="自动滚动",
+            image=toolbar_icon('scroll', self.COLORS['text']),
+            compound='left',
             font_family=self.UI_FONT,
+            font_size=14,
             width=130,
             height=40,
             command=self._toggle_scroll,
@@ -482,31 +495,43 @@ class LogWindow(ctk.CTk):
         search_inner.pack(fill="x", expand=True, padx=8, pady=4)
 
         self._search_icon = ctk.CTkLabel(
-            search_inner, text="🔍", font=ctk.CTkFont(size=14), text_color=self.COLORS['text_muted']
+            search_inner,
+            image=toolbar_icon('search', self.COLORS['text_muted']),
+            text="",
+            width=18,
+            height=18,
         )
-        self._search_icon.pack(side="left", padx=(4, 4))
-        self._bind_theme(self._search_icon, text_color='text_muted')
+        self._search_icon.pack(side="left", padx=(4, 6))
 
         self._search_var = ctk.StringVar()
 
         self._search_entry = ctk.CTkEntry(
             search_inner,
-            placeholder_text="搜索日志...",
             font=ctk.CTkFont(family=self.UI_FONT, size=13),
             fg_color="transparent",
             border_width=0,
             text_color=self.COLORS['text'],
-            placeholder_text_color=self.COLORS['text_muted'],
             width=150,
             height=32,
             textvariable=self._search_var,
         )
         self._search_entry.pack(side="left", fill="x", expand=True)
-        self._bind_theme(
-            self._search_entry,
-            text_color='text',
-            placeholder_text_color='text_muted',
+        self._bind_theme(self._search_entry, text_color='text')
+
+        # 原生 placeholder 与 textvariable 同用时不会生效，改用独立 hint 覆盖层
+        self._search_hint = ctk.CTkLabel(
+            search_inner,
+            text=SEARCH_HINT_TEXT,
+            font=ctk.CTkFont(family=self.UI_FONT, size=13),
+            text_color=self.COLORS['text_muted'],
+            fg_color="transparent",
+            height=18,
         )
+        self._bind_theme(self._search_hint, text_color='text_muted')
+        self._search_hint.bind("<Button-1>", lambda _event: self._search_entry.focus_set())
+        self._search_entry.bind("<FocusIn>", self._on_search_focus_in)
+        self._search_entry.bind("<FocusOut>", self._on_search_focus_out)
+        self._update_search_hint()
 
         self._search_nav = ctk.CTkFrame(search_inner, fg_color="transparent")
         self._search_nav.pack(side="left", padx=(4, 0))
@@ -726,7 +751,26 @@ class LogWindow(ctk.CTk):
 
     def _toggle_scroll(self) -> None:
         self._auto_scroll = not self._auto_scroll
-        self.scroll_btn.configure(text="📜 自动滚动" if self._auto_scroll else "📜 已暂停")
+        self._apply_auto_scroll_ui()
+
+    def _apply_auto_scroll_ui(self) -> None:
+        """按自动滚动状态同步文字、图标和警示色。"""
+        color = self.COLORS['text'] if self._auto_scroll else self.COLORS['warning']
+        self.scroll_btn.configure(
+            text="自动滚动" if self._auto_scroll else "已暂停",
+            text_color=color,
+            image=toolbar_icon(
+                'scroll' if self._auto_scroll else 'pause',
+                color,
+                size=16,
+            ),
+        )
+
+    def _refresh_toolbar_icons(self) -> None:
+        """按当前主题重新生成工具栏图标。"""
+        self._clear_btn.configure(image=toolbar_icon('trash', self.COLORS['text']))
+        self._search_icon.configure(image=toolbar_icon('search', self.COLORS['text_muted']))
+        self._apply_auto_scroll_ui()
 
     def _toggle_running(self) -> None:
         if self._is_running:
@@ -777,6 +821,36 @@ class LogWindow(ctk.CTk):
 
     # ===== 搜索功能 =====
 
+    def _on_search_focus_in(self, _event: tk.Event | None = None) -> None:
+        self._search_focused = True
+        self._update_search_hint()
+
+    def _on_search_focus_out(self, _event: tk.Event | None = None) -> None:
+        self._search_focused = False
+        self._update_search_hint()
+
+    def _update_search_hint(self) -> None:
+        """输入为空且未聚焦时，把浅色提示覆盖在输入框文字起点上。"""
+        if self._search_hint is None:
+            return
+        if self._search_focused or self._search_var.get():
+            self._search_hint.place_forget()
+            return
+        self._search_hint.place(
+            in_=self._search_entry,
+            x=self._search_hint_x(),
+            rely=0.5,
+            anchor='w',
+        )
+
+    def _search_hint_x(self) -> int:
+        try:
+            scale = self._get_widget_scaling()
+        except AttributeError:
+            # 构造早期缩放尚未注册，先按 1.0 放置，Map 后会重新校正
+            scale = 1.0
+        return round(6 * scale)
+
     def _on_search_change(self, *args: str) -> None:
         """输入时防抖，避免每敲一个字都对全部日志重新搜索。"""
         if self._search_job is not None:
@@ -785,9 +859,11 @@ class LogWindow(ctk.CTk):
 
         if not self._search_var.get().strip():
             self._search.clear_state()
+            self._update_search_hint()
             return
 
         self._search_job = self.after(SEARCH_DEBOUNCE_MS, self._run_search)
+        self._update_search_hint()
 
     def _run_search(self) -> None:
         """执行搜索并显示结果导航。"""
