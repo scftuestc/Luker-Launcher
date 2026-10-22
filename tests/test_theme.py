@@ -11,7 +11,6 @@ REQUIRED_COLOR_KEYS = (
     "text_dim",
     "text_muted",
     "accent",
-    "accent_blue",
     "success",
     "error",
     "warning",

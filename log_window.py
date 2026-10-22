@@ -8,6 +8,7 @@ import tkinter as tk
 from collections.abc import Callable, Sequence
 from ctypes import windll
 from types import TracebackType
+from typing import Literal
 
 import customtkinter as ctk
 
@@ -30,6 +31,8 @@ MAX_LOG_LINES_PER_CYCLE = 10
 MAX_LOG_QUEUE_SIZE = 5000
 # 搜索输入防抖时间（毫秒）
 SEARCH_DEBOUNCE_MS = 250
+
+LogSource = Literal['luker', 'gcl']
 
 
 class LogWindow(ctk.CTk):
@@ -86,7 +89,7 @@ class LogWindow(ctk.CTk):
         self._glow_direction = 1
 
         # 日志源切换状态：'luker' 或 'gcl'
-        self._log_source = 'luker'
+        self._log_source: LogSource = 'luker'
         # 分别存储两个日志源的历史记录，容量由 LogStore 统一限制
         self._luker_store = LogStore()
         self._gcl_store = LogStore()
@@ -153,12 +156,8 @@ class LogWindow(ctk.CTk):
                 self._titlebar.configure(fg_color=self.COLORS['card'])
             if hasattr(self, '_title_label'):
                 self._title_label.configure(text_color=self.COLORS['text'])
-            if hasattr(self, '_log_source_btn'):
-                self._log_source_btn.configure(
-                    fg_color=self.COLORS['warning']
-                    if self._log_source == 'gcl'
-                    else self.COLORS['accent']
-                )
+            if hasattr(self, '_log_source_btn') and hasattr(self, '_title_label'):
+                self._apply_log_source_ui()
             if hasattr(self, '_min_btn'):
                 self._min_btn.configure(
                     hover_color=self.COLORS['card_hover'], text_color=self.COLORS['text_dim']
@@ -308,6 +307,7 @@ class LogWindow(ctk.CTk):
             exists=self.winfo_exists,
             on_finished=self._on_replay_finished,
         )
+        self._apply_log_source_ui()
 
     def _build_titlebar(self, parent: tk.Misc) -> None:
         self._titlebar = ctk.CTkFrame(
@@ -582,7 +582,7 @@ class LogWindow(ctk.CTk):
             height=36,
             font=ctk.CTkFont(size=16),
             fg_color=self.COLORS['success'],
-            hover_color="#2ea043",
+            hover_color=shade_color(self.COLORS['success'], 0.85),
             text_color="#ffffff",
             corner_radius=18,
             command=self._toggle_running,
@@ -662,7 +662,7 @@ class LogWindow(ctk.CTk):
         self,
         log_queue: BoundedLogQueue,
         log_store: LogStore,
-        source: str,
+        source: LogSource,
     ) -> None:
         """从队列取一批日志写入存储；仅当前日志源且窗口可见时渲染。"""
         entries = []
@@ -704,16 +704,23 @@ class LogWindow(ctk.CTk):
 
     def _toggle_log_source(self) -> None:
         """切换日志源"""
-        if self._log_source == 'luker':
-            self._log_source = 'gcl'
-            self._log_source_btn.configure(text="🚀 GCL 日志", fg_color=self.COLORS['warning'])
-            self._title_label.configure(text="GCL 日志")
-        else:
-            self._log_source = 'luker'
-            self._log_source_btn.configure(text="📊 Luker 日志", fg_color=self.COLORS['accent'])
-            self._title_label.configure(text="Luker 日志")
-
+        self._log_source = 'gcl' if self._log_source == 'luker' else 'luker'
+        self._apply_log_source_ui()
         self._refresh_log_display()
+
+    def _apply_log_source_ui(self) -> None:
+        """按当前日志源更新切换按钮和标题。"""
+        if self._log_source == 'gcl':
+            text, color, title = "🚀 GCL 日志", self.COLORS['warning'], "GCL 日志"
+        else:
+            text, color, title = "📊 Luker 日志", self.COLORS['accent'], "Luker 日志"
+
+        self._log_source_btn.configure(
+            text=text,
+            fg_color=color,
+            hover_color=self.COLORS['card_hover'],
+        )
+        self._title_label.configure(text=title)
 
     def _cancel_after_job(self, job: str) -> None:
         """取消 Tk after 任务；任务已执行时忽略 TclError。"""
@@ -762,8 +769,7 @@ class LogWindow(ctk.CTk):
             # 如果当前显示的是 GCL 日志，切换回 Luker 日志
             if self._log_source == 'gcl':
                 self._log_source = 'luker'
-                self._log_source_btn.configure(text="📊 Luker 日志", fg_color=self.COLORS['accent'])
-                self._title_label.configure(text="Luker 日志")
+                self._apply_log_source_ui()
                 self._refresh_log_display()
 
     def _add_log_lines(self, entries: Sequence[LogEntry]) -> None:
@@ -809,12 +815,18 @@ class LogWindow(ctk.CTk):
         if is_running:
             self.status_dot.configure(text_color=self.COLORS['success'])
             self.status_text.configure(text="运行中", text_color=self.COLORS['success'])
-            self.play_btn.configure(text="⏸", fg_color=self.COLORS['error'], hover_color="#da3633")
+            self.play_btn.configure(
+                text="⏸",
+                fg_color=self.COLORS['error'],
+                hover_color=shade_color(self.COLORS['error'], 0.85),
+            )
         else:
             self.status_dot.configure(text_color=self.COLORS['error'])
             self.status_text.configure(text="已停止", text_color=self.COLORS['error'])
             self.play_btn.configure(
-                text="▶", fg_color=self.COLORS['success'], hover_color="#2ea043"
+                text="▶",
+                fg_color=self.COLORS['success'],
+                hover_color=shade_color(self.COLORS['success'], 0.85),
             )
 
     def show(self) -> None:
