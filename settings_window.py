@@ -17,7 +17,8 @@ from dpi import (
     sync_window_scaling,
 )
 from path_dialogs import select_gcl_bat_path, select_luker_path
-from theme import PRESET_THEMES
+from theme import PRESET_THEMES, theme_swatch_colors
+from ui_icons import theme_icon
 from ui_style import make_button
 from win_utils import (
     apply_window_rounding,
@@ -298,37 +299,57 @@ class SettingsWindow(ctk.CTkToplevel):
             parent,
             fg_color=colors['card'],
             corner_radius=10,
-            border_width=3 if is_selected else 1,
+            border_width=2,
             border_color=colors['accent'] if is_selected else colors['border'],
         )
 
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.pack(fill="both", expand=True, padx=12, pady=12)
 
-        preview = ctk.CTkFrame(inner, fg_color="transparent", height=24)
-        preview.pack(fill="x", pady=(0, 8))
+        header = ctk.CTkFrame(inner, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 8))
 
-        preview_colors = [colors['accent'], colors['success'], colors['info'], colors['warning']]
-        for pc in preview_colors:
-            ctk.CTkFrame(preview, width=28, height=20, fg_color=pc, corner_radius=4).pack(
-                side="left", padx=2
-            )
+        ctk.CTkLabel(
+            header,
+            image=theme_icon(colors['icon'], colors['accent']),
+            text="",
+            width=20,
+            height=20,
+        ).pack(side="left")
 
-        name_label = ctk.CTkLabel(
-            inner,
-            text=f"{colors['icon']} {colors['short_name']}",
-            font=ctk.CTkFont(family=self.UI_FONT, size=13, weight="bold"),
+        ctk.CTkLabel(
+            header,
+            text=colors['short_name'],
+            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
             text_color=colors['text'],
-        )
-        name_label.pack(anchor="w")
+            height=20,
+        ).pack(side="left", padx=(6, 0))
 
-        if is_selected:
-            ctk.CTkLabel(
-                inner,
-                text="✓ 当前主题",
-                font=ctk.CTkFont(family=self.UI_FONT, size=11),
-                text_color=colors['accent'],
-            ).pack(anchor="w", pady=(4, 0))
+        preview = ctk.CTkFrame(inner, fg_color="transparent")
+        preview.pack(fill="x", pady=(0, 6))
+
+        for index, color in enumerate(theme_swatch_colors(theme_id)):
+            ctk.CTkFrame(
+                preview,
+                height=20,
+                fg_color=color,
+                corner_radius=4,
+            ).grid(
+                row=0,
+                column=index,
+                sticky="ew",
+                padx=(0 if index == 0 else 4, 0),
+            )
+            preview.columnconfigure(index, weight=1)
+
+        ctk.CTkLabel(
+            inner,
+            text="✓ 当前主题" if is_selected else "",
+            font=ctk.CTkFont(family=self.UI_FONT, size=11),
+            text_color=colors['accent'],
+            height=18,
+            anchor="w",
+        ).pack(fill="x", pady=(4, 0))
 
         def on_click(_event: tk.Event) -> None:
             self._select_theme(theme_id)

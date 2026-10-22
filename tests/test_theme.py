@@ -1,3 +1,4 @@
+import math
 import unittest
 
 from theme import (
@@ -14,7 +15,9 @@ from theme import (
     logo_bar_glow_color,
     mix_color,
     shade_color,
+    theme_swatch_colors,
 )
+from ui_icons import THEME_ICON_KINDS
 
 REQUIRED_COLOR_KEYS = (
     "bg",
@@ -157,6 +160,63 @@ class LightColorTests(unittest.TestCase):
     def test_invalid_color_is_not_light(self):
         self.assertFalse(is_light_color("not-a-color"))
         self.assertFalse(is_light_color("#12345"))
+
+
+def _srgb_to_lab(color: str) -> tuple[float, float, float]:
+    def linear(channel: float) -> float:
+        return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+    red, green, blue = (
+        linear(int(color[1:3], 16) / 255),
+        linear(int(color[3:5], 16) / 255),
+        linear(int(color[5:7], 16) / 255),
+    )
+    x = (red * 0.4124 + green * 0.3576 + blue * 0.1805) / 0.95047
+    y = red * 0.2126 + green * 0.7152 + blue * 0.0722
+    z = (red * 0.0193 + green * 0.1192 + blue * 0.9505) / 1.08883
+
+    def f(value: float) -> float:
+        return value ** (1 / 3) if value > 0.008856 else 7.787 * value + 16 / 116
+
+    fx, fy, fz = f(x), f(y), f(z)
+    return 116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)
+
+
+def _delta_e(first: str, second: str) -> float:
+    return math.dist(_srgb_to_lab(first), _srgb_to_lab(second))
+
+
+class ThemeSwatchTests(unittest.TestCase):
+    def test_every_theme_has_four_distinct_valid_colors(self):
+        for name in PRESET_THEMES:
+            with self.subTest(theme=name):
+                swatches = theme_swatch_colors(name)
+                self.assertEqual(len(swatches), 4)
+                self.assertEqual(len(set(swatches)), 4)
+                for color in swatches:
+                    self.assertRegex(color, r'^#[0-9a-f]{6}$')
+
+    def test_swatches_are_perceptually_distinct(self):
+        for name in PRESET_THEMES:
+            with self.subTest(theme=name):
+                swatches = theme_swatch_colors(name)
+                distances = [
+                    _delta_e(swatches[first], swatches[second])
+                    for first in range(4)
+                    for second in range(first + 1, 4)
+                ]
+                self.assertGreaterEqual(min(distances), 25)
+
+    def test_unknown_theme_uses_default_swatches(self):
+        self.assertEqual(
+            theme_swatch_colors('not-a-theme'),
+            theme_swatch_colors(DEFAULT_THEME),
+        )
+
+    def test_theme_icons_are_known_kinds(self):
+        for name, theme in PRESET_THEMES.items():
+            with self.subTest(theme=name):
+                self.assertIn(theme['icon'], THEME_ICON_KINDS)
 
 
 if __name__ == "__main__":

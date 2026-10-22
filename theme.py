@@ -19,11 +19,12 @@ ThemeColorKey = Literal[
     'info',
 ]
 
+# 主题图标使用 ui_icons 的 kind 名称（sun/moon/tree/cloud/wave/rose），不再是 emoji
 PRESET_THEMES: dict[str, dict[str, str]] = {
     'summer': {
         'name': '夏日暖阳',
         'short_name': '夏日',
-        'icon': '☀️',
+        'icon': 'sun',
         'bg': '#14110b',
         'card': '#1e1911',
         'card_hover': '#2a2318',
@@ -41,7 +42,7 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
     'purple_night': {
         'name': '紫罗兰夜',
         'short_name': '紫夜',
-        'icon': '🔮',
+        'icon': 'moon',
         'bg': '#13111c',
         'card': '#1a1625',
         'card_hover': '#252131',
@@ -59,7 +60,7 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
     'forest_green': {
         'name': '森林绿意',
         'short_name': '森林',
-        'icon': '🌲',
+        'icon': 'tree',
         'bg': '#0f1610',
         'card': '#161f18',
         'card_hover': '#1e2a21',
@@ -77,7 +78,7 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
     'cloud_gray': {
         'name': '云灰微光',
         'short_name': '云灰',
-        'icon': '🌫️',
+        'icon': 'cloud',
         'bg': '#d8d5d0',
         'card': '#f0ede8',
         'card_hover': '#e4e0da',
@@ -95,7 +96,7 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
     'ocean_cyan': {
         'name': '深海青碧',
         'short_name': '海洋',
-        'icon': '🌴',
+        'icon': 'wave',
         'bg': '#0c1415',
         'card': '#121e1f',
         'card_hover': '#1a2a2c',
@@ -113,7 +114,7 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
     'crimson': {
         'name': '玫瑰烈焰',
         'short_name': '玫瑰',
-        'icon': '🌹',
+        'icon': 'rose',
         'bg': '#160b0e',
         'card': '#211014',
         'card_hover': '#2e171d',
@@ -150,8 +151,8 @@ LOGO_BAR_RGB = (
 LOGO_BAR_COLORS = tuple(f'#{r:02x}{g:02x}{b:02x}' for r, g, b in LOGO_BAR_RGB)
 # Luker 未就绪/停止时 logo 的统一灰色，与系统托盘图标一致
 LOGO_STOPPED_COLOR = '#6e7681'
-# 日志窗口与托盘菜单共用同一套呼吸节奏：2 秒一个完整周期
-LOGO_GLOW_STEP = 0.025
+# 日志窗口与托盘菜单共用同一套呼吸节奏：约 1.67 秒一个完整周期
+LOGO_GLOW_STEP = 0.03
 LOGO_GLOW_INTERVAL_MS = 50
 
 
@@ -211,6 +212,26 @@ def get_theme_colors(name: str) -> dict[str, str]:
     """返回主题颜色副本；主题名无效时使用默认主题。"""
     theme = PRESET_THEMES.get(name, PRESET_THEMES[DEFAULT_THEME])
     return theme.copy()
+
+
+def theme_swatch_colors(name: str) -> tuple[str, str, str, str]:
+    """返回主题卡片展示的四个特征色：主色、浅色、深色与点缀色。"""
+    effective = name if name in PRESET_THEMES else DEFAULT_THEME
+    colors = get_theme_colors(effective)
+    accent = colors['accent']
+    deep = shade_color(accent, 0.6)
+    if effective == 'purple_night':
+        return (accent, colors['text_dim'], deep, colors['warning'])
+    if effective == 'forest_green':
+        return (accent, colors['text_dim'], deep, colors['warning'])
+    if effective == 'cloud_gray':
+        # 云灰的 accent 与 text_dim 都是深灰，换成绿/蓝/棕保留足够区分度
+        return (accent, colors['success'], colors['info'], colors['warning'])
+    if effective == 'ocean_cyan':
+        return (accent, deep, colors['warning'], colors['error'])
+    if effective == 'crimson':
+        return (accent, colors['text_dim'], colors['info'], colors['warning'])
+    return (accent, colors['text_dim'], deep, colors['info'])
 
 
 def shade_color(color: str, factor: float) -> str:
