@@ -8,7 +8,7 @@ import customtkinter as ctk
 
 from theme import mix_color, shade_color
 
-ButtonRole = Literal['primary', 'secondary', 'ghost', 'danger_ghost', 'menu']
+ButtonRole = Literal['primary', 'secondary', 'ghost', 'danger_ghost', 'danger', 'menu']
 FontWeight = Literal['normal', 'bold']
 
 BUTTON_RADIUS: dict[ButtonRole, int] = {
@@ -16,6 +16,7 @@ BUTTON_RADIUS: dict[ButtonRole, int] = {
     'secondary': 10,
     'ghost': 8,
     'danger_ghost': 8,
+    'danger': 12,
     'menu': 10,
 }
 BUTTON_HEIGHT: dict[ButtonRole, int] = {
@@ -23,6 +24,7 @@ BUTTON_HEIGHT: dict[ButtonRole, int] = {
     'secondary': 38,
     'ghost': 32,
     'danger_ghost': 32,
+    'danger': 40,
     'menu': 38,
 }
 BUTTON_FONT_SIZE: dict[ButtonRole, int] = {
@@ -30,6 +32,7 @@ BUTTON_FONT_SIZE: dict[ButtonRole, int] = {
     'secondary': 13,
     'ghost': 13,
     'danger_ghost': 13,
+    'danger': 14,
     'menu': 13,
 }
 BUTTON_FONT_WEIGHT: dict[ButtonRole, FontWeight] = {
@@ -37,6 +40,7 @@ BUTTON_FONT_WEIGHT: dict[ButtonRole, FontWeight] = {
     'secondary': 'normal',
     'ghost': 'normal',
     'danger_ghost': 'normal',
+    'danger': 'bold',
     'menu': 'normal',
 }
 
@@ -63,6 +67,13 @@ def button_colors(role: ButtonRole, colors: dict[str, str]) -> dict[str, object]
             'fg_color': 'transparent',
             'hover_color': mix_color(colors['card'], colors['error'], 0.18),
             'text_color': colors['text_dim'],
+            'border_width': 0,
+        }
+    if role == 'danger':
+        return {
+            'fg_color': colors['error'],
+            'hover_color': shade_color(colors['error'], 0.85),
+            'text_color': colors['bg'],
             'border_width': 0,
         }
     if role == 'menu':

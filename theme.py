@@ -155,6 +155,8 @@ LOGO_BAR_GLOW_RGB = (
     (0x22, 0xD3, 0xEE),
     (0x4A, 0xDE, 0x80),
 )
+# Luker 未就绪/停止时 logo 的统一灰色，与系统托盘图标一致
+LOGO_STOPPED_COLOR = '#6e7681'
 
 
 def logo_bar_brightness(
@@ -180,6 +182,12 @@ def blend_color(
     green = int(start[1] + (end[1] - start[1]) * factor)
     blue = int(start[2] + (end[2] - start[2]) * factor)
     return f"#{red:02x}{green:02x}{blue:02x}"
+
+
+def logo_bar_glow_color(index: int, phase: float) -> str:
+    """返回 Luker logo 第 index 根柱在给定相位下的呼吸颜色。"""
+    brightness = logo_bar_brightness(index, phase, center=0.6, amplitude=0.4)
+    return blend_color(LOGO_BAR_RGB[index], LOGO_BAR_GLOW_RGB[index], brightness)
 
 
 def is_light_color(color: str) -> bool:

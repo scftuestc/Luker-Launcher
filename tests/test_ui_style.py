@@ -53,6 +53,17 @@ class ButtonColorTests(unittest.TestCase):
             },
         )
 
+    def test_danger_uses_error_fill(self):
+        self.assertEqual(
+            button_colors('danger', self.colors),
+            {
+                'fg_color': self.colors['error'],
+                'hover_color': shade_color(self.colors['error'], 0.85),
+                'text_color': self.colors['bg'],
+                'border_width': 0,
+            },
+        )
+
     def test_menu_uses_body_text(self):
         self.assertEqual(
             button_colors('menu', self.colors),

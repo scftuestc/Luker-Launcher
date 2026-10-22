@@ -5,11 +5,13 @@ from theme import (
     LEGACY_THEME_ALIASES,
     LOGO_BAR_GLOW_RGB,
     LOGO_BAR_RGB,
+    LOGO_STOPPED_COLOR,
     PRESET_THEMES,
     blend_color,
     get_theme_colors,
     is_light_color,
     logo_bar_brightness,
+    logo_bar_glow_color,
     mix_color,
     shade_color,
 )
@@ -90,6 +92,19 @@ class LogoColorTests(unittest.TestCase):
         self.assertEqual(
             blend_color(LOGO_BAR_RGB[0], LOGO_BAR_GLOW_RGB[0], 0.7),
             "#fa6f6f",
+        )
+
+
+class LogoGlowColorTests(unittest.TestCase):
+    def test_stopped_color_matches_tray_icon(self):
+        self.assertEqual(LOGO_STOPPED_COLOR, '#6e7681')
+
+    def test_glow_uses_shared_brightness_curve(self):
+        brightness = logo_bar_brightness(0, 0.0, center=0.6, amplitude=0.4)
+
+        self.assertEqual(
+            logo_bar_glow_color(0, 0.0),
+            blend_color(LOGO_BAR_RGB[0], LOGO_BAR_GLOW_RGB[0], brightness),
         )
 
 
