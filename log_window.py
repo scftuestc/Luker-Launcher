@@ -23,10 +23,17 @@ from theme import (
     LOGO_BAR_RGB,
     ThemeColorKey,
     blend_color,
+    is_light_color,
     logo_bar_brightness,
     shade_color,
 )
-from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
+from win_utils import (
+    apply_window_blur,
+    bind_window_drag,
+    disable_window_blur,
+    get_mono_font,
+    get_ui_font,
+)
 from window_resize import WindowResizer
 
 logger = logging.getLogger(__name__)
@@ -82,7 +89,7 @@ class LogWindow(ctk.CTk):
         self._set_window_icon()
 
         self.configure(fg_color=self.COLORS['bg'])
-        self.attributes('-alpha', 0.97)
+        self.attributes('-alpha', 1.0 if is_light_color(self.COLORS['bg']) else 0.97)
 
         self.after(150, self._setup_blur)
 
@@ -135,6 +142,15 @@ class LogWindow(ctk.CTk):
             logger.warning("设置窗口图标失败", exc_info=True)
 
     def _setup_blur(self) -> None:
+        if is_light_color(self.COLORS['bg']):
+            self.attributes('-alpha', 1.0)
+            disable_window_blur(self, context="日志窗口")
+            self.update()
+            return
+
+        # 先重置再设置透明度，确保从浅色主题切回时重新启用分层窗口
+        self.attributes('-alpha', 1.0)
+        self.attributes('-alpha', 0.97)
         apply_window_blur(self, self.COLORS['bg'], alpha=0xDD, context="日志窗口")
         self.update()
 
@@ -280,8 +296,8 @@ class LogWindow(ctk.CTk):
             width=110,
             height=32,
             fg_color=self.COLORS['accent'],
-            hover_color=self.COLORS['card_hover'],
-            text_color="#ffffff",
+            hover_color=shade_color(self.COLORS['accent'], 0.85),
+            text_color=self.COLORS['on_accent'],
             font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
             corner_radius=8,
             command=self._toggle_log_source,
@@ -541,7 +557,7 @@ class LogWindow(ctk.CTk):
             font=ctk.CTkFont(size=16),
             fg_color=self.COLORS['success'],
             hover_color=shade_color(self.COLORS['success'], 0.85),
-            text_color="#ffffff",
+            text_color=self.COLORS['bg'],
             corner_radius=18,
             command=self._toggle_running,
         )
@@ -631,13 +647,16 @@ class LogWindow(ctk.CTk):
         """按当前日志源更新切换按钮和标题。"""
         if self._logs.source == 'gcl':
             text, color, title = "🚀 GCL 日志", self.COLORS['warning'], "GCL 日志"
+            text_color = self.COLORS['bg']
         else:
             text, color, title = "📊 Luker 日志", self.COLORS['accent'], "Luker 日志"
+            text_color = self.COLORS['on_accent']
 
         self._log_source_btn.configure(
             text=text,
             fg_color=color,
-            hover_color=self.COLORS['card_hover'],
+            hover_color=shade_color(color, 0.85),
+            text_color=text_color,
         )
         self._title_label.configure(text=title)
 
@@ -697,6 +716,7 @@ class LogWindow(ctk.CTk):
                 text="⏸",
                 fg_color=self.COLORS['error'],
                 hover_color=shade_color(self.COLORS['error'], 0.85),
+                text_color=self.COLORS['bg'],
             )
         else:
             self.status_dot.configure(text_color=self.COLORS['error'])
@@ -705,6 +725,7 @@ class LogWindow(ctk.CTk):
                 text="▶",
                 fg_color=self.COLORS['success'],
                 hover_color=shade_color(self.COLORS['success'], 0.85),
+                text_color=self.COLORS['bg'],
             )
 
     def show(self) -> None:

@@ -61,6 +61,32 @@ class BlurTests(unittest.TestCase):
 
         apply_mock.assert_called_once_with(42, "#112233", alpha=0xEE)
 
+    def test_disable_blur_clears_accent_and_layered_style(self):
+        with patch.object(win_utils, "windll") as windll_mock:
+            windll_mock.user32.GetWindowLongW.return_value = 0x80008
+            win_utils.WindowsBlur.disable_blur(1)
+
+        windll_mock.user32.SetWindowCompositionAttribute.assert_called_once()
+        windll_mock.dwmapi.DwmExtendFrameIntoClientArea.assert_called_once()
+        windll_mock.user32.SetWindowLongW.assert_called_once()
+        windll_mock.user32.SetWindowPos.assert_called_once()
+        windll_mock.dwmapi.DwmFlush.assert_called_once()
+
+    def test_disable_window_blur_reports_context(self):
+        with (
+            patch.object(win_utils, "windll") as windll_mock,
+            patch.object(
+                win_utils.WindowsBlur,
+                "disable_blur",
+                side_effect=OSError("boom"),
+            ),
+            self.assertLogs("win_utils", level="WARNING") as logs,
+        ):
+            windll_mock.user32.GetParent.return_value = 1
+            win_utils.disable_window_blur(FakeWindow(), context="测试窗口")
+
+        self.assertIn("测试窗口关闭毛玻璃失败", logs.output[0])
+
 
 class FakeWidget:
     def __init__(self, x: int, y: int) -> None:

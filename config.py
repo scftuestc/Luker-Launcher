@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from theme import DEFAULT_THEME, PRESET_THEMES
+from theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
 from theme import get_theme_colors as _get_theme_colors
 
 logger = logging.getLogger(__name__)
@@ -89,8 +89,10 @@ class Config:
                 normalized[key] = value
 
         theme = data.get('theme')
-        if isinstance(theme, str) and theme in PRESET_THEMES:
-            normalized['theme'] = theme
+        if isinstance(theme, str):
+            theme = LEGACY_THEME_ALIASES.get(theme, theme)
+            if theme in PRESET_THEMES:
+                normalized['theme'] = theme
 
         return normalized
 
@@ -147,10 +149,12 @@ class Config:
 
     @property
     def theme_name(self) -> str:
-        return self._config.get('theme', DEFAULT_THEME)
+        name = self._config.get('theme', DEFAULT_THEME)
+        return LEGACY_THEME_ALIASES.get(name, name)
 
     @theme_name.setter
     def theme_name(self, name: str) -> None:
+        name = LEGACY_THEME_ALIASES.get(name, name)
         if name in PRESET_THEMES:
             self._config['theme'] = name
             self._save_config()

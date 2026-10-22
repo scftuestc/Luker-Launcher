@@ -11,6 +11,7 @@ COLORS = {
     'text_dim': '#000006',
     'text_muted': '#000007',
     'accent': '#000008',
+    'on_accent': '#00000d',
     'success': '#000009',
     'error': '#00000a',
     'warning': '#00000b',

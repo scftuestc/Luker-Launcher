@@ -17,8 +17,14 @@ from dpi import (
     sync_window_scaling,
 )
 from path_dialogs import select_gcl_bat_path, select_luker_path
-from theme import PRESET_THEMES
-from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
+from theme import PRESET_THEMES, is_light_color, shade_color
+from win_utils import (
+    apply_window_blur,
+    bind_window_drag,
+    disable_window_blur,
+    get_mono_font,
+    get_ui_font,
+)
 
 # CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
 # 旧控件树会被 root 的绑定脚本一直引用。
@@ -79,7 +85,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
-        self.attributes('-alpha', 0.98)
+        self.attributes('-alpha', 1.0 if is_light_color(self.COLORS['bg']) else 0.98)
         self.configure(fg_color=self.COLORS['bg'])
 
         self._build_ui()
@@ -139,6 +145,14 @@ class SettingsWindow(ctk.CTkToplevel):
             return False
 
     def _setup_blur(self) -> None:
+        if is_light_color(self.COLORS['bg']):
+            self.attributes('-alpha', 1.0)
+            disable_window_blur(self, context="设置窗口")
+            return
+
+        # 先重置再设置透明度，确保从浅色主题切回时重新启用分层窗口
+        self.attributes('-alpha', 1.0)
+        self.attributes('-alpha', 0.98)
         apply_window_blur(self, self.COLORS['bg'], alpha=0xEE, context="设置窗口")
 
     def _on_theme_change(self, new_colors: dict[str, str]) -> None:
@@ -431,8 +445,8 @@ class SettingsWindow(ctk.CTkToplevel):
             text="📂 选择",
             font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
             fg_color=self.COLORS['accent'],
-            hover_color=self.COLORS['card_hover'],
-            text_color="#ffffff",
+            hover_color=shade_color(self.COLORS['accent'], 0.85),
+            text_color=self.COLORS['on_accent'],
             corner_radius=8,
             height=32,
             width=80,
@@ -503,8 +517,8 @@ class SettingsWindow(ctk.CTkToplevel):
             text="📂 选择",
             font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
             fg_color=self.COLORS['accent'],
-            hover_color=self.COLORS['card_hover'],
-            text_color="#ffffff",
+            hover_color=shade_color(self.COLORS['accent'], 0.85),
+            text_color=self.COLORS['on_accent'],
             corner_radius=8,
             height=32,
             width=80,
@@ -525,8 +539,8 @@ class SettingsWindow(ctk.CTkToplevel):
             text="完成",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
             fg_color=self.COLORS['accent'],
-            hover_color=self.COLORS['card_hover'],
-            text_color="#ffffff",
+            hover_color=shade_color(self.COLORS['accent'], 0.85),
+            text_color=self.COLORS['on_accent'],
             corner_radius=10,
             height=42,
             width=120,

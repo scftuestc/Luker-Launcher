@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from config import DEFAULT_PORT, Config
-from theme import DEFAULT_THEME, PRESET_THEMES
+from theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
 
 
 class ConfigTests(unittest.TestCase):
@@ -47,6 +47,22 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.gcl_enabled)
         self.assertEqual(config.theme_name, DEFAULT_THEME)
         self.assertIsNone(config.luker_path)
+
+    def test_legacy_theme_ids_are_migrated(self):
+        for legacy, current in LEGACY_THEME_ALIASES.items():
+            with self.subTest(legacy=legacy):
+                self._write({"theme": legacy})
+                config = Config(self.config_path)
+                self.assertEqual(config.theme_name, current)
+                self.assertEqual(config.get_theme_colors(), PRESET_THEMES[current])
+
+    def test_legacy_theme_id_is_migrated_by_setter(self):
+        config = Config(self.config_path)
+        config.theme_name = "deep_blue"
+
+        self.assertEqual(config.theme_name, "summer")
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["theme"], "summer")
 
     def test_legacy_path_key_is_supported(self):
         self._write({"sillytavern_path": "D:/Old/Luker"})

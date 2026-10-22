@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 class WindowsBlur:
     """Win32 模糊/圆角效果封装；系统不支持时由调用者记录并降级为普通窗口。"""
 
+    GWL_EXSTYLE = -20
+    WS_EX_LAYERED = 0x00080000
+    SWP_FLAGS = 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020
+
     class ACCENT_POLICY(ctypes.Structure):
         _fields_ = [
             ("AccentState", c_int),
@@ -67,6 +71,36 @@ class WindowsBlur:
         margins = WindowsBlur.MARGINS(-1, -1, -1, -1)
         windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(margins))
 
+    @staticmethod
+    def disable_blur(hwnd: int) -> None:
+        """关闭 DWM 毛玻璃，并移除 Tk 透明度留下的分层窗口样式。"""
+        user32 = windll.user32
+        dwmapi = windll.dwmapi
+
+        value = c_int(0)
+        dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(value), sizeof(value))
+
+        accent = WindowsBlur.ACCENT_POLICY()
+        accent.AccentState = 0
+        accent.AccentFlags = 0
+        accent.GradientColor = 0
+
+        data = WindowsBlur.WINDOWCOMPOSITIONATTRIBDATA()
+        data.Attrib = 19
+        data.pvData = ctypes.cast(ctypes.pointer(accent), ctypes.c_void_p)
+        data.cbData = sizeof(accent)
+        user32.SetWindowCompositionAttribute(hwnd, byref(data))
+
+        margins = WindowsBlur.MARGINS(0, 0, 0, 0)
+        dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(margins))
+
+        ex_style = user32.GetWindowLongW(hwnd, WindowsBlur.GWL_EXSTYLE)
+        if ex_style & WindowsBlur.WS_EX_LAYERED:
+            new_style = (ex_style & ~WindowsBlur.WS_EX_LAYERED) & 0xFFFFFFFF
+            user32.SetWindowLongW(hwnd, WindowsBlur.GWL_EXSTYLE, new_style)
+        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, WindowsBlur.SWP_FLAGS)
+        dwmapi.DwmFlush()
+
 
 def hex_to_colorref(hex_color: str, alpha: int = 0xDD) -> int:
     """把 #RRGGBB 转换成 SetWindowCompositionAttribute 使用的 0xAABBGGRR。"""
@@ -104,6 +138,15 @@ def apply_window_blur(
         apply_blur(hwnd, bg_color, alpha=alpha)
     except Exception:
         logger.warning("%s毛玻璃失败", context, exc_info=True)
+
+
+def disable_window_blur(window: tk.Tk | tk.Toplevel, *, context: str = "窗口") -> None:
+    """关闭顶层窗口的毛玻璃；浅色主题避免亮色 tint 冲淡文字。"""
+    try:
+        hwnd = windll.user32.GetParent(window.winfo_id())
+        WindowsBlur.disable_blur(hwnd)
+    except Exception:
+        logger.warning("%s关闭毛玻璃失败", context, exc_info=True)
 
 
 def bind_window_drag(window: tk.Tk | tk.Toplevel, *widgets: tk.Misc) -> None:

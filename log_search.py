@@ -143,8 +143,10 @@ class LogSearch:
     def _configure_highlight_tags(self) -> None:
         colors = self._get_colors()
         tb = self._get_textbox()
-        tb.tag_configure('search_highlight', background=colors['warning'], foreground='#000000')
-        tb.tag_configure('search_current', background=colors['accent'], foreground='#ffffff')
+        tb.tag_configure('search_highlight', background=colors['warning'], foreground=colors['bg'])
+        tb.tag_configure(
+            'search_current', background=colors['accent'], foreground=colors['on_accent']
+        )
 
     def _clear_highlights(self) -> None:
         tb = self._get_textbox()

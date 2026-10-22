@@ -66,7 +66,12 @@ def make_search(text: FakeText, label: FakeLabel | None = None) -> LogSearch:
         lambda: text,
         label or FakeLabel(),
         FakeNav(),
-        lambda: {"warning": "#ffffff", "accent": "#000000"},
+        lambda: {
+            "warning": "#ffffff",
+            "accent": "#000000",
+            "bg": "#111111",
+            "on_accent": "#eeeeee",
+        },
     )
 
 
@@ -80,8 +85,8 @@ class SearchColorTests(unittest.TestCase):
         self.assertEqual(
             text.tag_configs,
             [
-                ("search_highlight", {"background": "#ffffff", "foreground": "#000000"}),
-                ("search_current", {"background": "#000000", "foreground": "#ffffff"}),
+                ("search_highlight", {"background": "#ffffff", "foreground": "#111111"}),
+                ("search_current", {"background": "#000000", "foreground": "#eeeeee"}),
             ],
         )
 

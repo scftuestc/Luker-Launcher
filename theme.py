@@ -12,6 +12,7 @@ ThemeColorKey = Literal[
     'text_dim',
     'text_muted',
     'accent',
+    'on_accent',
     'success',
     'error',
     'warning',
@@ -19,22 +20,23 @@ ThemeColorKey = Literal[
 ]
 
 PRESET_THEMES: dict[str, dict[str, str]] = {
-    'deep_blue': {
-        'name': '深蓝夜空',
-        'short_name': '深蓝',
-        'icon': '🌊',
-        'bg': '#0d1117',
-        'card': '#161b22',
-        'card_hover': '#21262d',
-        'border': '#30363d',
-        'text': '#f0f6fc',
-        'text_dim': '#8b949e',
-        'text_muted': '#6e7681',
-        'accent': '#22d3ee',
-        'success': '#3fb950',
-        'error': '#f85149',
-        'warning': '#d29922',
-        'info': '#58a6ff',
+    'summer': {
+        'name': '夏日暖阳',
+        'short_name': '夏日',
+        'icon': '☀️',
+        'bg': '#14110b',
+        'card': '#1e1911',
+        'card_hover': '#2a2318',
+        'border': '#4a3b22',
+        'text': '#fff8e7',
+        'text_dim': '#d6bc8a',
+        'text_muted': '#a0865a',
+        'accent': '#f59e0b',
+        'on_accent': '#241603',
+        'success': '#22c55e',
+        'error': '#ef4444',
+        'warning': '#fb923c',
+        'info': '#38bdf8',
     },
     'purple_night': {
         'name': '紫罗兰夜',
@@ -48,6 +50,7 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
         'text_dim': '#a599c9',
         'text_muted': '#7a6c9a',
         'accent': '#c084fc',
+        'on_accent': '#ffffff',
         'success': '#4ade80',
         'error': '#f87171',
         'warning': '#fbbf24',
@@ -65,27 +68,29 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
         'text_dim': '#9cbc9e',
         'text_muted': '#6a8a6c',
         'accent': '#4ade80',
+        'on_accent': '#ffffff',
         'success': '#22c55e',
         'error': '#ef4444',
         'warning': '#eab308',
         'info': '#34d399',
     },
-    'warm_orange': {
-        'name': '暖橙黄昏',
-        'short_name': '暖橙',
-        'icon': '🌅',
-        'bg': '#171310',
-        'card': '#211c17',
-        'card_hover': '#2c251e',
-        'border': '#44392d',
-        'text': '#fef3e2',
-        'text_dim': '#c9a982',
-        'text_muted': '#9a7d5a',
-        'accent': '#fb923c',
-        'success': '#84cc16',
-        'error': '#ef4444',
-        'warning': '#f59e0b',
-        'info': '#fb923c',
+    'bright_white': {
+        'name': '皓白霜华',
+        'short_name': '皓白',
+        'icon': '🤍',
+        'bg': '#f5f5f4',
+        'card': '#ffffff',
+        'card_hover': '#e7e5e4',
+        'border': '#d6d3d1',
+        'text': '#1c1917',
+        'text_dim': '#57534e',
+        'text_muted': '#78716c',
+        'accent': '#334155',
+        'on_accent': '#ffffff',
+        'success': '#15803d',
+        'error': '#b91c1c',
+        'warning': '#b45309',
+        'info': '#1d4ed8',
     },
     'ocean_cyan': {
         'name': '深海青碧',
@@ -99,23 +104,25 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
         'text_dim': '#80cbc4',
         'text_muted': '#4db6ac',
         'accent': '#22d3ee',
+        'on_accent': '#ffffff',
         'success': '#2dd4bf',
         'error': '#f87171',
         'warning': '#fbbf24',
         'info': '#22d3ee',
     },
-    'rose_pink': {
-        'name': '玫瑰粉黛',
+    'crimson': {
+        'name': '玫瑰烈焰',
         'short_name': '玫瑰',
-        'icon': '🌸',
-        'bg': '#18101a',
-        'card': '#231a25',
-        'card_hover': '#2f2432',
-        'border': '#4a3850',
-        'text': '#fdf2f8',
-        'text_dim': '#d8a9c4',
-        'text_muted': '#a87d94',
-        'accent': '#f472b6',
+        'icon': '🌹',
+        'bg': '#160b0e',
+        'card': '#211014',
+        'card_hover': '#2e171d',
+        'border': '#4d2530',
+        'text': '#fff1f2',
+        'text_dim': '#d9a5ad',
+        'text_muted': '#a8747d',
+        'accent': '#e11d48',
+        'on_accent': '#ffffff',
         'success': '#4ade80',
         'error': '#fb7185',
         'warning': '#fbbf24',
@@ -123,7 +130,14 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
     },
 }
 
-DEFAULT_THEME = 'deep_blue'
+DEFAULT_THEME = 'summer'
+
+# 旧版本保存的主题 ID -> 当前 ID；读取配置时迁移
+LEGACY_THEME_ALIASES: dict[str, str] = {
+    'deep_blue': 'summer',
+    'rose_pink': 'crimson',
+    'warm_orange': 'bright_white',
+}
 
 # 启动器 logo 的四条竖条基础颜色；动画在 log_window._animate_glow 中按亮度插值
 LOGO_BAR_RGB = (
@@ -142,10 +156,16 @@ LOGO_BAR_GLOW_RGB = (
 )
 
 
-def logo_bar_brightness(index: int, phase: float) -> float:
+def logo_bar_brightness(
+    index: int,
+    phase: float,
+    *,
+    center: float = 0.7,
+    amplitude: float = 0.3,
+) -> float:
     """返回第 index 根 logo 竖条在给定相位下的亮度系数。"""
     bar_phase = (phase + index * 0.25) % 1.0
-    return 0.7 + 0.3 * math.sin(bar_phase * 2 * 3.14159)
+    return center + amplitude * math.sin(bar_phase * 2 * 3.14159)
 
 
 def blend_color(
@@ -153,11 +173,29 @@ def blend_color(
     end: tuple[int, int, int],
     factor: float,
 ) -> str:
-    """按 factor 从 start 插值到 end，返回 #rrggbb。"""
+    """按 factor 从 start 插值到 end，返回 #rrggbb；factor 限制在 0..1。"""
+    factor = max(0.0, min(1.0, factor))
     red = int(start[0] + (end[0] - start[0]) * factor)
     green = int(start[1] + (end[1] - start[1]) * factor)
     blue = int(start[2] + (end[2] - start[2]) * factor)
     return f"#{red:02x}{green:02x}{blue:02x}"
+
+
+def is_light_color(color: str) -> bool:
+    """判断 #RRGGBB 是否为浅色；浅色窗口不使用 DWM 毛玻璃。"""
+    if len(color) != 7 or not color.startswith('#'):
+        return False
+    try:
+        red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
+    except ValueError:
+        return False
+    channels = (channel / 255 for channel in (red, green, blue))
+    linear = [
+        channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+        for channel in channels
+    ]
+    luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+    return luminance > 0.5
 
 
 def get_theme_colors(name: str) -> dict[str, str]:

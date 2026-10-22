@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from log_window import LogWindow
+from theme import shade_color
 
 
 class FakeButton:
@@ -25,9 +26,11 @@ class LogSourceUiTests(unittest.TestCase):
         window = object.__new__(LogWindow)
         window._logs = SimpleNamespace(source=source)
         window.COLORS = {
+            'bg': '#555555',
             'accent': '#111111',
             'warning': '#222222',
             'card_hover': '#333333',
+            'on_accent': '#444444',
         }
         window._log_source_btn = FakeButton()
         window._title_label = FakeLabel()
@@ -40,7 +43,12 @@ class LogSourceUiTests(unittest.TestCase):
 
         self.assertEqual(
             window._log_source_btn.options,
-            {'text': '📊 Luker 日志', 'fg_color': '#111111', 'hover_color': '#333333'},
+            {
+                'text': '📊 Luker 日志',
+                'fg_color': '#111111',
+                'hover_color': shade_color('#111111', 0.85),
+                'text_color': '#444444',
+            },
         )
         self.assertEqual(window._title_label.options, {'text': 'Luker 日志'})
 
@@ -51,7 +59,12 @@ class LogSourceUiTests(unittest.TestCase):
 
         self.assertEqual(
             window._log_source_btn.options,
-            {'text': '🚀 GCL 日志', 'fg_color': '#222222', 'hover_color': '#333333'},
+            {
+                'text': '🚀 GCL 日志',
+                'fg_color': '#222222',
+                'hover_color': shade_color('#222222', 0.85),
+                'text_color': '#555555',
+            },
         )
         self.assertEqual(window._title_label.options, {'text': 'GCL 日志'})
 
