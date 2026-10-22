@@ -13,12 +13,23 @@ import customtkinter as ctk
 
 from config import config
 from dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
-from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB, blend_color, logo_bar_brightness
-from win_utils import apply_window_blur, get_ui_font
+from theme import (
+    LOGO_BAR_COLORS,
+    LOGO_BAR_RGB,
+    blend_color,
+    is_light_color,
+    logo_bar_brightness,
+)
+from win_utils import apply_window_blur, disable_window_blur, get_ui_font
 
 logger = logging.getLogger(__name__)
 
-MENU_WIDTH = 220
+MENU_WIDTH = 240
+HEADER_PAD_X = 18
+HEADER_PAD_Y = 14
+TITLE_FONT_SIZE = 18
+LOGO_BAR_WIDTH = 4
+LOGO_BAR_HEIGHT = 24
 
 
 class MenuItem(TypedDict):
@@ -53,7 +64,7 @@ class TrayMenu(ctk.CTkToplevel):
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
-        self.attributes('-alpha', 0.97)
+        self.attributes('-alpha', 1.0 if is_light_color(self.COLORS['bg']) else 0.97)
 
         self.configure(fg_color=self.COLORS['bg'])
 
@@ -133,6 +144,14 @@ class TrayMenu(ctk.CTkToplevel):
         self._mouse_poll_id = self.after(100, self._check_mouse_outside)
 
     def _setup_blur(self) -> None:
+        if is_light_color(self.COLORS['bg']):
+            self.attributes('-alpha', 1.0)
+            disable_window_blur(self, context="托盘菜单")
+            return
+
+        # 先重置再设置透明度，确保从浅色主题切回时重新启用分层窗口
+        self.attributes('-alpha', 1.0)
+        self.attributes('-alpha', 0.97)
         apply_window_blur(self, self.COLORS['bg'], alpha=0xEE, context="托盘菜单")
 
     def _start_menu_animation(self) -> None:
@@ -161,23 +180,29 @@ class TrayMenu(ctk.CTkToplevel):
         main.pack(fill="both", expand=True, padx=2, pady=2)
 
         header = ctk.CTkFrame(main, fg_color="transparent")
-        header.pack(fill="x", padx=16, pady=(16, 12))
+        header.pack(fill="x", padx=HEADER_PAD_X, pady=(HEADER_PAD_Y, 12))
 
         logo = ctk.CTkFrame(header, fg_color="transparent")
         logo.pack(side="left")
 
         self._menu_logo_bars = []
         for c in LOGO_BAR_COLORS:
-            bar = ctk.CTkFrame(logo, width=3, height=18, fg_color=c, corner_radius=2)
+            bar = ctk.CTkFrame(
+                logo,
+                width=LOGO_BAR_WIDTH,
+                height=LOGO_BAR_HEIGHT,
+                fg_color=c,
+                corner_radius=2,
+            )
             bar.pack(side="left", padx=1)
             self._menu_logo_bars.append(bar)
 
         ctk.CTkLabel(
             header,
             text="Luker",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=TITLE_FONT_SIZE, weight="bold"),
             text_color=self.COLORS['text'],
-        ).pack(side="left", padx=(10, 0))
+        ).pack(side="left", padx=(12, 0))
 
         ctk.CTkFrame(main, height=1, fg_color=self.COLORS['border']).pack(fill="x", padx=12)
 

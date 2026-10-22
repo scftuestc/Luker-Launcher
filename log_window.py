@@ -40,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 # 搜索输入防抖时间（毫秒）
 SEARCH_DEBOUNCE_MS = 250
+# logo 呼吸动画每次推进的相位
+GLOW_STEP = 0.04
 
 
 class LogWindow(ctk.CTk):
@@ -192,14 +194,19 @@ class LogWindow(ctk.CTk):
             self.after(500, self._animate_glow)
             return
 
-        self._glow_intensity += 0.03 * self._glow_direction
+        self._glow_intensity += GLOW_STEP * self._glow_direction
         if self._glow_intensity >= 1:
             self._glow_direction = -1
         elif self._glow_intensity <= 0:
             self._glow_direction = 1
 
         for index, bar in enumerate(self._logo_bars):
-            brightness = logo_bar_brightness(index, self._glow_intensity)
+            brightness = logo_bar_brightness(
+                index,
+                self._glow_intensity,
+                center=0.6,
+                amplitude=0.4,
+            )
             bar.configure(
                 fg_color=blend_color(
                     LOGO_BAR_RGB[index],
