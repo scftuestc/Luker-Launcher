@@ -50,14 +50,14 @@ def _render_menu_icon_cached(kind: MenuIcon, color: str, size: int) -> Image.Ima
     def point(x: float, y: float) -> tuple[float, float]:
         return x * scale, y * scale
 
-    stroke = max(1, round(1.8 * scale))
+    stroke = max(1, round(2.0 * scale))
 
     if kind == 'play':
-        draw.polygon([point(8.5, 5), point(20, 12), point(8.5, 19)], fill=color)
+        draw.polygon([point(7.5, 4.5), point(20.5, 12), point(7.5, 19.5)], fill=color)
     elif kind == 'stop':
         draw.rounded_rectangle(
-            [*point(7, 7), *point(17, 17)],
-            radius=2.5 * scale,
+            [*point(6, 6), *point(18, 18)],
+            radius=3 * scale,
             fill=color,
         )
     elif kind == 'window':
@@ -127,7 +127,7 @@ def render_menu_icon(kind: MenuIcon, color: str, size: int = 64) -> Image.Image:
     return _render_menu_icon_cached(kind, color, size)
 
 
-def menu_icon(kind: MenuIcon, color: str, size: int = 16) -> ctk.CTkImage:
+def menu_icon(kind: MenuIcon, color: str, size: int = 18) -> ctk.CTkImage:
     """返回可直接用于 CTkButton 的单色图标，size 为逻辑像素。"""
     image = render_menu_icon(kind, color)
     return ctk.CTkImage(light_image=image, size=(size, size))

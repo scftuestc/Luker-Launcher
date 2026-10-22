@@ -14,7 +14,12 @@ import customtkinter as ctk
 from config import config
 from dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
 from luker_readiness import LukerState
-from theme import LOGO_STOPPED_COLOR, logo_bar_glow_color
+from theme import (
+    LOGO_GLOW_INTERVAL_MS,
+    LOGO_GLOW_STEP,
+    LOGO_STOPPED_COLOR,
+    logo_bar_glow_color,
+)
 from ui_icons import MenuIcon, menu_icon
 from ui_style import make_button
 from win_utils import apply_window_rounding, get_ui_font, sync_window_blur
@@ -27,6 +32,7 @@ HEADER_PAD_Y = 14
 TITLE_FONT_SIZE = 18
 LOGO_BAR_WIDTH = 4
 LOGO_BAR_HEIGHT = 24
+MENU_ICON_SIZE = 18
 
 
 class MenuItem(TypedDict):
@@ -213,12 +219,12 @@ class TrayMenu(ctk.CTkToplevel):
             return
 
         self._menu_logo_gray = False
-        self._animation_phase = (self._animation_phase + 0.05) % 1.0
+        self._animation_phase = (self._animation_phase + LOGO_GLOW_STEP) % 1.0
 
         for index, bar in enumerate(bars):
             bar.configure(fg_color=logo_bar_glow_color(index, self._animation_phase))
 
-        self._menu_animation_id = self.after(50, self._animate_menu)
+        self._menu_animation_id = self.after(LOGO_GLOW_INTERVAL_MS, self._animate_menu)
 
     def _build_menu(self) -> None:
         main = ctk.CTkFrame(self, fg_color=self.COLORS['card'], corner_radius=0)
@@ -326,13 +332,13 @@ class TrayMenu(ctk.CTkToplevel):
         if visible:
             frame.pack(fill="x", pady=2)
 
-        icon_color = self.COLORS['error'] if icon == 'power' else self.COLORS['text_dim']
+        icon_color = color if color is not None else self.COLORS['text']
         btn = make_button(
             frame,
             'menu',
             self.COLORS,
             text=text,
-            image=menu_icon(icon, icon_color),
+            image=menu_icon(icon, icon_color, size=MENU_ICON_SIZE),
             compound='left',
             font_family=self.UI_FONT,
             anchor="w",
@@ -393,13 +399,13 @@ class TrayMenu(ctk.CTkToplevel):
             item['btn'].configure(
                 text="停止 Luker",
                 text_color=self.COLORS['error'],
-                image=menu_icon('stop', self.COLORS['text_dim']),
+                image=menu_icon('stop', self.COLORS['error'], size=MENU_ICON_SIZE),
             )
         else:
             item['btn'].configure(
                 text="启动 Luker",
                 text_color=self.COLORS['success'],
-                image=menu_icon('play', self.COLORS['text_dim']),
+                image=menu_icon('play', self.COLORS['success'], size=MENU_ICON_SIZE),
             )
 
         restart = self.menu_items.get('restart')
@@ -408,11 +414,14 @@ class TrayMenu(ctk.CTkToplevel):
                 restart['btn'].configure(
                     state="normal",
                     text_color=self.COLORS['accent'],
+                    image=menu_icon('refresh', self.COLORS['accent'], size=MENU_ICON_SIZE),
                 )
             else:
                 restart['btn'].configure(
                     state="disabled",
                     text_color=self.COLORS['text_muted'],
+                    text_color_disabled=self.COLORS['text_muted'],
+                    image=menu_icon('refresh', self.COLORS['text_muted'], size=MENU_ICON_SIZE),
                 )
 
     def _apply_gcl_toggle(self) -> None:
@@ -423,13 +432,13 @@ class TrayMenu(ctk.CTkToplevel):
             item['btn'].configure(
                 text="停止 GCL",
                 text_color=self.COLORS['error'],
-                image=menu_icon('stop', self.COLORS['text_dim']),
+                image=menu_icon('stop', self.COLORS['error'], size=MENU_ICON_SIZE),
             )
         else:
             item['btn'].configure(
                 text="启动 GCL",
                 text_color=self.COLORS['success'],
-                image=menu_icon('play', self.COLORS['text_dim']),
+                image=menu_icon('play', self.COLORS['success'], size=MENU_ICON_SIZE),
             )
 
     def set_luker_state(self, state: LukerState) -> None:

@@ -113,12 +113,12 @@ class MenuLogoStateTests(unittest.TestCase):
         with patch.object(
             tray_menu,
             'menu_icon',
-            side_effect=lambda kind, color: f'{kind}:{color}',
+            side_effect=lambda kind, color, **_kwargs: f'{kind}:{color}',
         ):
             menu.set_luker_state(LukerState.READY)
 
         self.assertEqual(button.options['text'], '停止 Luker')
-        self.assertEqual(button.options['image'], 'stop:#111111')
+        self.assertEqual(button.options['image'], 'stop:#222222')
         self.assertEqual(button.options['text_color'], '#222222')
         self.assertTrue(menu._is_running)
 
@@ -138,14 +138,71 @@ class MenuLogoStateTests(unittest.TestCase):
         with patch.object(
             tray_menu,
             'menu_icon',
-            side_effect=lambda kind, color: f'{kind}:{color}',
+            side_effect=lambda kind, color, **_kwargs: f'{kind}:{color}',
         ):
             menu.set_luker_state(LukerState.STOPPED)
 
         self.assertEqual(button.options['text'], '启动 Luker')
-        self.assertEqual(button.options['image'], 'play:#111111')
+        self.assertEqual(button.options['image'], 'play:#333333')
         self.assertEqual(button.options['text_color'], '#333333')
         self.assertFalse(menu._is_running)
+
+    def test_restart_icon_and_disabled_text_share_muted_color(self):
+        menu = self.make_menu(LukerState.STOPPED)
+        toggle = FakeButton()
+        restart = FakeButton()
+        menu._is_running = False
+        menu.menu_items = {
+            'luker_toggle': {'btn': toggle},
+            'restart': {'btn': restart},
+        }
+        menu.COLORS = {
+            'text_dim': '#111111',
+            'error': '#222222',
+            'success': '#333333',
+            'accent': '#444444',
+            'text_muted': '#555555',
+        }
+
+        with patch.object(
+            tray_menu,
+            'menu_icon',
+            side_effect=lambda kind, color, **_kwargs: f'{kind}:{color}',
+        ):
+            menu._apply_luker_toggle()
+
+        self.assertEqual(restart.options['state'], 'disabled')
+        self.assertEqual(restart.options['image'], 'refresh:#555555')
+        self.assertEqual(restart.options['text_color'], '#555555')
+        self.assertEqual(restart.options['text_color_disabled'], '#555555')
+
+    def test_restart_icon_matches_accent_when_enabled(self):
+        menu = self.make_menu(LukerState.READY)
+        toggle = FakeButton()
+        restart = FakeButton()
+        menu._is_running = True
+        menu.menu_items = {
+            'luker_toggle': {'btn': toggle},
+            'restart': {'btn': restart},
+        }
+        menu.COLORS = {
+            'text_dim': '#111111',
+            'error': '#222222',
+            'success': '#333333',
+            'accent': '#444444',
+            'text_muted': '#555555',
+        }
+
+        with patch.object(
+            tray_menu,
+            'menu_icon',
+            side_effect=lambda kind, color, **_kwargs: f'{kind}:{color}',
+        ):
+            menu._apply_luker_toggle()
+
+        self.assertEqual(restart.options['state'], 'normal')
+        self.assertEqual(restart.options['image'], 'refresh:#444444')
+        self.assertEqual(restart.options['text_color'], '#444444')
 
 
 if __name__ == '__main__':

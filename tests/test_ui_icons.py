@@ -1,6 +1,6 @@
 import unittest
 
-from ui_icons import render_menu_icon, render_transport_icon, transport_icon
+from ui_icons import menu_icon, render_menu_icon, render_transport_icon, transport_icon
 
 
 class TransportIconTests(unittest.TestCase):
@@ -67,6 +67,11 @@ class MenuIconTests(unittest.TestCase):
         colors = {color[:3] for _, color in palette if color[3] > 0}
 
         self.assertIn((255, 0, 0), colors)
+
+    def test_menu_icon_uses_eighteen_pixel_logical_size(self):
+        icon = menu_icon('play', '#ffffff')
+
+        self.assertEqual(icon.cget('size'), (18, 18))
 
 
 if __name__ == '__main__':
