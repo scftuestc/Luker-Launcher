@@ -4,7 +4,11 @@ from unittest.mock import patch
 
 import main
 from main import LukerLauncher
-from settings_window import _SCROLL_BINDING_SEQUENCES, clear_scroll_bindings
+from settings_window import (
+    _SCROLL_BINDING_SEQUENCES,
+    bind_click_recursive,
+    clear_scroll_bindings,
+)
 
 
 class FakeTkInterpreter:
@@ -18,6 +22,18 @@ class FakeTkInterpreter:
 class FakeWidget:
     def __init__(self) -> None:
         self.tk = FakeTkInterpreter()
+
+
+class ClickWidget:
+    def __init__(self, children: list["ClickWidget"] | None = None) -> None:
+        self.children = children or []
+        self.bindings: list[tuple[str, object]] = []
+
+    def bind(self, sequence: str, callback: object) -> None:
+        self.bindings.append((sequence, callback))
+
+    def winfo_children(self) -> list["ClickWidget"]:
+        return self.children
 
 
 class FakeSettingsWindow:
@@ -72,6 +88,21 @@ class ScrollBindingTests(unittest.TestCase):
         )
         self.assertTrue(all(call[:2] == ("bind", "all") for call in widget.tk.calls))
         self.assertTrue(all(call[3] == "" for call in widget.tk.calls))
+
+
+class ClickBindingTests(unittest.TestCase):
+    def test_binds_widget_and_all_descendants(self):
+        leaf = ClickWidget()
+        middle = ClickWidget([leaf])
+        root = ClickWidget([middle])
+
+        def on_click(_event: object) -> None:
+            pass
+
+        bind_click_recursive(root, on_click)
+
+        for widget in (root, middle, leaf):
+            self.assertEqual(widget.bindings, [('<Button-1>', on_click)])
 
 
 class SettingsWindowTests(unittest.TestCase):

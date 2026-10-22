@@ -1,4 +1,6 @@
+import queue
 import unittest
+from unittest.mock import patch
 
 from ui_dispatch import UI_QUEUE_POLL_MS, UiDispatcher
 
@@ -53,6 +55,22 @@ class UiDispatcherTests(unittest.TestCase):
 
         dispatcher.pump()
         self.assertEqual(calls, [1, 2])
+
+    def test_second_put_failure_is_logged(self):
+        dispatcher = make_dispatcher(maxsize=1)
+
+        with (
+            patch.object(
+                dispatcher._queue,
+                "put_nowait",
+                side_effect=[queue.Full, queue.Full],
+            ),
+            self.assertLogs("ui_dispatch", level="WARNING") as logs,
+        ):
+            dispatcher.post(lambda: None)
+
+        self.assertEqual(len(logs.output), 2)
+        self.assertIn("新事件也被丢弃", logs.output[1])
 
     def test_post_ignored_after_stop(self):
         dispatcher = make_dispatcher()

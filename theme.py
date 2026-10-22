@@ -165,7 +165,7 @@ def logo_bar_brightness(
 ) -> float:
     """返回第 index 根 logo 竖条在给定相位下的亮度系数。"""
     bar_phase = (phase + index * 0.25) % 1.0
-    return center + amplitude * math.sin(bar_phase * 2 * 3.14159)
+    return center + amplitude * math.sin(bar_phase * 2 * math.pi)
 
 
 def blend_color(

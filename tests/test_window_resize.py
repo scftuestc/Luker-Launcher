@@ -40,13 +40,15 @@ class FakeWindow:
         self.maxsize_args: tuple[int, int] | None = None
         self.cursor = ''
         self.idle_calls = 0
+        self.defer_idle = False
+        self.idle_callbacks: list[object] = []
 
     def bind(self, sequence: str, callback: object, add: str | None = None) -> None:
         self.binds[sequence] = callback
         self.bind_add[sequence] = add
 
     def geometry(self, spec: str) -> None:
-        match = re.fullmatch(r'(\d+)x(\d+)([+-]\d+)([+-]\d+)', spec)
+        match = re.fullmatch(r'(\d+)x(\d+)\+(-?\d+)\+(-?\d+)', spec)
         assert match is not None, spec
         self.geometry_specs.append(spec)
         self.width = int(match.group(1))
@@ -86,7 +88,9 @@ class FakeWindow:
 
     def after_idle(self, callback: object) -> None:
         self.idle_calls += 1
-        callback()
+        self.idle_callbacks.append(callback)
+        if not self.defer_idle:
+            callback()
 
 
 class WindowResizerTests(unittest.TestCase):
@@ -123,6 +127,12 @@ class WindowResizerTests(unittest.TestCase):
         self.assertEqual(window.geometry_specs[-1], '960x640+480+200')
         self.assertEqual(window.minsize_args, (700, 450))
         self.assertEqual(window.maxsize_args, (10000, 10000))
+
+    def test_initial_geometry_supports_negative_monitor(self):
+        window, _ = self.make_resizer(MonitorInfo(-1920, 0, 0, 1080, 96))
+
+        self.assertEqual(window.geometry_specs[-1], '960x640+-1440+220')
+        self.assertEqual((window.x, window.y), (-1440, 220))
 
     def test_initial_geometry_shrinks_on_small_high_dpi_screen(self):
         window, _ = self.make_resizer(MonitorInfo(0, 0, 1366, 728, 144))
@@ -238,6 +248,22 @@ class WindowResizerTests(unittest.TestCase):
 
         self.assertEqual(window.bind_add['<Configure>'], '+')
         self.assertIsNone(window.bind_add['<Motion>'])
+
+    def test_configure_coalesces_idle_fits(self):
+        window, resizer = self.make_resizer()
+        resizer.bind_events()
+        configure = window.binds['<Configure>']
+        window.defer_idle = True
+
+        configure(FakeEvent(window))
+        configure(FakeEvent(window))
+
+        self.assertEqual(window.idle_calls, 1)
+        self.assertEqual(len(window.idle_callbacks), 1)
+
+        window.idle_callbacks.pop(0)()
+        configure(FakeEvent(window))
+        self.assertEqual(window.idle_calls, 2)
 
     def test_configure_only_reacts_to_root_window(self):
         window, resizer = self.make_resizer()

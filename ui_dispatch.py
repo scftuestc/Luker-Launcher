@@ -77,8 +77,10 @@ class UiDispatcher:
             logger.warning("UI 事件队列已满，丢弃最旧事件")
             with contextlib.suppress(queue.Empty):
                 self._queue.get_nowait()
-            with contextlib.suppress(queue.Full):
+            try:
                 self._queue.put_nowait(callback)
+            except queue.Full:
+                logger.warning("UI 事件队列已满，新事件也被丢弃")
 
     def pump(self) -> None:
         """在主线程执行合并后的界面状态和有界事件队列。"""

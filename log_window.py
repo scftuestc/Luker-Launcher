@@ -224,7 +224,7 @@ class LogWindow(ctk.CTk):
             return
 
         if self._is_running:
-            self._animation_phase = (self._animation_phase + 0.1) % (2 * 3.14159)
+            self._animation_phase = (self._animation_phase + 0.1) % (2 * math.pi)
             alpha = 0.5 + 0.5 * math.sin(self._animation_phase)
             pulse_color = shade_color(self.COLORS['success'], 1.0 - 0.25 * alpha)
 

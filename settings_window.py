@@ -48,6 +48,13 @@ def clear_scroll_bindings(widget: tk.Misc) -> None:
             widget.tk.call("bind", "all", sequence, "")
 
 
+def bind_click_recursive(widget: tk.Misc, callback: Callable[[tk.Event], None]) -> None:
+    """把点击绑定到控件及其所有后代，避免控件层级加深后漏绑。"""
+    widget.bind('<Button-1>', callback)
+    for child in widget.winfo_children():
+        bind_click_recursive(child, callback)
+
+
 class SettingsWindow(ctk.CTkToplevel):
     """设置窗口：主题、PWA 模式、GCL 和 Luker 路径。"""
 
@@ -296,17 +303,10 @@ class SettingsWindow(ctk.CTkToplevel):
                 text_color=colors['accent'],
             ).pack(anchor="w", pady=(4, 0))
 
-        def on_click(e: tk.Event, tid: str = theme_id) -> None:
-            self._select_theme(tid)
+        def on_click(_event: tk.Event) -> None:
+            self._select_theme(theme_id)
 
-        card.bind('<Button-1>', on_click)
-        inner.bind('<Button-1>', on_click)
-        # 覆盖 inner 的直接子控件和它们的子控件，包括 preview 内的色块；
-        # 若以后增加更深层控件，需要改为递归绑定。
-        for child in inner.winfo_children():
-            child.bind('<Button-1>', on_click)
-            for subchild in child.winfo_children():
-                subchild.bind('<Button-1>', on_click)
+        bind_click_recursive(card, on_click)
 
         return card
 

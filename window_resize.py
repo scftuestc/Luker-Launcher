@@ -65,6 +65,7 @@ class WindowResizer:
         self._edge: str | None = None
         self._drag_start: tuple[int, int, int, int, int, int] | None = None
         self._monitor_signature: tuple[int, int, int, int, int] | None = None
+        self._pending_fit = False
         self._logical_width = width
         self._logical_height = height
         self._min_logical_width = min_width
@@ -152,8 +153,13 @@ class WindowResizer:
 
     def _on_configure(self, event: tk.Event) -> None:
         # 合并拖动过程中连续的 Configure 事件，空闲时只检查一次显示器
-        if event.widget is self._window:
-            self._window.after_idle(self.fit_to_current_monitor)
+        if event.widget is self._window and not self._pending_fit:
+            self._pending_fit = True
+            self._window.after_idle(self._fit_once)
+
+    def _fit_once(self) -> None:
+        self._pending_fit = False
+        self.fit_to_current_monitor()
 
     def _check_edge(self, event: tk.Event) -> None:
         """根据指针位置显示缩放光标，并记录当前边缘。"""

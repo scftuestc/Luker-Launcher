@@ -116,6 +116,26 @@ class LogControllerReplayTests(unittest.TestCase):
         self.assertTrue(fixture.controller.needs_rebuild)
         self.assertEqual(fixture.cancelled, ["job-1"])
 
+    def test_show_after_hide_rebuilds_interrupted_replay(self):
+        fixture = make_controller(viewable=False)
+        seed(fixture, "a", "b")
+        fixture.state.viewable = True
+        fixture.controller.refresh()
+        self.assertTrue(fixture.controller.replaying)
+
+        fixture.controller.on_hide()
+        fixture.scheduled.clear()
+        resets_before = len(fixture.resets)
+
+        fixture.controller.on_show()
+
+        self.assertEqual(len(fixture.resets), resets_before + 1)
+        self.assertTrue(fixture.controller.replaying)
+        while fixture.scheduled:
+            fixture.scheduled.pop(0)[1]()
+        self.assertEqual([entry.text for entry in fixture.batches[-1]], ["a", "b"])
+        self.assertFalse(fixture.controller.needs_rebuild)
+
     def test_on_show_refreshes_when_needed(self):
         fixture = make_controller(viewable=False)
         seed(fixture, "a")
