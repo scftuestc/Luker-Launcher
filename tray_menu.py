@@ -17,10 +17,9 @@ from theme import (
     LOGO_BAR_COLORS,
     LOGO_BAR_RGB,
     blend_color,
-    is_light_color,
     logo_bar_brightness,
 )
-from win_utils import apply_window_blur, disable_window_blur, get_ui_font
+from win_utils import get_ui_font, sync_window_blur
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,7 @@ class TrayMenu(ctk.CTkToplevel):
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
-        self.attributes('-alpha', 1.0 if is_light_color(self.COLORS['bg']) else 0.97)
+        self.attributes('-alpha', 0.97 if config.blur_enabled else 1.0)
 
         self.configure(fg_color=self.COLORS['bg'])
 
@@ -76,6 +75,7 @@ class TrayMenu(ctk.CTkToplevel):
         self._build_menu()
 
         config.add_theme_change_callback(self._on_theme_change)
+        config.add_blur_change_callback(self._on_blur_change)
 
         self.after(50, self._setup_blur)
         self.after(100, self._setup_no_activate)
@@ -101,6 +101,10 @@ class TrayMenu(ctk.CTkToplevel):
         if self.winfo_viewable():
             self._start_menu_animation()
             self._start_mouse_poll()
+
+    def _on_blur_change(self, _enabled: bool) -> None:
+        if self.winfo_exists():
+            self._setup_blur()
 
     def _setup_no_activate(self) -> None:
         try:
@@ -144,15 +148,14 @@ class TrayMenu(ctk.CTkToplevel):
         self._mouse_poll_id = self.after(100, self._check_mouse_outside)
 
     def _setup_blur(self) -> None:
-        if is_light_color(self.COLORS['bg']):
-            self.attributes('-alpha', 1.0)
-            disable_window_blur(self, context="托盘菜单")
-            return
-
-        # 先重置再设置透明度，确保从浅色主题切回时重新启用分层窗口
-        self.attributes('-alpha', 1.0)
-        self.attributes('-alpha', 0.97)
-        apply_window_blur(self, self.COLORS['bg'], alpha=0xEE, context="托盘菜单")
+        sync_window_blur(
+            self,
+            self.COLORS['bg'],
+            enabled=config.blur_enabled,
+            window_alpha=0.97,
+            tint_alpha=0xEE,
+            context="托盘菜单",
+        )
 
     def _start_menu_animation(self) -> None:
         if self._menu_animation_active:

@@ -1,6 +1,7 @@
 {
   "luker_path": "",
   "use_pwa_mode": false,
+  "blur_enabled": true,
   "theme": "summer",
   "gcl_enabled": false,
   "gcl_bat_path": "",

@@ -51,6 +51,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 右键托盘 → **设置**：
 
 - 🎨 主题切换
+- 🪟 毛玻璃效果开关
 - 🌐 PWA 模式
 - 🚀 GCL 联动
 - 📁 Luker 安装路径
@@ -63,6 +64,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 | :--- | :--- |
 | `luker_path` | Luker 安装目录 |
 | `use_pwa_mode` | 是否使用 PWA 模式 |
+| `blur_enabled` | 是否启用毛玻璃效果 |
 | `theme` | 主题 ID |
 | `gcl_enabled` | 是否启用 GCL |
 | `gcl_bat_path` | GCL 的 `start.bat` 路径 |

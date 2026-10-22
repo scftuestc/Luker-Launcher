@@ -1,11 +1,14 @@
 import unittest
+from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import patch
 
 import main
+import settings_window
 from main import LukerLauncher
 from settings_window import (
     _SCROLL_BINDING_SEQUENCES,
+    SettingsWindow,
     bind_click_recursive,
     clear_scroll_bindings,
 )
@@ -103,6 +106,69 @@ class ClickBindingTests(unittest.TestCase):
 
         for widget in (root, middle, leaf):
             self.assertEqual(widget.bindings, [('<Button-1>', on_click)])
+
+
+class FakeSwitch:
+    def __init__(self, value: int = 0) -> None:
+        self.value = value
+        self.selected = False
+
+    def get(self) -> int:
+        return self.value
+
+    def select(self) -> None:
+        self.selected = True
+
+    def deselect(self) -> None:
+        self.selected = False
+
+
+class BlurToggleTests(unittest.TestCase):
+    def test_toggle_writes_config_and_repaints(self):
+        window = object.__new__(SettingsWindow)
+        window.blur_switch = FakeSwitch(1)
+        updates = []
+        window.update = lambda: updates.append(True)
+        fake_config = SimpleNamespace(blur_enabled=False)
+
+        with patch.object(settings_window, 'config', fake_config):
+            window._on_blur_toggle()
+
+        self.assertTrue(fake_config.blur_enabled)
+        self.assertEqual(updates, [True])
+
+    def test_toggle_off_writes_false(self):
+        window = object.__new__(SettingsWindow)
+        window.blur_switch = FakeSwitch(0)
+        window.update = lambda: None
+        fake_config = SimpleNamespace(blur_enabled=True)
+
+        with patch.object(settings_window, 'config', fake_config):
+            window._on_blur_toggle()
+
+        self.assertFalse(fake_config.blur_enabled)
+
+    def test_blur_change_applies_when_alive(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window.blur_switch = FakeSwitch()
+        calls = []
+        window._setup_blur = lambda: calls.append(True)
+
+        window._on_blur_change(True)
+
+        self.assertTrue(window.blur_switch.selected)
+        self.assertEqual(calls, [True])
+
+    def test_blur_change_ignored_after_destroy(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = True
+        calls = []
+        window._setup_blur = lambda: calls.append(True)
+
+        window._on_blur_change(False)
+
+        self.assertEqual(calls, [])
 
 
 class SettingsWindowTests(unittest.TestCase):

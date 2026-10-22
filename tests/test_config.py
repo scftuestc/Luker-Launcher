@@ -23,6 +23,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.theme_name, DEFAULT_THEME)
         self.assertFalse(config.use_pwa_mode)
         self.assertFalse(config.gcl_enabled)
+        self.assertTrue(config.blur_enabled)
         self.assertIsNone(config.luker_path)
 
     def test_invalid_json_uses_defaults(self):
@@ -36,6 +37,7 @@ class ConfigTests(unittest.TestCase):
             {
                 "use_pwa_mode": "false",
                 "gcl_enabled": 1,
+                "blur_enabled": "false",
                 "theme": "unknown",
                 "luker_path": 123,
                 "gcl_url": "  ",
@@ -45,6 +47,7 @@ class ConfigTests(unittest.TestCase):
         config = Config(self.config_path)
         self.assertFalse(config.use_pwa_mode)
         self.assertFalse(config.gcl_enabled)
+        self.assertTrue(config.blur_enabled)
         self.assertEqual(config.theme_name, DEFAULT_THEME)
         self.assertIsNone(config.luker_path)
 
@@ -88,6 +91,32 @@ class ConfigTests(unittest.TestCase):
         config.remove_gcl_change_callback(callback)
         config.gcl_enabled = False
         self.assertEqual(calls, [(True, None)])
+
+    def test_blur_callback_can_be_removed(self):
+        config = Config(self.config_path)
+        calls = []
+
+        def callback(enabled):
+            calls.append(enabled)
+
+        config.add_blur_change_callback(callback)
+        config.blur_enabled = False
+        self.assertEqual(calls, [False])
+
+        config.remove_blur_change_callback(callback)
+        config.blur_enabled = True
+        self.assertEqual(calls, [False])
+
+    def test_blur_enabled_roundtrips(self):
+        config = Config(self.config_path)
+        config.blur_enabled = False
+
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertFalse(saved["blur_enabled"])
+        self.assertFalse(self.config_path.with_name(self.config_path.name + ".tmp").exists())
+
+        reloaded = Config(self.config_path)
+        self.assertFalse(reloaded.blur_enabled)
 
     def test_save_is_atomic_and_roundtrips(self):
         config = Config(self.config_path)

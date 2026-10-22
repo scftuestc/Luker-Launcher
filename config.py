@@ -40,7 +40,7 @@ _STRING_KEYS = (
     "pwa_app_id",
     "pwa_appx_family_name",
 )
-_BOOL_KEYS = ("use_pwa_mode", "gcl_enabled")
+_BOOL_KEYS = ("use_pwa_mode", "gcl_enabled", "blur_enabled")
 
 
 class Config:
@@ -55,6 +55,7 @@ class Config:
         self._config: dict[str, Any] = self._load_config()
         self._theme_change_callbacks: list[Callable[[dict[str, str]], None]] = []
         self._gcl_change_callbacks: list[Callable[[bool, str | None], None]] = []
+        self._blur_change_callbacks: list[Callable[[bool], None]] = []
 
     def _load_config(self) -> dict[str, Any]:
         if not self.config_path.exists():
@@ -147,6 +148,23 @@ class Config:
             except Exception:
                 logger.exception("GCL 配置回调执行失败")
 
+    def add_blur_change_callback(self, callback: Callable[[bool], None]) -> None:
+        """添加毛玻璃开关变更回调。"""
+        self._blur_change_callbacks.append(callback)
+
+    def remove_blur_change_callback(self, callback: Callable[[bool], None]) -> None:
+        """移除毛玻璃开关变更回调；未注册时忽略。"""
+        if callback in self._blur_change_callbacks:
+            self._blur_change_callbacks.remove(callback)
+
+    def _notify_blur_change(self) -> None:
+        enabled = self.blur_enabled
+        for callback in self._blur_change_callbacks:
+            try:
+                callback(enabled)
+            except Exception:
+                logger.exception("毛玻璃配置回调执行失败")
+
     @property
     def theme_name(self) -> str:
         name = self._config.get('theme', DEFAULT_THEME)
@@ -172,6 +190,17 @@ class Config:
     def use_pwa_mode(self, value: bool) -> None:
         self._config['use_pwa_mode'] = bool(value)
         self._save_config()
+
+    @property
+    def blur_enabled(self) -> bool:
+        """是否启用窗口毛玻璃与半透明效果。"""
+        return bool(self._config.get('blur_enabled', True))
+
+    @blur_enabled.setter
+    def blur_enabled(self, value: bool) -> None:
+        self._config['blur_enabled'] = bool(value)
+        self._save_config()
+        self._notify_blur_change()
 
     @property
     def pwa_app_id(self) -> str | None:

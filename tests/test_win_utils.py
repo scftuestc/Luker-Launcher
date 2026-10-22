@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 import win_utils
-from win_utils import bind_window_drag, hex_to_colorref
+from win_utils import bind_window_drag, hex_to_colorref, sync_window_blur
 
 
 class HexToColorrefTests(unittest.TestCase):
@@ -59,7 +59,7 @@ class BlurTests(unittest.TestCase):
             windll_mock.user32.GetParent.return_value = 42
             win_utils.apply_window_blur(FakeWindow(), "#112233", alpha=0xEE, context="测试")
 
-        apply_mock.assert_called_once_with(42, "#112233", alpha=0xEE)
+        apply_mock.assert_called_once_with(42, "#112233", alpha=0xEE, accent_state=4)
 
     def test_disable_blur_clears_accent_and_layered_style(self):
         with patch.object(win_utils, "windll") as windll_mock:
@@ -86,6 +86,80 @@ class BlurTests(unittest.TestCase):
             win_utils.disable_window_blur(FakeWindow(), context="测试窗口")
 
         self.assertIn("测试窗口关闭毛玻璃失败", logs.output[0])
+
+
+class FakeAlphaWindow:
+    def __init__(self) -> None:
+        self.alphas: list[float] = []
+
+    def attributes(self, name: str, value: float | None = None) -> None:
+        if name == '-alpha':
+            assert value is not None
+            self.alphas.append(value)
+
+
+class SyncWindowBlurTests(unittest.TestCase):
+    def test_enabled_dark_background_uses_acrylic(self):
+        window = FakeAlphaWindow()
+        with (
+            patch.object(win_utils, 'apply_window_blur') as apply_mock,
+            patch.object(win_utils, 'disable_window_blur') as disable_mock,
+        ):
+            sync_window_blur(
+                window,
+                "#112233",
+                enabled=True,
+                window_alpha=0.97,
+                tint_alpha=0xEE,
+                context="测试窗口",
+            )
+
+        self.assertEqual(window.alphas, [1.0, 0.97])
+        apply_mock.assert_called_once_with(
+            window,
+            "#112233",
+            alpha=0xEE,
+            accent_state=4,
+            context="测试窗口",
+        )
+        disable_mock.assert_not_called()
+
+    def test_enabled_light_background_uses_blur_behind(self):
+        window = FakeAlphaWindow()
+        with patch.object(win_utils, 'apply_window_blur') as apply_mock:
+            sync_window_blur(
+                window,
+                "#f0ede8",
+                enabled=True,
+                window_alpha=0.97,
+                context="测试窗口",
+            )
+
+        apply_mock.assert_called_once_with(
+            window,
+            "#f0ede8",
+            alpha=0xDD,
+            accent_state=3,
+            context="测试窗口",
+        )
+
+    def test_disabled_sets_opaque_alpha_and_disables_blur(self):
+        window = FakeAlphaWindow()
+        with (
+            patch.object(win_utils, 'apply_window_blur') as apply_mock,
+            patch.object(win_utils, 'disable_window_blur') as disable_mock,
+        ):
+            sync_window_blur(
+                window,
+                "#112233",
+                enabled=False,
+                window_alpha=0.97,
+                context="测试窗口",
+            )
+
+        self.assertEqual(window.alphas, [1.0])
+        apply_mock.assert_not_called()
+        disable_mock.assert_called_once_with(window, context="测试窗口")
 
 
 class FakeWidget:

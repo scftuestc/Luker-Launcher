@@ -23,16 +23,14 @@ from theme import (
     LOGO_BAR_RGB,
     ThemeColorKey,
     blend_color,
-    is_light_color,
     logo_bar_brightness,
     shade_color,
 )
 from win_utils import (
-    apply_window_blur,
     bind_window_drag,
-    disable_window_blur,
     get_mono_font,
     get_ui_font,
+    sync_window_blur,
 )
 from window_resize import WindowResizer
 
@@ -75,6 +73,7 @@ class LogWindow(ctk.CTk):
         self.COLORS = config.get_theme_colors()
 
         config.add_theme_change_callback(self._on_theme_change)
+        config.add_blur_change_callback(self._on_blur_change)
 
         self.UI_FONT = get_ui_font()
         self.MONO_FONT = get_mono_font()
@@ -91,7 +90,7 @@ class LogWindow(ctk.CTk):
         self._set_window_icon()
 
         self.configure(fg_color=self.COLORS['bg'])
-        self.attributes('-alpha', 1.0 if is_light_color(self.COLORS['bg']) else 0.97)
+        self.attributes('-alpha', 0.97 if config.blur_enabled else 1.0)
 
         self.after(150, self._setup_blur)
 
@@ -144,17 +143,18 @@ class LogWindow(ctk.CTk):
             logger.warning("设置窗口图标失败", exc_info=True)
 
     def _setup_blur(self) -> None:
-        if is_light_color(self.COLORS['bg']):
-            self.attributes('-alpha', 1.0)
-            disable_window_blur(self, context="日志窗口")
-            self.update()
-            return
-
-        # 先重置再设置透明度，确保从浅色主题切回时重新启用分层窗口
-        self.attributes('-alpha', 1.0)
-        self.attributes('-alpha', 0.97)
-        apply_window_blur(self, self.COLORS['bg'], alpha=0xDD, context="日志窗口")
+        sync_window_blur(
+            self,
+            self.COLORS['bg'],
+            enabled=config.blur_enabled,
+            window_alpha=0.97,
+            tint_alpha=0xDD,
+            context="日志窗口",
+        )
         self.update()
+
+    def _on_blur_change(self, _enabled: bool) -> None:
+        self._setup_blur()
 
     def _on_theme_change(self, new_colors: dict[str, str]) -> None:
         self.COLORS = new_colors

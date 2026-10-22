@@ -7,6 +7,8 @@ import tkinter as tk
 import tkinter.font as tkfont
 from ctypes import byref, c_int, sizeof, windll
 
+from theme import is_light_color
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,7 +43,7 @@ class WindowsBlur:
         ]
 
     @staticmethod
-    def enable_blur(hwnd: int, color: int = 0xCC000000) -> None:
+    def enable_blur(hwnd: int, color: int = 0xCC000000, accent_state: int = 4) -> None:
         """应用 DWM 模糊；失败时抛出异常，由调用者统一记录。"""
         user32 = windll.user32
         dwmapi = windll.dwmapi
@@ -55,7 +57,7 @@ class WindowsBlur:
             dwmapi.DwmSetWindowAttribute(hwnd, 33, byref(corner), sizeof(corner))
 
         accent = WindowsBlur.ACCENT_POLICY()
-        accent.AccentState = 4
+        accent.AccentState = accent_state
         accent.AccentFlags = 2
         accent.GradientColor = color
 
@@ -116,10 +118,14 @@ def hex_to_colorref(hex_color: str, alpha: int = 0xDD) -> int:
     return ((alpha & 0xFF) << 24) | (b << 16) | (g << 8) | r
 
 
-def apply_blur(hwnd: int, bg_color: str, alpha: int = 0xDD) -> None:
+def apply_blur(hwnd: int, bg_color: str, alpha: int = 0xDD, accent_state: int = 4) -> None:
     """给窗口应用与当前主题背景一致的毛玻璃；失败时抛出异常。"""
     WindowsBlur.extend_frame(hwnd)
-    WindowsBlur.enable_blur(hwnd, hex_to_colorref(bg_color, alpha))
+    WindowsBlur.enable_blur(
+        hwnd,
+        hex_to_colorref(bg_color, alpha),
+        accent_state=accent_state,
+    )
 
 
 def apply_window_blur(
@@ -127,6 +133,7 @@ def apply_window_blur(
     bg_color: str,
     alpha: int = 0xDD,
     *,
+    accent_state: int = 4,
     context: str = "窗口",
 ) -> None:
     """给顶层窗口应用毛玻璃；失败只记录日志，不影响窗口显示。
@@ -135,18 +142,47 @@ def apply_window_blur(
     """
     try:
         hwnd = windll.user32.GetParent(window.winfo_id())
-        apply_blur(hwnd, bg_color, alpha=alpha)
+        apply_blur(hwnd, bg_color, alpha=alpha, accent_state=accent_state)
     except Exception:
         logger.warning("%s毛玻璃失败", context, exc_info=True)
 
 
 def disable_window_blur(window: tk.Tk | tk.Toplevel, *, context: str = "窗口") -> None:
-    """关闭顶层窗口的毛玻璃；浅色主题避免亮色 tint 冲淡文字。"""
+    """关闭顶层窗口的毛玻璃与分层透明效果。"""
     try:
         hwnd = windll.user32.GetParent(window.winfo_id())
         WindowsBlur.disable_blur(hwnd)
     except Exception:
         logger.warning("%s关闭毛玻璃失败", context, exc_info=True)
+
+
+def sync_window_blur(
+    window: tk.Tk | tk.Toplevel,
+    bg_color: str,
+    *,
+    enabled: bool,
+    window_alpha: float,
+    tint_alpha: int = 0xDD,
+    context: str = "窗口",
+) -> None:
+    """按毛玻璃开关同步整窗透明度与 DWM 效果。"""
+    if not enabled:
+        window.attributes('-alpha', 1.0)
+        disable_window_blur(window, context=context)
+        return
+
+    # 先重置再设置透明度，确保从关闭状态切回时重新启用分层窗口
+    window.attributes('-alpha', 1.0)
+    window.attributes('-alpha', window_alpha)
+    # 浅色背景用 blur-behind，避免 acrylic 的亮色 tint 冲淡文字
+    accent_state = 3 if is_light_color(bg_color) else 4
+    apply_window_blur(
+        window,
+        bg_color,
+        alpha=tint_alpha,
+        accent_state=accent_state,
+        context=context,
+    )
 
 
 def bind_window_drag(window: tk.Tk | tk.Toplevel, *widgets: tk.Misc) -> None:

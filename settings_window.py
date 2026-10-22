@@ -17,13 +17,12 @@ from dpi import (
     sync_window_scaling,
 )
 from path_dialogs import select_gcl_bat_path, select_luker_path
-from theme import PRESET_THEMES, is_light_color, shade_color
+from theme import PRESET_THEMES, shade_color
 from win_utils import (
-    apply_window_blur,
     bind_window_drag,
-    disable_window_blur,
     get_mono_font,
     get_ui_font,
+    sync_window_blur,
 )
 
 # CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
@@ -92,7 +91,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
-        self.attributes('-alpha', 1.0 if is_light_color(self.COLORS['bg']) else 0.98)
+        self.attributes('-alpha', 0.98 if config.blur_enabled else 1.0)
         self.configure(fg_color=self.COLORS['bg'])
 
         self._build_ui()
@@ -100,6 +99,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.after(100, self._setup_blur)
 
         config.add_theme_change_callback(self._on_theme_change)
+        config.add_blur_change_callback(self._on_blur_change)
 
         self.bind('<Configure>', self._on_configure, add='+')
         self.bind('<Destroy>', self._on_destroy)
@@ -137,6 +137,7 @@ class SettingsWindow(ctk.CTkToplevel):
         if event.widget == self:
             self._destroyed = True
             config.remove_theme_change_callback(self._on_theme_change)
+            config.remove_blur_change_callback(self._on_blur_change)
             discard_window_scaling(self)
             clear_scroll_bindings(self)
             if self._on_close_callback is not None:
@@ -152,15 +153,23 @@ class SettingsWindow(ctk.CTkToplevel):
             return False
 
     def _setup_blur(self) -> None:
-        if is_light_color(self.COLORS['bg']):
-            self.attributes('-alpha', 1.0)
-            disable_window_blur(self, context="设置窗口")
-            return
+        sync_window_blur(
+            self,
+            self.COLORS['bg'],
+            enabled=config.blur_enabled,
+            window_alpha=0.98,
+            tint_alpha=0xEE,
+            context="设置窗口",
+        )
 
-        # 先重置再设置透明度，确保从浅色主题切回时重新启用分层窗口
-        self.attributes('-alpha', 1.0)
-        self.attributes('-alpha', 0.98)
-        apply_window_blur(self, self.COLORS['bg'], alpha=0xEE, context="设置窗口")
+    def _on_blur_change(self, enabled: bool) -> None:
+        if self._destroyed:
+            return
+        if enabled:
+            self.blur_switch.select()
+        else:
+            self.blur_switch.deselect()
+        self._setup_blur()
 
     def _on_theme_change(self, new_colors: dict[str, str]) -> None:
         if self._destroyed:
@@ -234,12 +243,21 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text'],
         ).pack(side="left")
 
-        ctk.CTkLabel(
+        self.blur_switch = ctk.CTkSwitch(
             header,
-            text="点击卡片实时预览",
+            text="毛玻璃",
             font=ctk.CTkFont(family=self.UI_FONT, size=12),
-            text_color=self.COLORS['text_muted'],
-        ).pack(side="right")
+            text_color=self.COLORS['text_dim'],
+            fg_color=self.COLORS['border'],
+            progress_color=self.COLORS['accent'],
+            button_color=self.COLORS['text'],
+            button_hover_color=self.COLORS['accent'],
+            command=self._on_blur_toggle,
+        )
+        self.blur_switch.pack(side="right")
+
+        if config.blur_enabled:
+            self.blur_switch.select()
 
         grid = ctk.CTkFrame(section, fg_color="transparent")
         grid.pack(fill="x", padx=12, pady=(0, 16))
@@ -313,6 +331,10 @@ class SettingsWindow(ctk.CTkToplevel):
     def _select_theme(self, theme_id: str) -> None:
         if theme_id in PRESET_THEMES:
             config.theme_name = theme_id
+
+    def _on_blur_toggle(self) -> None:
+        config.blur_enabled = self.blur_switch.get() == 1
+        self.update()
 
     def _rebuild_ui(self) -> None:
         """按当前主题重建整个设置界面，让卡片、文字和选中状态一起刷新。"""

@@ -158,6 +158,15 @@ class ThemeBindingTests(unittest.TestCase):
         with self.assertLogs('log_window', level='ERROR'):
             window._apply_theme()
 
+    def test_blur_change_reruns_setup(self):
+        window = object.__new__(LogWindow)
+        calls = []
+        window._setup_blur = lambda: calls.append('blur')
+
+        window._on_blur_change(False)
+
+        self.assertEqual(calls, ['blur'])
+
 
 if __name__ == '__main__':
     unittest.main()
