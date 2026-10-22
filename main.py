@@ -4,6 +4,7 @@ import contextlib
 import ctypes
 import logging
 import time
+import tkinter as tk
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -103,9 +104,15 @@ class LukerLauncher:
         config.add_gcl_change_callback(self._on_gcl_config_change)
 
     def _schedule_ui(self, delay_ms: int, callback: Callable[[], None]) -> None:
-        """在 Tk 主线程安排下一次 UI 泵；窗口未创建时不再续排。"""
-        if self.log_window is not None:
-            self.log_window.after(delay_ms, callback)
+        """在 Tk 主线程安排下一次 UI 泵；窗口不可用时停止续排。"""
+        window = self.log_window
+        if window is None:
+            return
+        try:
+            if window.winfo_exists():
+                window.after(delay_ms, callback)
+        except tk.TclError:
+            logger.debug("窗口已销毁，停止界面事件泵")
 
     def _post_ui(
         self,
@@ -212,6 +219,7 @@ class LukerLauncher:
         """停止托盘并结束 Tk 主循环。"""
         try:
             self._ui.stop()
+            config.remove_gcl_change_callback(self._on_gcl_config_change)
             if self.tray_icon:
                 self.tray_icon.stop()
         finally:
@@ -590,6 +598,7 @@ class LukerLauncher:
 
         # 与 _finish_exit 互为兜底，正常退出时这里已是幂等操作
         self._ui.stop()
+        config.remove_gcl_change_callback(self._on_gcl_config_change)
         self._running = False
         if self.tray_icon:
             self.tray_icon.stop()

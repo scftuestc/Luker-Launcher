@@ -34,19 +34,32 @@ class UiDispatcher:
         self._state: dict[str, Callable[[], None]] = {}
         self._lock = Lock()
         self._active = False
+        self._stopped = False
 
     @property
     def active(self) -> bool:
         return self._active
 
     def start(self) -> None:
-        """激活队列并立即开始泵。"""
+        """激活队列并立即开始泵；重复调用或停止后调用都不再生效。"""
+        if self._active or self._stopped:
+            return
         self._active = True
         self.pump()
 
     def stop(self) -> None:
-        """停止接收新事件；正在执行的 tick 不再续排。"""
+        """停止派发并丢弃未执行的回调；停止后不可重新启动。"""
+        if self._stopped:
+            return
         self._active = False
+        self._stopped = True
+        with self._lock:
+            self._state.clear()
+        while True:
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                break
 
     def post(self, callback: Callable[[], None], coalesce_key: str | None = None) -> None:
         """从任意线程投递 UI 操作；同一 coalesce_key 只保留最后一次。"""

@@ -130,6 +130,11 @@ class Config:
         """添加 GCL 配置变更回调"""
         self._gcl_change_callbacks.append(callback)
 
+    def remove_gcl_change_callback(self, callback: Callable[[bool, str | None], None]) -> None:
+        """移除 GCL 配置变更回调；未注册时忽略。"""
+        if callback in self._gcl_change_callbacks:
+            self._gcl_change_callbacks.remove(callback)
+
     def _notify_gcl_change(self) -> None:
         """通知 GCL 配置变更"""
         enabled = self.gcl_enabled

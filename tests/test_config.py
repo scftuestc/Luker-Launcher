@@ -58,6 +58,21 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(saved["luker_path"], "D:/New/Luker")
         self.assertNotIn("sillytavern_path", saved)
 
+    def test_gcl_callback_can_be_removed(self):
+        config = Config(self.config_path)
+        calls = []
+
+        def callback(enabled, path):
+            calls.append((enabled, path))
+
+        config.add_gcl_change_callback(callback)
+        config.gcl_enabled = True
+        self.assertEqual(calls, [(True, None)])
+
+        config.remove_gcl_change_callback(callback)
+        config.gcl_enabled = False
+        self.assertEqual(calls, [(True, None)])
+
     def test_save_is_atomic_and_roundtrips(self):
         config = Config(self.config_path)
         config.theme_name = "ocean_cyan"

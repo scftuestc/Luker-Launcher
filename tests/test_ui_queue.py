@@ -108,6 +108,27 @@ class UiDispatcherTests(unittest.TestCase):
 
         self.assertEqual([delay for delay, _ in scheduled], [UI_QUEUE_POLL_MS])
 
+    def test_start_is_idempotent(self):
+        scheduled = []
+        dispatcher = UiDispatcher(lambda delay, callback: scheduled.append(delay))
+
+        dispatcher.start()
+        dispatcher.start()
+
+        self.assertEqual(scheduled, [UI_QUEUE_POLL_MS])
+
+    def test_stop_discards_pending_events_and_cannot_restart(self):
+        dispatcher = make_dispatcher()
+        calls = []
+
+        dispatcher.post(lambda: calls.append("queued"))
+        dispatcher.post(lambda: calls.append("state"), "settings")
+        dispatcher.stop()
+        dispatcher.start()
+        dispatcher.pump()
+
+        self.assertEqual(calls, [])
+
     def test_backlog_reschedules_immediately(self):
         scheduled = []
         dispatcher = UiDispatcher(
