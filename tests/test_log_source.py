@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 from log_window import LogWindow
 
@@ -22,7 +23,7 @@ class FakeLabel:
 class LogSourceUiTests(unittest.TestCase):
     def make_window(self, source: str) -> LogWindow:
         window = object.__new__(LogWindow)
-        window._log_source = source
+        window._logs = SimpleNamespace(source=source)
         window.COLORS = {
             'accent': '#111111',
             'warning': '#222222',

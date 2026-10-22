@@ -1,158 +1,265 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import log_replay
-from log_display import LogDisplay
-from log_queue import BoundedLogQueue
+from log_controller import ACTIVE_POLL_MS, LogController
 from log_replay import LogReplay
-from log_search import LogSearch
-from log_store import LogStore
-from log_window import LogWindow
 
 
-class FakeVar:
-    def __init__(self, value: str = "") -> None:
-        self.value = value
+def make_controller(
+    *,
+    viewable: bool = True,
+    exists: bool = True,
+    removed: int = 0,
+    query: bool = False,
+):
+    state = SimpleNamespace(
+        viewable=viewable,
+        exists=exists,
+        removed=removed,
+        query=query,
+    )
+    scheduled = []
+    cancelled = []
+    resets = []
+    batches = []
+    adjusted = []
+    reruns = []
 
-    def get(self) -> str:
-        return self.value
+    def schedule(delay: int, callback) -> str:
+        scheduled.append((delay, callback))
+        return f"job-{len(scheduled)}"
+
+    def add_entries(entries) -> int:
+        batches.append(list(entries))
+        return state.removed
+
+    controller = LogController(
+        schedule=schedule,
+        cancel=cancelled.append,
+        exists=lambda: state.exists,
+        viewable=lambda: state.viewable,
+        reset_display=lambda: resets.append(True),
+        add_entries=add_entries,
+        adjust_search=adjusted.append,
+        has_query=lambda: state.query,
+        on_search_rerun=lambda: reruns.append(True),
+    )
+    return SimpleNamespace(
+        controller=controller,
+        state=state,
+        scheduled=scheduled,
+        cancelled=cancelled,
+        resets=resets,
+        batches=batches,
+        adjusted=adjusted,
+        reruns=reruns,
+    )
 
 
-class FakeText:
-    def __init__(self) -> None:
-        self.deleted: list[tuple[str, str]] = []
-
-    def configure(self, **_kwargs) -> None:
-        pass
-
-    def delete(self, start: str, end: str) -> None:
-        self.deleted.append((start, end))
-
-    def tag_remove(self, *_args) -> None:
-        pass
+def seed(fixture, *lines: str) -> None:
+    for line in lines:
+        fixture.controller.add_log(line)
+    fixture.controller.drain_once()
 
 
-class FakeNav:
-    def pack_forget(self) -> None:
-        pass
-
-
-class FakeLabel:
-    def __init__(self) -> None:
-        self.text = ""
-
-    def configure(self, **kwargs) -> None:
-        self.text = kwargs.get("text", "")
-
-
-class ReplayTests(unittest.TestCase):
-    def _make_window(self, lines: list[str]):
-        window = object.__new__(LogWindow)
-        window._get_textbox = lambda: FakeText()
-        window._search_var = FakeVar()
-        window._search_job = None
-        window._search_nav = FakeNav()
-        window._search_count_label = FakeLabel()
-        window._search = LogSearch(
-            lambda: FakeText(),
-            window._search_count_label,
-            window._search_nav,
-            lambda: {},
-        )
-        window.count_label = FakeLabel()
-        window._luker_store = LogStore()
-        window._gcl_store = LogStore()
-        for line in lines:
-            window._luker_store.append(line)
-        window._log_source = "luker"
-        window._display = LogDisplay(lambda: FakeText(), FakeLabel())
-        window._display_dirty = True
-
-        batches: list[list] = []
-        window._add_log_lines = lambda entries: batches.append(list(entries))
-
-        after_calls: list[tuple[int, object]] = []
-
-        def fake_after(delay: int, callback) -> str:
-            after_calls.append((delay, callback))
-            return f"job-{len(after_calls)}"
-
-        cancel_calls: list[str] = []
-        window.after = fake_after
-        window.after_cancel = cancel_calls.append
-        window.winfo_exists = lambda: True
-        window._search_calls = 0
-
-        def fake_search() -> None:
-            window._search_calls += 1
-
-        window._run_search = fake_search
-        window._replay = LogReplay(
-            schedule=fake_after,
-            cancel=cancel_calls.append,
-            add_entries=window._add_log_lines,
-            exists=window.winfo_exists,
-            on_finished=window._on_replay_finished,
-        )
-        return window, batches, after_calls, cancel_calls
-
+class LogControllerReplayTests(unittest.TestCase):
     def test_refresh_schedules_chunks_without_bulk_insert(self):
-        window, batches, after_calls, _cancel_calls = self._make_window(["a", "b", "c"])
+        fixture = make_controller(viewable=False)
+        seed(fixture, "a", "b", "c")
+        fixture.state.viewable = True
 
         with patch.object(log_replay, "REPLAY_BATCH_SIZE", 2):
-            window._refresh_log_display()
+            fixture.controller.refresh()
 
-            self.assertTrue(window._replay.active)
-            self.assertEqual(batches, [])
-            self.assertEqual(len(after_calls), 1)
+            self.assertTrue(fixture.controller.replaying)
+            self.assertEqual(fixture.batches, [])
+            self.assertEqual(len(fixture.scheduled), 1)
 
-            delay, first_chunk = after_calls.pop(0)
+            delay, first_chunk = fixture.scheduled.pop(0)
             self.assertEqual(delay, log_replay.REPLAY_YIELD_MS)
             first_chunk()
-            self.assertEqual([entry.text for entry in batches[0]], ["a", "b"])
+            self.assertEqual([entry.text for entry in fixture.batches[0]], ["a", "b"])
 
-            after_calls.pop(0)[1]()
-            self.assertEqual([entry.text for entry in batches[1]], ["c"])
-            self.assertFalse(window._replay.active)
+            fixture.scheduled.pop(0)[1]()
+            self.assertEqual([entry.text for entry in fixture.batches[1]], ["c"])
+            self.assertFalse(fixture.controller.replaying)
 
     def test_live_logs_wait_in_tail_during_replay(self):
-        window, batches, after_calls, _cancel_calls = self._make_window(["old"])
-        window._refresh_log_display()
-        pending = BoundedLogQueue(max_lines=10, max_bytes=100)
-        pending.put("live")
+        fixture = make_controller(viewable=False)
+        seed(fixture, "old")
+        fixture.state.viewable = True
+        fixture.controller.refresh()
 
-        window._drain_log_queue(pending, window._luker_store, "luker")
+        fixture.controller.add_log("live")
+        fixture.controller.drain_once()
 
-        self.assertEqual([entry.text for entry in window._replay.tail], ["live"])
-        self.assertEqual(batches, [])
+        self.assertEqual([entry.text for entry in fixture.controller._replay.tail], ["live"])
+        self.assertEqual(fixture.batches, [])
 
-        while after_calls:
-            after_calls.pop(0)[1]()
+        while fixture.scheduled:
+            fixture.scheduled.pop(0)[1]()
 
-        self.assertEqual([entry.text for entry in batches[-1]], ["live"])
-        self.assertFalse(window._replay.active)
+        self.assertEqual([entry.text for entry in fixture.batches[-1]], ["live"])
+        self.assertFalse(fixture.controller.replaying)
 
     def test_hide_cancels_replay_and_marks_dirty(self):
-        window, _batches, _after_calls, cancel_calls = self._make_window(["a"])
-        window._refresh_log_display()
-        window.withdraw = lambda: None
+        fixture = make_controller(viewable=False)
+        seed(fixture, "a")
+        fixture.state.viewable = True
+        fixture.controller.refresh()
 
-        window.hide()
+        fixture.controller.on_hide()
 
-        self.assertFalse(window._replay.active)
-        self.assertTrue(window._display_dirty)
-        self.assertEqual(cancel_calls, ["job-1"])
+        self.assertFalse(fixture.controller.replaying)
+        self.assertTrue(fixture.controller.needs_rebuild)
+        self.assertEqual(fixture.cancelled, ["job-1"])
+
+    def test_on_show_refreshes_when_needed(self):
+        fixture = make_controller(viewable=False)
+        seed(fixture, "a")
+        fixture.state.viewable = True
+        resets_before = len(fixture.resets)
+
+        fixture.controller.on_show()
+
+        self.assertEqual(len(fixture.resets), resets_before + 1)
+        self.assertTrue(fixture.controller.replaying)
 
     def test_finish_replay_runs_search_only_when_query_exists(self):
-        window, _batches, after_calls, _cancel_calls = self._make_window(["a"])
-        window._search_var.value = "needle"
-        window._refresh_log_display()
+        fixture = make_controller(viewable=False, query=True)
+        seed(fixture, "a")
+        fixture.state.viewable = True
+        fixture.controller.refresh()
 
-        while after_calls:
-            after_calls.pop(0)[1]()
+        while fixture.scheduled:
+            fixture.scheduled.pop(0)[1]()
 
-        self.assertEqual(window._search_calls, 1)
+        self.assertEqual(fixture.reruns, [True])
 
+    def test_finish_replay_skips_search_without_query(self):
+        fixture = make_controller(viewable=False)
+        seed(fixture, "a")
+        fixture.state.viewable = True
+        fixture.controller.refresh()
+
+        while fixture.scheduled:
+            fixture.scheduled.pop(0)[1]()
+
+        self.assertEqual(fixture.reruns, [])
+
+    def test_trimmed_lines_adjust_search(self):
+        fixture = make_controller(viewable=True, removed=0)
+        seed(fixture, "old")
+        fixture.state.removed = 2
+
+        fixture.controller.add_log("new")
+        fixture.controller.drain_once()
+
+        self.assertEqual(fixture.adjusted, [2])
+
+    def test_clear_empties_stores_and_queues(self):
+        fixture = make_controller(viewable=False)
+        seed(fixture, "a")
+        fixture.controller.add_log("queued")
+        resets_before = len(fixture.resets)
+
+        fixture.controller.clear()
+
+        self.assertEqual(fixture.controller._stores["luker"].snapshot(), [])
+        self.assertEqual(fixture.controller._stores["gcl"].snapshot(), [])
+        self.assertTrue(fixture.controller._queues["luker"].empty())
+        self.assertTrue(fixture.controller._queues["gcl"].empty())
+        self.assertFalse(fixture.controller.needs_rebuild)
+        self.assertEqual(len(fixture.resets), resets_before + 1)
+
+    def test_set_gcl_enabled_false_switches_back_to_luker(self):
+        fixture = make_controller()
+        fixture.controller.toggle_source()
+        self.assertEqual(fixture.controller.source, "gcl")
+
+        fixture.controller.set_gcl_enabled(False)
+
+        self.assertEqual(fixture.controller.source, "luker")
+
+    def test_start_is_idempotent(self):
+        fixture = make_controller()
+
+        fixture.controller.start()
+        fixture.controller.start()
+
+        self.assertEqual(len(fixture.scheduled), 1)
+
+    def test_stop_cancels_pump_and_replay(self):
+        fixture = make_controller()
+        seed(fixture, "a")
+        fixture.controller.start()
+        fixture.controller.refresh()
+
+        fixture.controller.stop()
+
+        self.assertFalse(fixture.controller.replaying)
+        self.assertFalse(fixture.controller._started)
+        self.assertIsNone(fixture.controller._pump_job)
+        self.assertEqual(fixture.cancelled, ["job-2", "job-1"])
+
+    def test_pump_uses_fast_interval_with_backlog(self):
+        fixture = make_controller()
+        for index in range(11):
+            fixture.controller.add_log(str(index))
+
+        fixture.controller.start()
+
+        self.assertEqual(fixture.scheduled[-1][0], ACTIVE_POLL_MS)
+
+    def test_pump_stops_after_window_destroyed(self):
+        fixture = make_controller()
+        fixture.controller.start()
+        fixture.state.exists = False
+
+        fixture.scheduled.pop(0)[1]()
+
+        self.assertFalse(fixture.controller._started)
+        self.assertEqual(fixture.scheduled, [])
+
+    def test_add_gcl_log_drains_into_gcl_store(self):
+        fixture = make_controller(viewable=False)
+        fixture.controller.add_gcl_log("gcl line")
+
+        fixture.controller.drain_once()
+
+        self.assertEqual(
+            [entry.text for entry in fixture.controller._stores["gcl"].snapshot()],
+            ["gcl line"],
+        )
+
+    def test_drain_skips_destroyed_window(self):
+        fixture = make_controller(viewable=False, exists=False)
+        fixture.controller.add_log("pending")
+
+        fixture.controller.drain_once()
+
+        self.assertFalse(fixture.controller._queues["luker"].empty())
+
+    def test_drain_rebuilds_when_visible(self):
+        fixture = make_controller(viewable=False)
+        seed(fixture, "a")
+        fixture.state.viewable = True
+
+        fixture.controller.drain_once()
+
+        self.assertTrue(fixture.controller.replaying)
+
+    def test_refresh_without_logs_reruns_query(self):
+        fixture = make_controller(query=True)
+
+        fixture.controller.refresh()
+
+        self.assertEqual(fixture.reruns, [True])
+
+
+class LogReplayCancelTests(unittest.TestCase):
     def test_missing_window_cancels_replay(self):
         schedules = []
         finished = []
@@ -172,20 +279,27 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(finished, [])
 
     def test_cancel_replay_clears_snapshot_and_tail(self):
-        window, _batches, _after_calls, cancel_calls = self._make_window([])
-        window._replay.job = "job-9"
-        window._replay.active = True
-        window._replay.entries = [object()]
-        window._replay.index = 1
-        window._replay.tail.append(object())
+        cancel_calls = []
+        replay = LogReplay(
+            schedule=lambda _delay, _callback: "job-9",
+            cancel=cancel_calls.append,
+            add_entries=lambda _entries: None,
+            exists=lambda: True,
+            on_finished=lambda: None,
+        )
+        replay.job = "job-9"
+        replay.active = True
+        replay.entries = [object()]
+        replay.index = 1
+        replay.tail.append(object())
 
-        window._replay.cancel()
+        replay.cancel()
 
         self.assertEqual(cancel_calls, ["job-9"])
-        self.assertFalse(window._replay.active)
-        self.assertEqual(window._replay.entries, [])
-        self.assertEqual(window._replay.index, 0)
-        self.assertEqual(len(window._replay.tail), 0)
+        self.assertFalse(replay.active)
+        self.assertEqual(replay.entries, [])
+        self.assertEqual(replay.index, 0)
+        self.assertEqual(len(replay.tail), 0)
 
 
 if __name__ == "__main__":
