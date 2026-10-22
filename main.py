@@ -11,14 +11,17 @@ from collections.abc import Callable
 from ctypes import windll
 from pathlib import Path
 from threading import Thread
+from tkinter import messagebox
 
 import customtkinter as ctk
 
 import app_logging
 import single_instance
 from config import APP_VERSION, config
+from dialogs import show_exit_confirmation
 from dpi import get_process_dpi_awareness
 from log_window import LogWindow
+from luker_readiness import LukerReadinessMonitor, LukerState
 from path_dialogs import ensure_luker_path_configured
 from process_manager import GCLProcessManager, LukerProcessManager
 from pwa_browser import open_in_browser
@@ -38,6 +41,7 @@ UI_KEY_VISIBILITY = "visibility"
 UI_KEY_TRAY_MENU = "tray_menu"
 UI_KEY_SETTINGS = "settings"
 UI_KEY_GCL_UI = "gcl_ui"
+UI_KEY_LUKER_STATE = "luker_state"
 UI_KEY_EXIT = "exit"
 
 
@@ -94,7 +98,9 @@ class LukerLauncher:
         self._pending_gcl_config: tuple[bool, str | None] | None = None
         self._browser_busy = False  # 防止重复启动 PWA 发现线程
         self._exiting = False  # 退出流程只执行一次
-        self._last_status: bool | None = None  # 上一次通知给界面的运行状态
+        self._exit_dialog_open = False
+        self._last_status: LukerState | None = None  # 上一次通知给界面的运行状态
+        self._readiness: LukerReadinessMonitor | None = None
         # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
         self._ui = UiDispatcher(self._schedule_ui)
         # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
@@ -122,6 +128,42 @@ class LukerLauncher:
         """从任意线程投递 UI 操作；同一 coalesce_key 只保留最后一次。"""
         self._ui.post(callback, coalesce_key)
 
+    def _current_luker_state(self) -> LukerState:
+        """综合进程存活和本地服务探测结果，返回界面使用的三态。"""
+        manager = getattr(self, 'process_manager', None)
+        if not manager or not manager.is_running:
+            return LukerState.STOPPED
+
+        readiness = getattr(self, '_readiness', None)
+        if readiness is not None and readiness.state is LukerState.READY:
+            return LukerState.READY
+        return LukerState.STARTING
+
+    def _on_luker_state_change(self, state: LukerState) -> None:
+        """就绪探测线程回调；回到 Tk 主线程后再更新界面。"""
+        self._post_ui(
+            lambda: self._apply_luker_state(state),
+            UI_KEY_LUKER_STATE,
+        )
+
+    def _apply_luker_state(self, state: LukerState) -> None:
+        if state is getattr(self, '_last_status', None):
+            return
+        self._last_status = state
+        window = getattr(self, 'log_window', None)
+        if window:
+            window.update_status(state)
+        menu = getattr(self, 'tray_menu', None)
+        if menu:
+            menu.set_luker_state(state)
+
+    def _reset_luker_readiness(self) -> None:
+        """启动/重启前清空旧的就绪结果，避免沿用上一次的 READY。"""
+        self._last_status = None
+        readiness = getattr(self, '_readiness', None)
+        if readiness is not None:
+            readiness.reset()
+
     def _on_show_window(self) -> None:
         self._post_ui(self._show_window, UI_KEY_VISIBILITY)
 
@@ -145,6 +187,9 @@ class LukerLauncher:
             self.log_window.add_log(line)
 
     def _on_start(self) -> None:
+        if self._process_busy or self._exiting:
+            return
+        self._reset_luker_readiness()
         self._do_process_action(lambda manager: manager.start())
 
     def _on_stop(self) -> None:
@@ -154,6 +199,7 @@ class LukerLauncher:
         if self._process_busy or self._exiting:
             return
 
+        self._reset_luker_readiness()
         desired_path = config.luker_path
         current = self.process_manager
         if desired_path and current and str(current.luker_path) != str(Path(desired_path)):
@@ -164,6 +210,7 @@ class LukerLauncher:
 
     def _restart_with_path(self, path: str) -> None:
         """路径变化时先停旧进程，再创建并启动新管理器。"""
+        self._reset_luker_readiness()
         old_manager = self.process_manager
 
         def worker() -> None:
@@ -195,6 +242,44 @@ class LukerLauncher:
         self.process_manager = manager
         self._last_status = None
 
+    def _on_request_exit(self) -> None:
+        """日志窗口关闭按钮：先确认，再停止 Luker 并退出启动器。"""
+        if self._exiting or self._exit_dialog_open or not self.log_window:
+            return
+
+        self._exit_dialog_open = True
+        state = self._current_luker_state()
+
+        def on_confirm() -> None:
+            self._exit_dialog_open = False
+            if self.log_window:
+                self.log_window.hide()
+            self._on_exit()
+
+        def on_cancel() -> None:
+            self._exit_dialog_open = False
+            if self.log_window:
+                self.log_window.focus_force()
+
+        try:
+            show_exit_confirmation(self.log_window, state, on_confirm, on_cancel)
+        except Exception:
+            logger.exception("显示退出确认框失败，回退到系统对话框")
+            self._exit_dialog_open = False
+            try:
+                confirmed = messagebox.askyesno(
+                    "退出 Luker",
+                    "退出会停止 Luker 进程，并关闭 Luker Launcher。\n确定要退出吗？",
+                    parent=self.log_window,
+                )
+            except Exception:
+                logger.exception("显示系统退出确认框失败")
+                return
+            if confirmed:
+                on_confirm()
+            else:
+                on_cancel()
+
     def _on_exit(self) -> None:
         if self._exiting:
             return
@@ -205,6 +290,9 @@ class LukerLauncher:
         managers = [m for m in (self.process_manager, self.gcl_process_manager) if m]
 
         def worker() -> None:
+            readiness = getattr(self, '_readiness', None)
+            if readiness:
+                readiness.stop()
             for manager in managers:
                 manager.stop()
             self._post_ui(self._finish_exit, UI_KEY_EXIT)
@@ -218,6 +306,9 @@ class LukerLauncher:
     def _finish_exit(self) -> None:
         """停止托盘并结束 Tk 主循环。"""
         try:
+            readiness = getattr(self, '_readiness', None)
+            if readiness:
+                readiness.stop()
             self._ui.stop()
             config.remove_gcl_change_callback(self._on_gcl_config_change)
             if self.tray_icon:
@@ -481,25 +572,26 @@ class LukerLauncher:
 
         # 记录托盘点击位置，设置窗口按该显示器打开
         self._tray_anchor = (x, y)
-        is_running = self.process_manager.is_running if self.process_manager else False
+        state = self._current_luker_state()
         window_visible = self.log_window.is_visible()
         gcl_enabled = self.gcl_process_manager is not None
         gcl_running = self.gcl_process_manager.is_running if self.gcl_process_manager else False
-        self.tray_menu.update_state(is_running, window_visible, gcl_enabled, gcl_running)
+        self.tray_menu.update_state(
+            state is not LukerState.STOPPED,
+            window_visible,
+            gcl_enabled,
+            gcl_running,
+            state,
+        )
         self.tray_menu.show_at(x, y)
 
     def _update_status(self) -> None:
         if not self.process_manager:
             return
         is_running = self.process_manager.is_running
-        # 状态未变化时不重复更新图标和标签
-        if is_running == self._last_status:
-            return
-        self._last_status = is_running
         if self.tray_icon:
             self.tray_icon.update_status(is_running)
-        if self.log_window:
-            self.log_window.update_status(is_running)
+        self._apply_luker_state(self._current_luker_state())
 
     def _schedule_status_poll(self) -> None:
         """在 Tk 主线程按固定间隔检查进程状态，不再单独占用监控线程。"""
@@ -527,6 +619,7 @@ class LukerLauncher:
             ),
             on_start=self._on_start,
             on_stop=self._on_stop,
+            on_exit=self._on_request_exit,
         )
         # 内部警告/错误同步到日志窗口
         app_logging.add_ui_log_sink(self._on_log)
@@ -536,6 +629,13 @@ class LukerLauncher:
 
         # PWA 模式下禁止 Luker 自己打开浏览器，改由启动器接管
         self._ensure_process_manager()
+
+        self._readiness = LukerReadinessMonitor(
+            lambda: bool(self.process_manager and self.process_manager.is_running),
+            config.get_server_url,
+            self._on_luker_state_change,
+        )
+        self._readiness.start()
 
         self.tray_menu = TrayMenu(
             self.log_window,

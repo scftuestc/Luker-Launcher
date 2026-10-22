@@ -2,12 +2,14 @@ import unittest
 from unittest.mock import patch
 
 from log_window import LogWindow
-from theme import shade_color
+from luker_readiness import LukerState
+from theme import LOGO_STOPPED_COLOR, shade_color
 
 COLORS = {
     'bg': '#111111',
     'success': '#22aa44',
     'error': '#cc3344',
+    'warning': '#ddaa22',
 }
 
 
@@ -24,6 +26,9 @@ class TransportButtonTests(unittest.TestCase):
         window = object.__new__(LogWindow)
         window.COLORS = dict(COLORS)
         window._is_running = False
+        window._luker_state = LukerState.STOPPED
+        window._logo_is_gray = True
+        window._logo_bars = []
         window._play_icon = None
         window.play_btn = FakeWidget()
         window.status_dot = FakeWidget()
@@ -37,7 +42,7 @@ class TransportButtonTests(unittest.TestCase):
             'log_window.transport_icon',
             side_effect=lambda kind, color: f'{kind}:{color}',
         ):
-            window.update_status(True)
+            window.update_status(LukerState.READY)
 
         self.assertEqual(window.play_btn.options['image'], 'stop:#111111')
         self.assertEqual(window.play_btn.options['fg_color'], COLORS['error'])
@@ -62,7 +67,7 @@ class TransportButtonTests(unittest.TestCase):
             'log_window.transport_icon',
             side_effect=lambda kind, color: f'{kind}:{color}',
         ):
-            window.update_status(False)
+            window.update_status(LukerState.STOPPED)
 
         self.assertEqual(window.play_btn.options['image'], 'play:#111111')
         self.assertEqual(window.play_btn.options['fg_color'], COLORS['success'])
@@ -70,6 +75,55 @@ class TransportButtonTests(unittest.TestCase):
             window.status_text.options,
             {'text': '已停止', 'text_color': COLORS['error']},
         )
+
+    def test_starting_shows_warning_and_stop_icon(self):
+        window = self.make_window()
+
+        with patch(
+            'log_window.transport_icon',
+            side_effect=lambda kind, color: f'{kind}:{color}',
+        ):
+            window.update_status(LukerState.STARTING)
+
+        self.assertEqual(window.play_btn.options['image'], 'stop:#111111')
+        self.assertEqual(window.play_btn.options['fg_color'], COLORS['error'])
+        self.assertEqual(
+            window.status_text.options,
+            {'text': '启动中', 'text_color': COLORS['warning']},
+        )
+
+    def test_starting_and_stopped_turn_logo_gray(self):
+        for state in (LukerState.STARTING, LukerState.STOPPED):
+            with self.subTest(state=state):
+                window = self.make_window()
+                bars = [FakeWidget() for _ in range(4)]
+                window._logo_bars = bars
+                window._logo_is_gray = False
+
+                with patch(
+                    'log_window.transport_icon',
+                    side_effect=lambda kind, color: f'{kind}:{color}',
+                ):
+                    window.update_status(state)
+
+                self.assertTrue(window._logo_is_gray)
+                for bar in bars:
+                    self.assertEqual(bar.options['fg_color'], LOGO_STOPPED_COLOR)
+
+    def test_ready_does_not_force_logo_gray(self):
+        window = self.make_window()
+        bars = [FakeWidget() for _ in range(4)]
+        window._logo_bars = bars
+        window._logo_is_gray = False
+
+        with patch(
+            'log_window.transport_icon',
+            side_effect=lambda kind, color: f'{kind}:{color}',
+        ):
+            window.update_status(LukerState.READY)
+
+        self.assertFalse(window._logo_is_gray)
+        self.assertEqual(bars[0].options, {})
 
     def test_icon_color_follows_theme_background(self):
         window = self.make_window()
@@ -79,7 +133,7 @@ class TransportButtonTests(unittest.TestCase):
             'log_window.transport_icon',
             side_effect=lambda kind, color: f'{kind}:{color}',
         ):
-            window.update_status(False)
+            window.update_status(LukerState.STOPPED)
 
         self.assertEqual(window.play_btn.options['image'], 'play:#abcdef')
 

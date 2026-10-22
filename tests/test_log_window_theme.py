@@ -1,6 +1,7 @@
 import unittest
 
 from log_window import LogWindow
+from luker_readiness import LukerState
 from ui_style import button_colors
 
 COLORS = {
@@ -66,8 +67,8 @@ class ThemeBindingTests(unittest.TestCase):
         def apply_log_source_ui() -> None:
             calls.append('source')
 
-        def update_status(is_running: bool) -> None:
-            calls.append(f'status:{is_running}')
+        def update_status(state: LukerState) -> None:
+            calls.append(f'status:{state.value}')
 
         def get_textbox() -> FakeTextbox:
             return textbox
@@ -79,6 +80,7 @@ class ThemeBindingTests(unittest.TestCase):
         window._get_textbox = get_textbox
         window._search = search
         window._is_running = False
+        window._luker_state = LukerState.STOPPED
         window.COLORS = COLORS.copy()
         window._theme_bindings = []
         window._styled_buttons = []
@@ -144,11 +146,12 @@ class ThemeBindingTests(unittest.TestCase):
     def test_apply_theme_refreshes_dynamic_state_after_bindings(self):
         window, _, textbox, search, calls = self.make_window()
         window._is_running = True
+        window._luker_state = LukerState.READY
         window._bind_theme(FakeWidget(), fg_color='card')
 
         window._apply_theme()
 
-        self.assertEqual(calls, ['blur', 'source', 'status:True'])
+        self.assertEqual(calls, ['blur', 'source', 'status:ready'])
         self.assertEqual(search.refresh_count, 1)
         self.assertEqual(textbox.tags['error']['foreground'], COLORS['error'])
         self.assertEqual(textbox.tags['separator']['foreground'], COLORS['accent'])

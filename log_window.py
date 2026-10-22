@@ -17,13 +17,11 @@ from log_display import LogDisplay
 from log_search import LogSearch
 from log_store import LogEntry
 from log_tags import configure_log_tags
+from luker_readiness import LukerState
 from theme import (
-    LOGO_BAR_COLORS,
-    LOGO_BAR_GLOW_RGB,
-    LOGO_BAR_RGB,
+    LOGO_STOPPED_COLOR,
     ThemeColorKey,
-    blend_color,
-    logo_bar_brightness,
+    logo_bar_glow_color,
     shade_color,
 )
 from ui_icons import TransportIcon, transport_icon
@@ -53,6 +51,7 @@ class LogWindow(ctk.CTk):
         on_hide_callback: Callable[[], None] | None = None,
         on_start: Callable[[], None] | None = None,
         on_stop: Callable[[], None] | None = None,
+        on_exit: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -63,9 +62,9 @@ class LogWindow(ctk.CTk):
         self.on_hide_callback = on_hide_callback
         self.on_start_callback = on_start
         self.on_stop_callback = on_stop
+        self.on_exit_callback = on_exit
         self._tray_available = True
-        # 最小化状态同时用于 <Map> 恢复和托盘点击的状态同步
-        self._minimized = False
+        # 记录系统级最小化，恢复到前台时重新聚焦
         self._was_minimized = False
         self._icon_photo: object | None = None
         self._play_icon: ctk.CTkImage | None = None
@@ -90,6 +89,8 @@ class LogWindow(ctk.CTk):
         apply_window_rounding(self, context="日志窗口")
 
         self.title("Luker 日志")
+        self.protocol('WM_DELETE_WINDOW', self._on_close)
+        self.bind('<Alt-F4>', lambda _event: self._on_close())
         # 按主屏工作区和当前缩放限制初始尺寸，避免 150% 下落入任务栏
         self._resizer = WindowResizer(self)
         self._resizer.apply_initial_geometry()
@@ -115,6 +116,8 @@ class LogWindow(ctk.CTk):
 
         self._auto_scroll = True
         self._is_running = False
+        self._luker_state = LukerState.STOPPED
+        self._logo_is_gray = True
 
         self._logs.start()
 
@@ -194,7 +197,7 @@ class LogWindow(ctk.CTk):
             self._apply_log_source_ui()
             configure_log_tags(self._get_textbox(), self.COLORS)
             self._search.refresh_colors()
-            self.update_status(self._is_running)
+            self.update_status(self._luker_state)
 
         except Exception:
             logger.exception("应用主题时出错")
@@ -203,12 +206,26 @@ class LogWindow(ctk.CTk):
         self._animate_glow()
         self._animate_status_pulse()
 
+    def _set_logo_stopped(self) -> None:
+        if self._logo_is_gray:
+            return
+        for bar in self._logo_bars:
+            bar.configure(fg_color=LOGO_STOPPED_COLOR)
+        self._logo_is_gray = True
+
     def _animate_glow(self) -> None:
         # 窗口隐藏时降低刷新频率，避免常驻托盘时空转
         if not self.winfo_viewable():
             self.after(500, self._animate_glow)
             return
 
+        # 启动中/已停止不播放呼吸，只保留灰色静止状态
+        if self._luker_state is not LukerState.READY:
+            self._set_logo_stopped()
+            self.after(300, self._animate_glow)
+            return
+
+        self._logo_is_gray = False
         self._glow_intensity += GLOW_STEP * self._glow_direction
         if self._glow_intensity >= 1:
             self._glow_direction = -1
@@ -216,19 +233,7 @@ class LogWindow(ctk.CTk):
             self._glow_direction = 1
 
         for index, bar in enumerate(self._logo_bars):
-            brightness = logo_bar_brightness(
-                index,
-                self._glow_intensity,
-                center=0.6,
-                amplitude=0.4,
-            )
-            bar.configure(
-                fg_color=blend_color(
-                    LOGO_BAR_RGB[index],
-                    LOGO_BAR_GLOW_RGB[index],
-                    brightness,
-                )
-            )
+            bar.configure(fg_color=logo_bar_glow_color(index, self._glow_intensity))
 
         self.after(50, self._animate_glow)
 
@@ -238,7 +243,7 @@ class LogWindow(ctk.CTk):
             self.after(500, self._animate_status_pulse)
             return
 
-        if self._is_running:
+        if self._luker_state is LukerState.READY:
             self._animation_phase = (self._animation_phase + 0.1) % (2 * math.pi)
             alpha = 0.5 + 0.5 * math.sin(self._animation_phase)
             pulse_color = shade_color(self.COLORS['success'], 1.0 - 0.25 * alpha)
@@ -292,8 +297,14 @@ class LogWindow(ctk.CTk):
         logo.pack(side="left")
 
         self._logo_bars = []
-        for c in LOGO_BAR_COLORS:
-            bar_item = ctk.CTkFrame(logo, width=4, height=22, fg_color=c, corner_radius=2)
+        for _ in range(4):
+            bar_item = ctk.CTkFrame(
+                logo,
+                width=4,
+                height=22,
+                fg_color=LOGO_STOPPED_COLOR,
+                corner_radius=2,
+            )
             bar_item.pack(side="left", padx=1)
             self._logo_bars.append(bar_item)
 
@@ -357,25 +368,15 @@ class LogWindow(ctk.CTk):
         self._register_button(self._close_btn, 'danger_ghost')
 
     def _on_minimize(self) -> None:
+        """最小化按钮：收进系统托盘，Luker 和启动器继续运行。"""
         if not self._tray_available:
             return
 
-        try:
-            hwnd = windll.user32.GetParent(self.winfo_id())
-            SW_MINIMIZE = 6
-            windll.user32.ShowWindow(hwnd, SW_MINIMIZE)
-            self._minimized = True
-            # 同步托盘状态，避免下一次左键点击先执行“隐藏”
-            if self.on_hide_callback:
-                self.on_hide_callback()
-        except Exception:
-            logger.warning("最小化窗口失败", exc_info=True)
+        self.hide()
+        if self.on_hide_callback:
+            self.on_hide_callback()
 
     def _on_map(self, event: tk.Event) -> None:
-        if self._minimized:
-            self._minimized = False
-            self.lift()
-            self.focus_force()
         # 窗口显示后 DWM 不一定会重新取整，这里补一次
         apply_window_rounding(self, context="日志窗口")
         # 显示/恢复后再检查一次，处理隐藏期间切换显示器的情况
@@ -406,8 +407,13 @@ class LogWindow(ctk.CTk):
             logger.warning("恢复窗口失败", exc_info=True)
 
     def _on_close(self) -> None:
+        """关闭按钮：交给主程序确认并退出启动器。"""
+        if self.on_exit_callback is not None:
+            self.on_exit_callback()
+            return
+
+        # 兼容未注入退出回调的调用方：无托盘时保持原来的退出行为
         if not self._tray_available:
-            # 没有托盘时不能隐藏到不可恢复的位置，交给主程序退出
             if self.on_hide_callback:
                 self.on_hide_callback()
             return
@@ -731,16 +737,23 @@ class LogWindow(ctk.CTk):
             hover_color=shade_color(color, 0.85),
         )
 
-    def update_status(self, is_running: bool) -> None:
-        self._is_running = is_running
-        if is_running:
+    def update_status(self, state: LukerState) -> None:
+        self._luker_state = state
+        self._is_running = state is not LukerState.STOPPED
+        if state is LukerState.READY:
             self.status_dot.configure(text_color=self.COLORS['success'])
             self.status_text.configure(text="运行中", text_color=self.COLORS['success'])
             self._set_play_icon('stop', self.COLORS['error'])
+        elif state is LukerState.STARTING:
+            self.status_dot.configure(text_color=self.COLORS['warning'])
+            self.status_text.configure(text="启动中", text_color=self.COLORS['warning'])
+            self._set_play_icon('stop', self.COLORS['error'])
+            self._set_logo_stopped()
         else:
             self.status_dot.configure(text_color=self.COLORS['error'])
             self.status_text.configure(text="已停止", text_color=self.COLORS['error'])
             self._set_play_icon('play', self.COLORS['success'])
+            self._set_logo_stopped()
 
     def show(self) -> None:
         self.deiconify()

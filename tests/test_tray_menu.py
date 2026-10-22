@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import tray_menu
+from luker_readiness import LukerState
+from theme import LOGO_STOPPED_COLOR
 from tray_menu import TrayMenu
 
 
@@ -46,6 +48,104 @@ class BlurChangeTests(unittest.TestCase):
             tint_alpha=0xEE,
             context='托盘菜单',
         )
+
+
+class FakeBar:
+    def __init__(self) -> None:
+        self.options: dict[str, object] = {}
+
+    def configure(self, **options: object) -> None:
+        self.options.update(options)
+
+
+class FakeButton(FakeBar):
+    pass
+
+
+class MenuLogoStateTests(unittest.TestCase):
+    def make_menu(self, state: LukerState) -> TrayMenu:
+        menu = object.__new__(TrayMenu)
+        menu._luker_state = state
+        menu._menu_logo_bars = [FakeBar() for _ in range(4)]
+        menu._menu_logo_gray = True
+        menu._menu_animation_id = None
+        menu._menu_animation_active = False
+        menu._animation_phase = 0.0
+        menu.winfo_viewable = lambda: True
+        menu.after = lambda _delay, _callback: 'job'
+        return menu
+
+    def test_stopped_sets_gray_and_stops_animation(self):
+        menu = self.make_menu(LukerState.STOPPED)
+        menu._menu_logo_gray = False
+
+        menu._animate_menu()
+
+        for bar in menu._menu_logo_bars:
+            self.assertEqual(bar.options['fg_color'], LOGO_STOPPED_COLOR)
+        self.assertFalse(menu._menu_animation_active)
+        self.assertIsNone(menu._menu_animation_id)
+
+    def test_ready_animates_with_shared_glow_color(self):
+        menu = self.make_menu(LukerState.READY)
+
+        with patch.object(tray_menu, 'logo_bar_glow_color', return_value='#123456'):
+            menu._start_menu_animation()
+
+        for bar in menu._menu_logo_bars:
+            self.assertEqual(bar.options['fg_color'], '#123456')
+        self.assertEqual(menu._menu_animation_id, 'job')
+        self.assertTrue(menu._menu_animation_active)
+
+    def test_set_ready_updates_toggle_text_and_icon(self):
+        menu = self.make_menu(LukerState.STOPPED)
+        button = FakeButton()
+        menu.menu_items = {'luker_toggle': {'btn': button}}
+        menu.COLORS = {
+            'text_dim': '#111111',
+            'error': '#222222',
+            'success': '#333333',
+            'accent': '#444444',
+            'text_muted': '#555555',
+        }
+        menu.winfo_viewable = lambda: False
+
+        with patch.object(
+            tray_menu,
+            'menu_icon',
+            side_effect=lambda kind, color: f'{kind}:{color}',
+        ):
+            menu.set_luker_state(LukerState.READY)
+
+        self.assertEqual(button.options['text'], '停止 Luker')
+        self.assertEqual(button.options['image'], 'stop:#111111')
+        self.assertEqual(button.options['text_color'], '#222222')
+        self.assertTrue(menu._is_running)
+
+    def test_set_stopped_updates_toggle_text_and_icon(self):
+        menu = self.make_menu(LukerState.READY)
+        button = FakeButton()
+        menu.menu_items = {'luker_toggle': {'btn': button}}
+        menu.COLORS = {
+            'text_dim': '#111111',
+            'error': '#222222',
+            'success': '#333333',
+            'accent': '#444444',
+            'text_muted': '#555555',
+        }
+        menu.winfo_viewable = lambda: False
+
+        with patch.object(
+            tray_menu,
+            'menu_icon',
+            side_effect=lambda kind, color: f'{kind}:{color}',
+        ):
+            menu.set_luker_state(LukerState.STOPPED)
+
+        self.assertEqual(button.options['text'], '启动 Luker')
+        self.assertEqual(button.options['image'], 'play:#111111')
+        self.assertEqual(button.options['text_color'], '#333333')
+        self.assertFalse(menu._is_running)
 
 
 if __name__ == '__main__':
