@@ -140,7 +140,7 @@ LEGACY_THEME_ALIASES: dict[str, str] = {
     'bright_white': 'cloud_gray',
 }
 
-# 启动器 logo 的四条竖条基础颜色；动画在 log_window._animate_glow 中按亮度插值
+# 启动器 logo 的四条竖条基础颜色；动画按亮度在基色与暗色之间摆动
 LOGO_BAR_RGB = (
     (0xFF, 0x6B, 0x6B),
     (0xFE, 0xCA, 0x57),
@@ -148,15 +148,11 @@ LOGO_BAR_RGB = (
     (0x1D, 0xD1, 0xA1),
 )
 LOGO_BAR_COLORS = tuple(f'#{r:02x}{g:02x}{b:02x}' for r, g, b in LOGO_BAR_RGB)
-# 日志窗口呼吸动画的高亮终点色
-LOGO_BAR_GLOW_RGB = (
-    (0xF8, 0x71, 0x71),
-    (0xFF, 0xB7, 0x4D),
-    (0x22, 0xD3, 0xEE),
-    (0x4A, 0xDE, 0x80),
-)
 # Luker 未就绪/停止时 logo 的统一灰色，与系统托盘图标一致
 LOGO_STOPPED_COLOR = '#6e7681'
+# 日志窗口与托盘菜单共用同一套呼吸节奏：2 秒一个完整周期
+LOGO_GLOW_STEP = 0.025
+LOGO_GLOW_INTERVAL_MS = 50
 
 
 def logo_bar_brightness(
@@ -185,9 +181,13 @@ def blend_color(
 
 
 def logo_bar_glow_color(index: int, phase: float) -> str:
-    """返回 Luker logo 第 index 根柱在给定相位下的呼吸颜色。"""
-    brightness = logo_bar_brightness(index, phase, center=0.6, amplitude=0.4)
-    return blend_color(LOGO_BAR_RGB[index], LOGO_BAR_GLOW_RGB[index], brightness)
+    """返回 Luker logo 第 index 根柱在给定相位下的呼吸颜色。
+
+    亮度在 0.4 到 1.0 之间摆动：暗部与亮部差距足够大，
+    4px 宽的竖条也能看出呼吸，而不是在两组非常接近的颜色间微调。
+    """
+    brightness = logo_bar_brightness(index, phase)
+    return shade_color(LOGO_BAR_COLORS[index], brightness)
 
 
 def is_light_color(color: str) -> bool:

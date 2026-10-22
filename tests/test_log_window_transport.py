@@ -3,7 +3,12 @@ from unittest.mock import patch
 
 from log_window import LogWindow
 from luker_readiness import LukerState
-from theme import LOGO_STOPPED_COLOR, shade_color
+from theme import (
+    LOGO_GLOW_INTERVAL_MS,
+    LOGO_GLOW_STEP,
+    LOGO_STOPPED_COLOR,
+    shade_color,
+)
 
 COLORS = {
     'bg': '#111111',
@@ -136,6 +141,84 @@ class TransportButtonTests(unittest.TestCase):
             window.update_status(LukerState.STOPPED)
 
         self.assertEqual(window.play_btn.options['image'], 'play:#abcdef')
+
+
+class GlowAnimationTests(unittest.TestCase):
+    def make_window(
+        self,
+        state: LukerState,
+        *,
+        viewable: bool = True,
+    ) -> tuple[LogWindow, list[FakeWidget], list[tuple[int, object]]]:
+        window = object.__new__(LogWindow)
+        bars = [FakeWidget() for _ in range(4)]
+        calls: list[tuple[int, object]] = []
+
+        def schedule(delay: int, callback: object) -> str:
+            calls.append((delay, callback))
+            return 'job'
+
+        window._luker_state = state
+        window._logo_is_gray = True
+        window._glow_phase = 0.0
+        window._glow_job = None
+        window._logo_bars = bars
+        window.winfo_viewable = lambda: viewable
+        window.after = schedule
+        return window, bars, calls
+
+    def test_ready_uses_shared_step_and_interval(self):
+        window, bars, calls = self.make_window(LukerState.READY)
+
+        with patch(
+            'log_window.logo_bar_glow_color',
+            side_effect=lambda index, phase: f'{index}:{phase:.4f}',
+        ):
+            window._animate_glow()
+
+        self.assertAlmostEqual(window._glow_phase, LOGO_GLOW_STEP)
+        self.assertEqual(bars[0].options['fg_color'], f'0:{LOGO_GLOW_STEP:.4f}')
+        self.assertEqual(calls[0][0], LOGO_GLOW_INTERVAL_MS)
+        self.assertEqual(calls[0][1], window._animate_glow)
+        self.assertEqual(window._glow_job, 'job')
+
+    def test_restart_glow_cancels_pending_job_and_animates_now(self):
+        window, bars, _calls = self.make_window(LukerState.READY)
+        window._glow_job = 'old'
+        canceled: list[object] = []
+        window.after_cancel = canceled.append
+
+        with patch(
+            'log_window.logo_bar_glow_color',
+            side_effect=lambda index, phase: f'{index}:{phase:.4f}',
+        ):
+            window._restart_glow()
+
+        self.assertEqual(canceled, ['old'])
+        self.assertAlmostEqual(window._glow_phase, LOGO_GLOW_STEP)
+        self.assertEqual(bars[0].options['fg_color'], f'0:{LOGO_GLOW_STEP:.4f}')
+        self.assertEqual(window._glow_job, 'job')
+
+    def test_not_ready_turns_bars_gray_and_slows_polling(self):
+        window, bars, calls = self.make_window(LukerState.STARTING)
+        window._logo_is_gray = False
+
+        window._animate_glow()
+
+        for bar in bars:
+            self.assertEqual(bar.options['fg_color'], LOGO_STOPPED_COLOR)
+        self.assertTrue(window._logo_is_gray)
+        self.assertEqual(calls[0][0], 300)
+
+    def test_hidden_window_does_not_touch_bars(self):
+        window, bars, calls = self.make_window(LukerState.READY, viewable=False)
+        window._glow_phase = 0.3
+
+        window._animate_glow()
+
+        self.assertEqual(window._glow_phase, 0.3)
+        self.assertEqual(bars[0].options, {})
+        self.assertEqual(calls[0][0], 500)
 
 
 if __name__ == '__main__':

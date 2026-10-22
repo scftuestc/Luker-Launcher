@@ -3,7 +3,7 @@ import unittest
 from theme import (
     DEFAULT_THEME,
     LEGACY_THEME_ALIASES,
-    LOGO_BAR_GLOW_RGB,
+    LOGO_BAR_COLORS,
     LOGO_BAR_RGB,
     LOGO_STOPPED_COLOR,
     PRESET_THEMES,
@@ -88,24 +88,37 @@ class LogoColorTests(unittest.TestCase):
     def test_tray_base_scales_from_black(self):
         self.assertEqual(blend_color((0, 0, 0), LOGO_BAR_RGB[0], 0.7), "#b24a4a")
 
-    def test_glow_blends_toward_target(self):
-        self.assertEqual(
-            blend_color(LOGO_BAR_RGB[0], LOGO_BAR_GLOW_RGB[0], 0.7),
-            "#fa6f6f",
-        )
-
 
 class LogoGlowColorTests(unittest.TestCase):
     def test_stopped_color_matches_tray_icon(self):
         self.assertEqual(LOGO_STOPPED_COLOR, '#6e7681')
 
-    def test_glow_uses_shared_brightness_curve(self):
-        brightness = logo_bar_brightness(0, 0.0, center=0.6, amplitude=0.4)
-
+    def test_glow_dims_to_forty_percent(self):
         self.assertEqual(
-            logo_bar_glow_color(0, 0.0),
-            blend_color(LOGO_BAR_RGB[0], LOGO_BAR_GLOW_RGB[0], brightness),
+            logo_bar_glow_color(0, 0.75),
+            shade_color(LOGO_BAR_COLORS[0], 0.4),
         )
+
+    def test_glow_peaks_at_base_color(self):
+        self.assertEqual(logo_bar_glow_color(0, 0.25), LOGO_BAR_COLORS[0])
+
+    def test_glow_range_is_visible_on_every_bar(self):
+        def channels(color: str) -> tuple[int, int, int]:
+            return (
+                int(color[1:3], 16),
+                int(color[3:5], 16),
+                int(color[5:7], 16),
+            )
+
+        for index in range(4):
+            with self.subTest(index=index):
+                samples = [channels(logo_bar_glow_color(index, phase / 20)) for phase in range(20)]
+                channel_ranges = [
+                    max(sample[channel] for sample in samples)
+                    - min(sample[channel] for sample in samples)
+                    for channel in range(3)
+                ]
+                self.assertGreater(max(channel_ranges), 100)
 
 
 class ShadeColorTests(unittest.TestCase):

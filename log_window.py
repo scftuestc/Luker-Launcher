@@ -19,6 +19,8 @@ from log_store import LogEntry
 from log_tags import configure_log_tags
 from luker_readiness import LukerState
 from theme import (
+    LOGO_GLOW_INTERVAL_MS,
+    LOGO_GLOW_STEP,
     LOGO_STOPPED_COLOR,
     ThemeColorKey,
     logo_bar_glow_color,
@@ -39,8 +41,6 @@ logger = logging.getLogger(__name__)
 
 # 搜索输入防抖时间（毫秒）
 SEARCH_DEBOUNCE_MS = 250
-# logo 呼吸动画每次推进的相位
-GLOW_STEP = 0.04
 
 
 class LogWindow(ctk.CTk):
@@ -104,9 +104,9 @@ class LogWindow(ctk.CTk):
 
         self.bind('<Map>', self._on_map)
 
-        self._animation_phase = 0.0
-        self._glow_intensity = 0.0
-        self._glow_direction = 1
+        self._pulse_phase = 0.0
+        self._glow_phase = 0.0
+        self._glow_job: str | None = None
 
         self._search_job: str | None = None
 
@@ -206,6 +206,14 @@ class LogWindow(ctk.CTk):
         self._animate_glow()
         self._animate_status_pulse()
 
+    def _restart_glow(self) -> None:
+        """窗口显示时立即接上呼吸链，不必等隐藏期间的 500ms 轮询。"""
+        if self._glow_job is not None:
+            with contextlib.suppress(tk.TclError):
+                self.after_cancel(self._glow_job)
+            self._glow_job = None
+        self._animate_glow()
+
     def _set_logo_stopped(self) -> None:
         if self._logo_is_gray:
             return
@@ -214,28 +222,25 @@ class LogWindow(ctk.CTk):
         self._logo_is_gray = True
 
     def _animate_glow(self) -> None:
+        self._glow_job = None
         # 窗口隐藏时降低刷新频率，避免常驻托盘时空转
         if not self.winfo_viewable():
-            self.after(500, self._animate_glow)
+            self._glow_job = self.after(500, self._animate_glow)
             return
 
         # 启动中/已停止不播放呼吸，只保留灰色静止状态
         if self._luker_state is not LukerState.READY:
             self._set_logo_stopped()
-            self.after(300, self._animate_glow)
+            self._glow_job = self.after(300, self._animate_glow)
             return
 
         self._logo_is_gray = False
-        self._glow_intensity += GLOW_STEP * self._glow_direction
-        if self._glow_intensity >= 1:
-            self._glow_direction = -1
-        elif self._glow_intensity <= 0:
-            self._glow_direction = 1
+        self._glow_phase = (self._glow_phase + LOGO_GLOW_STEP) % 1.0
 
         for index, bar in enumerate(self._logo_bars):
-            bar.configure(fg_color=logo_bar_glow_color(index, self._glow_intensity))
+            bar.configure(fg_color=logo_bar_glow_color(index, self._glow_phase))
 
-        self.after(50, self._animate_glow)
+        self._glow_job = self.after(LOGO_GLOW_INTERVAL_MS, self._animate_glow)
 
     def _animate_status_pulse(self) -> None:
         # 窗口隐藏时降低刷新频率
@@ -244,8 +249,8 @@ class LogWindow(ctk.CTk):
             return
 
         if self._luker_state is LukerState.READY:
-            self._animation_phase = (self._animation_phase + 0.1) % (2 * math.pi)
-            alpha = 0.5 + 0.5 * math.sin(self._animation_phase)
+            self._pulse_phase = (self._pulse_phase + 0.1) % (2 * math.pi)
+            alpha = 0.5 + 0.5 * math.sin(self._pulse_phase)
             pulse_color = shade_color(self.COLORS['success'], 1.0 - 0.25 * alpha)
 
             with contextlib.suppress(tk.TclError):
@@ -381,6 +386,8 @@ class LogWindow(ctk.CTk):
         apply_window_rounding(self, context="日志窗口")
         # 显示/恢复后再检查一次，处理隐藏期间切换显示器的情况
         self.after_idle(self._resizer.fit_to_current_monitor)
+        # 立即恢复呼吸，避免隐藏期的 500ms 轮询造成可见延迟
+        self._restart_glow()
 
     def _check_window_state(self) -> None:
         with contextlib.suppress(Exception):
