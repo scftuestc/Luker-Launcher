@@ -1,6 +1,7 @@
 import unittest
 
 from log_window import LogWindow
+from ui_style import button_colors
 
 COLORS = {
     'bg': '#000001',
@@ -80,6 +81,7 @@ class ThemeBindingTests(unittest.TestCase):
         window._is_running = False
         window.COLORS = COLORS.copy()
         window._theme_bindings = []
+        window._styled_buttons = []
         window._ui_ready = True
         return window, root, textbox, search, calls
 
@@ -150,6 +152,17 @@ class ThemeBindingTests(unittest.TestCase):
         self.assertEqual(search.refresh_count, 1)
         self.assertEqual(textbox.tags['error']['foreground'], COLORS['error'])
         self.assertEqual(textbox.tags['separator']['foreground'], COLORS['accent'])
+
+    def test_apply_theme_reapplies_button_roles(self):
+        window, _, _, _, _ = self.make_window()
+        primary = FakeWidget()
+        secondary = FakeWidget()
+        window._styled_buttons = [(primary, 'primary'), (secondary, 'secondary')]
+
+        window._apply_theme()
+
+        self.assertEqual(primary.options, button_colors('primary', COLORS))
+        self.assertEqual(secondary.options, button_colors('secondary', COLORS))
 
     def test_apply_theme_logs_widget_failures(self):
         window, _, _, _, _ = self.make_window()

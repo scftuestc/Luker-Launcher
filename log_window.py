@@ -26,7 +26,10 @@ from theme import (
     logo_bar_brightness,
     shade_color,
 )
+from ui_icons import TransportIcon, transport_icon
+from ui_style import ButtonRole, button_colors, make_button
 from win_utils import (
+    apply_window_rounding,
     bind_window_drag,
     get_mono_font,
     get_ui_font,
@@ -65,9 +68,12 @@ class LogWindow(ctk.CTk):
         self._minimized = False
         self._was_minimized = False
         self._icon_photo: object | None = None
+        self._play_icon: ctk.CTkImage | None = None
 
         # 控件创建时登记主题选项，主题切换只遍历这一份绑定
         self._theme_bindings: list[tuple[tk.Misc, dict[str, ThemeColorKey]]] = []
+        # 按钮按角色登记，主题切换时统一重算颜色和描边
+        self._styled_buttons: list[tuple[ctk.CTkButton, ButtonRole]] = []
         self._ui_ready = False
 
         self.COLORS = config.get_theme_colors()
@@ -81,6 +87,7 @@ class LogWindow(ctk.CTk):
         self.withdraw()
 
         self.overrideredirect(True)
+        apply_window_rounding(self, context="日志窗口")
 
         self.title("Luker 日志")
         # 按主屏工作区和当前缩放限制初始尺寸，避免 150% 下落入任务栏
@@ -164,6 +171,11 @@ class LogWindow(ctk.CTk):
         """登记控件在主题切换时需要更新的选项，值为 COLORS 的键名。"""
         self._theme_bindings.append((widget, options))
 
+    def _register_button(self, button: ctk.CTkButton, role: ButtonRole) -> ctk.CTkButton:
+        """登记按钮角色，主题切换时按新颜色重算。"""
+        self._styled_buttons.append((button, role))
+        return button
+
     def _apply_theme(self) -> None:
         if not self._ui_ready:
             return
@@ -174,6 +186,9 @@ class LogWindow(ctk.CTk):
 
             for widget, options in self._theme_bindings:
                 widget.configure(**{option: self.COLORS[key] for option, key in options.items()})
+
+            for button, role in self._styled_buttons:
+                button.configure(**button_colors(role, self.COLORS))
 
             # 动态状态依赖静态颜色，必须放在绑定之后
             self._apply_log_source_ui()
@@ -297,48 +312,49 @@ class LogWindow(ctk.CTk):
         right.pack(side="right", padx=10)
 
         # 日志源切换按钮（仅在 GCL 启用时显示）
-        self._log_source_btn = ctk.CTkButton(
+        self._log_source_btn = make_button(
             right,
+            'primary',
+            self.COLORS,
             text="📊 Luker 日志",
             width=110,
             height=32,
-            fg_color=self.COLORS['accent'],
-            hover_color=shade_color(self.COLORS['accent'], 0.85),
-            text_color=self.COLORS['on_accent'],
-            font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
-            corner_radius=8,
+            corner_radius=10,
+            font_family=self.UI_FONT,
+            font_size=12,
+            font_weight='bold',
             command=self._toggle_log_source,
         )
 
-        self._min_btn = ctk.CTkButton(
+        self._min_btn = make_button(
             right,
+            'ghost',
+            self.COLORS,
             text="─",
             width=40,
             height=32,
-            fg_color="transparent",
-            hover_color=self.COLORS['card_hover'],
-            text_color=self.COLORS['text_dim'],
-            font=ctk.CTkFont(size=16, weight="bold"),
             corner_radius=8,
+            font_size=16,
+            font_weight='bold',
             command=self._on_minimize,
         )
         self._min_btn.pack(side="left", padx=2)
-        self._bind_theme(self._min_btn, hover_color='card_hover', text_color='text_dim')
+        self._register_button(self._min_btn, 'ghost')
 
-        self._close_btn = ctk.CTkButton(
+        self._close_btn = make_button(
             right,
+            'danger_ghost',
+            self.COLORS,
             text="✕",
             width=40,
             height=32,
-            fg_color="transparent",
-            hover_color=self.COLORS['error'],
-            text_color=self.COLORS['text_dim'],
-            font=ctk.CTkFont(size=15, weight="bold"),
             corner_radius=8,
+            font_size=15,
+            font_weight='bold',
             command=self._on_close,
         )
         self._close_btn.pack(side="left", padx=2)
-        self._bind_theme(self._close_btn, hover_color='error', text_color='text_dim')
+        self._register_button(self._close_btn, 'danger_ghost')
 
     def _on_minimize(self) -> None:
         if not self._tray_available:
@@ -360,6 +376,8 @@ class LogWindow(ctk.CTk):
             self._minimized = False
             self.lift()
             self.focus_force()
+        # 窗口显示后 DWM 不一定会重新取整，这里补一次
+        apply_window_rounding(self, context="日志窗口")
         # 显示/恢复后再检查一次，处理隐藏期间切换显示器的情况
         self.after_idle(self._resizer.fit_to_current_monitor)
 
@@ -409,55 +427,46 @@ class LogWindow(ctk.CTk):
         self._toolbar.pack(fill="x", pady=(0, 10))
 
         left = ctk.CTkFrame(self._toolbar, fg_color="transparent")
-        left.pack(side="left")
 
-        self._clear_btn = ctk.CTkButton(
+        self._clear_btn = make_button(
             left,
+            'secondary',
+            self.COLORS,
             text="🗑️ 清除",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            fg_color=self.COLORS['card'],
-            hover_color=self.COLORS['card_hover'],
-            text_color=self.COLORS['text'],
-            corner_radius=10,
+            font_family=self.UI_FONT,
             width=100,
             height=40,
             command=self.clear_logs,
         )
         self._clear_btn.pack(side="left", padx=(0, 8))
-        self._bind_theme(
-            self._clear_btn,
-            fg_color='card',
-            hover_color='card_hover',
-            text_color='text',
-        )
+        self._register_button(self._clear_btn, 'secondary')
 
-        self.scroll_btn = ctk.CTkButton(
+        self.scroll_btn = make_button(
             left,
+            'secondary',
+            self.COLORS,
             text="📜 自动滚动",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            fg_color=self.COLORS['card'],
-            hover_color=self.COLORS['card_hover'],
-            text_color=self.COLORS['text'],
-            corner_radius=10,
+            font_family=self.UI_FONT,
             width=130,
             height=40,
             command=self._toggle_scroll,
         )
         self.scroll_btn.pack(side="left", padx=(0, 8))
-        self._bind_theme(
-            self.scroll_btn,
-            fg_color='card',
-            hover_color='card_hover',
-            text_color='text',
-        )
+        self._register_button(self.scroll_btn, 'secondary')
 
         # 搜索框与结果导航
-        self._search_frame = ctk.CTkFrame(left, fg_color=self.COLORS['card'], corner_radius=10)
-        self._search_frame.pack(side="left")
-        self._bind_theme(self._search_frame, fg_color='card')
+        self._search_frame = ctk.CTkFrame(
+            left,
+            fg_color=self.COLORS['card'],
+            corner_radius=10,
+            border_width=1,
+            border_color=self.COLORS['border'],
+        )
+        self._search_frame.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self._bind_theme(self._search_frame, fg_color='card', border_color='border')
 
         search_inner = ctk.CTkFrame(self._search_frame, fg_color="transparent")
-        search_inner.pack(padx=8, pady=4)
+        search_inner.pack(fill="x", expand=True, padx=8, pady=4)
 
         self._search_icon = ctk.CTkLabel(
             search_inner, text="🔍", font=ctk.CTkFont(size=14), text_color=self.COLORS['text_muted']
@@ -479,7 +488,7 @@ class LogWindow(ctk.CTk):
             height=32,
             textvariable=self._search_var,
         )
-        self._search_entry.pack(side="left")
+        self._search_entry.pack(side="left", fill="x", expand=True)
         self._bind_theme(
             self._search_entry,
             text_color='text',
@@ -499,50 +508,47 @@ class LogWindow(ctk.CTk):
         self._search_count_label.pack(side="left")
         self._bind_theme(self._search_count_label, text_color='text_muted')
 
-        self._search_prev_btn = ctk.CTkButton(
+        self._search_prev_btn = make_button(
             self._search_nav,
+            'ghost',
+            self.COLORS,
             text="▲",
-            width=24,
-            height=24,
-            font=ctk.CTkFont(size=10),
-            fg_color="transparent",
-            hover_color=self.COLORS['card_hover'],
-            text_color=self.COLORS['text_dim'],
-            corner_radius=4,
+            width=26,
+            height=26,
+            corner_radius=6,
+            font_size=10,
             command=self._search_prev,
         )
         self._search_prev_btn.pack(side="left", padx=1)
-        self._bind_theme(self._search_prev_btn, hover_color='card_hover', text_color='text_dim')
+        self._register_button(self._search_prev_btn, 'ghost')
 
-        self._search_next_btn = ctk.CTkButton(
+        self._search_next_btn = make_button(
             self._search_nav,
+            'ghost',
+            self.COLORS,
             text="▼",
-            width=24,
-            height=24,
-            font=ctk.CTkFont(size=10),
-            fg_color="transparent",
-            hover_color=self.COLORS['card_hover'],
-            text_color=self.COLORS['text_dim'],
-            corner_radius=4,
+            width=26,
+            height=26,
+            corner_radius=6,
+            font_size=10,
             command=self._search_next,
         )
         self._search_next_btn.pack(side="left", padx=1)
-        self._bind_theme(self._search_next_btn, hover_color='card_hover', text_color='text_dim')
+        self._register_button(self._search_next_btn, 'ghost')
 
-        self._search_clear_btn = ctk.CTkButton(
+        self._search_clear_btn = make_button(
             self._search_nav,
+            'danger_ghost',
+            self.COLORS,
             text="✕",
-            width=24,
-            height=24,
-            font=ctk.CTkFont(size=10),
-            fg_color="transparent",
-            hover_color=self.COLORS['error'],
-            text_color=self.COLORS['text_dim'],
-            corner_radius=4,
+            width=26,
+            height=26,
+            corner_radius=6,
+            font_size=10,
             command=self._clear_search,
         )
         self._search_clear_btn.pack(side="left", padx=1)
-        self._bind_theme(self._search_clear_btn, hover_color='error', text_color='text_dim')
+        self._register_button(self._search_clear_btn, 'danger_ghost')
 
         self._search_nav.pack_forget()
 
@@ -556,15 +562,15 @@ class LogWindow(ctk.CTk):
         inner = ctk.CTkFrame(self._status_card, fg_color="transparent")
         inner.pack(padx=16, pady=10)
 
+        self._play_icon = transport_icon('play', self.COLORS['bg'])
         self.play_btn = ctk.CTkButton(
             inner,
-            text="▶",
+            text="",
+            image=self._play_icon,
             width=36,
             height=36,
-            font=ctk.CTkFont(size=16),
             fg_color=self.COLORS['success'],
             hover_color=shade_color(self.COLORS['success'], 0.85),
-            text_color=self.COLORS['bg'],
             corner_radius=18,
             command=self._toggle_running,
         )
@@ -582,6 +588,9 @@ class LogWindow(ctk.CTk):
             text_color=self.COLORS['error'],
         )
         self.status_text.pack(side="left")
+
+        # 先让右侧状态卡占位，左侧再拿剩余宽度，搜索框才能随窗口拉伸
+        left.pack(side="left", fill="x", expand=True)
 
     def _build_log_area(self, parent: tk.Misc) -> None:
         self._log_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
@@ -714,26 +723,24 @@ class LogWindow(ctk.CTk):
             if self.on_start_callback:
                 self.on_start_callback()
 
+    def _set_play_icon(self, kind: TransportIcon, color: str) -> None:
+        self._play_icon = transport_icon(kind, self.COLORS['bg'])
+        self.play_btn.configure(
+            image=self._play_icon,
+            fg_color=color,
+            hover_color=shade_color(color, 0.85),
+        )
+
     def update_status(self, is_running: bool) -> None:
         self._is_running = is_running
         if is_running:
             self.status_dot.configure(text_color=self.COLORS['success'])
             self.status_text.configure(text="运行中", text_color=self.COLORS['success'])
-            self.play_btn.configure(
-                text="⏸",
-                fg_color=self.COLORS['error'],
-                hover_color=shade_color(self.COLORS['error'], 0.85),
-                text_color=self.COLORS['bg'],
-            )
+            self._set_play_icon('stop', self.COLORS['error'])
         else:
             self.status_dot.configure(text_color=self.COLORS['error'])
             self.status_text.configure(text="已停止", text_color=self.COLORS['error'])
-            self.play_btn.configure(
-                text="▶",
-                fg_color=self.COLORS['success'],
-                hover_color=shade_color(self.COLORS['success'], 0.85),
-                text_color=self.COLORS['bg'],
-            )
+            self._set_play_icon('play', self.COLORS['success'])
 
     def show(self) -> None:
         self.deiconify()

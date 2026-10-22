@@ -19,7 +19,8 @@ from theme import (
     blend_color,
     logo_bar_brightness,
 )
-from win_utils import get_ui_font, sync_window_blur
+from ui_style import make_button
+from win_utils import apply_window_rounding, get_ui_font, sync_window_blur
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +65,10 @@ class TrayMenu(ctk.CTkToplevel):
         self.overrideredirect(True)
         self.attributes('-topmost', True)
         self.attributes('-alpha', 0.95 if config.blur_enabled else 1.0)
+        apply_window_rounding(self, context="托盘菜单")
 
-        self.configure(fg_color=self.COLORS['bg'])
+        # 外层只保留系统圆角，面板颜色铺满窗口避免出现第二层圆角亮边
+        self.configure(fg_color=self.COLORS['card'])
 
         self._animation_phase = 0.0
         self._menu_animation_id: str | None = None
@@ -88,7 +91,7 @@ class TrayMenu(ctk.CTkToplevel):
             return
 
         self.COLORS = new_colors
-        self.configure(fg_color=self.COLORS['bg'])
+        self.configure(fg_color=self.COLORS['card'])
 
         for child in self.winfo_children():
             child.destroy()
@@ -179,8 +182,8 @@ class TrayMenu(ctk.CTkToplevel):
         self._menu_animation_id = self.after(50, self._animate_menu)
 
     def _build_menu(self) -> None:
-        main = ctk.CTkFrame(self, fg_color=self.COLORS['card'], corner_radius=16)
-        main.pack(fill="both", expand=True, padx=2, pady=2)
+        main = ctk.CTkFrame(self, fg_color=self.COLORS['card'], corner_radius=0)
+        main.pack(fill="both", expand=True)
 
         header = ctk.CTkFrame(main, fg_color="transparent")
         header.pack(fill="x", padx=HEADER_PAD_X, pady=(HEADER_PAD_Y, 12))
@@ -279,22 +282,21 @@ class TrayMenu(ctk.CTkToplevel):
         visible: bool = True,
     ) -> MenuItem:
         """创建菜单项；visible=False 时由 update_state 控制显示。"""
-        frame = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=8)
+        frame = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=10)
         if visible:
             frame.pack(fill="x", pady=2)
 
-        btn = ctk.CTkButton(
+        btn = make_button(
             frame,
+            'menu',
+            self.COLORS,
             text=f"{icon}  {text}",
-            font=ctk.CTkFont(family=self.UI_FONT, size=13),
-            fg_color="transparent",
-            hover_color=self.COLORS['card_hover'],
-            text_color=color if color else self.COLORS['text'],
+            font_family=self.UI_FONT,
             anchor="w",
-            corner_radius=8,
-            height=38,
             command=command,
         )
+        if color:
+            btn.configure(text_color=color)
         btn.pack(fill="x", padx=4)
 
         return {'frame': frame, 'btn': btn}
@@ -414,6 +416,7 @@ class TrayMenu(ctk.CTkToplevel):
         self.geometry(format_geometry(MENU_WIDTH, logical_height, x, y))
         self.deiconify()
         self.lift()
+        apply_window_rounding(self, context="托盘菜单")
 
         self._setup_no_activate()
 

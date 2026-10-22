@@ -17,8 +17,10 @@ from dpi import (
     sync_window_scaling,
 )
 from path_dialogs import select_gcl_bat_path, select_luker_path
-from theme import PRESET_THEMES, shade_color
+from theme import PRESET_THEMES
+from ui_style import make_button
 from win_utils import (
+    apply_window_rounding,
     bind_window_drag,
     get_mono_font,
     get_ui_font,
@@ -92,6 +94,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.overrideredirect(True)
         self.attributes('-topmost', True)
         self.attributes('-alpha', 0.95 if config.blur_enabled else 1.0)
+        apply_window_rounding(self, context="设置窗口")
         self.configure(fg_color=self.COLORS['bg'])
 
         self._build_ui()
@@ -101,8 +104,14 @@ class SettingsWindow(ctk.CTkToplevel):
         config.add_theme_change_callback(self._on_theme_change)
         config.add_blur_change_callback(self._on_blur_change)
 
+        self.bind('<Map>', self._on_map, add='+')
         self.bind('<Configure>', self._on_configure, add='+')
         self.bind('<Destroy>', self._on_destroy)
+
+    def _on_map(self, event: tk.Event) -> None:
+        # 窗口已显示时 DWM 不一定会重新取整，Map 后再补一次
+        if event.widget == self and not self._destroyed:
+            apply_window_rounding(self, context="设置窗口")
 
     def _on_configure(self, event: tk.Event) -> None:
         # 合并拖动过程中连续的 Configure 事件，空闲时只检查一次显示器
@@ -180,7 +189,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _build_ui(self) -> None:
         main = ctk.CTkFrame(self, fg_color="transparent")
-        main.pack(fill="both", expand=True, padx=16, pady=16)
+        main.pack(fill="both", expand=True, padx=12, pady=12)
 
         self._build_titlebar(main)
 
@@ -203,7 +212,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self._build_footer(main)
 
     def _build_titlebar(self, parent: tk.Misc) -> None:
-        bar = ctk.CTkFrame(parent, height=48, fg_color=self.COLORS['card'], corner_radius=12)
+        bar = ctk.CTkFrame(parent, height=48, fg_color=self.COLORS['card'], corner_radius=14)
         bar.pack(fill="x", pady=(0, 16))
         bar.pack_propagate(False)
 
@@ -216,21 +225,21 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text'],
         ).pack(side="left", padx=16, pady=12)
 
-        ctk.CTkButton(
+        make_button(
             bar,
+            'danger_ghost',
+            self.COLORS,
             text="✕",
             width=36,
             height=28,
-            fg_color="transparent",
-            hover_color=self.COLORS['error'],
-            text_color=self.COLORS['text_dim'],
-            font=ctk.CTkFont(size=14, weight="bold"),
             corner_radius=8,
+            font_size=14,
+            font_weight='bold',
             command=self.destroy,
         ).pack(side="right", padx=10)
 
     def _build_theme_section(self, parent: tk.Misc) -> None:
-        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=12)
+        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
         section.pack(fill="x", pady=(0, 12))
 
         header = ctk.CTkFrame(section, fg_color="transparent")
@@ -352,7 +361,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _build_pwa_section(self, parent: tk.Misc) -> None:
         """构建 PWA 模式开关区域"""
-        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=12)
+        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
         section.pack(fill="x", pady=(0, 12))
 
         inner = ctk.CTkFrame(section, fg_color="transparent")
@@ -397,7 +406,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _build_gcl_section(self, parent: tk.Misc) -> None:
         """构建 GCL 设置区域"""
-        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=12)
+        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
         section.pack(fill="x", pady=(0, 12))
 
         inner = ctk.CTkFrame(section, fg_color="transparent")
@@ -463,14 +472,13 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self.gcl_path_label.pack(fill="x", padx=10, pady=8)
 
-        ctk.CTkButton(
+        make_button(
             path_row,
+            'secondary',
+            self.COLORS,
             text="📂 选择",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
-            fg_color=self.COLORS['accent'],
-            hover_color=shade_color(self.COLORS['accent'], 0.85),
-            text_color=self.COLORS['on_accent'],
-            corner_radius=8,
+            font_family=self.UI_FONT,
+            font_size=12,
             height=32,
             width=80,
             command=self._select_gcl_path,
@@ -506,7 +514,7 @@ class SettingsWindow(ctk.CTkToplevel):
             self.gcl_path_label.configure(text=path)
 
     def _build_path_section(self, parent: tk.Misc) -> None:
-        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=12)
+        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
         section.pack(fill="x", pady=(0, 12))
 
         inner = ctk.CTkFrame(section, fg_color="transparent")
@@ -535,14 +543,13 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self.path_label.pack(fill="x", padx=10, pady=8)
 
-        ctk.CTkButton(
+        make_button(
             path_row,
+            'secondary',
+            self.COLORS,
             text="📂 选择",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
-            fg_color=self.COLORS['accent'],
-            hover_color=shade_color(self.COLORS['accent'], 0.85),
-            text_color=self.COLORS['on_accent'],
-            corner_radius=8,
+            font_family=self.UI_FONT,
+            font_size=12,
             height=32,
             width=80,
             command=self._select_path,
@@ -557,15 +564,13 @@ class SettingsWindow(ctk.CTkToplevel):
         footer = ctk.CTkFrame(parent, fg_color="transparent")
         footer.pack(fill="x", pady=(8, 0))
 
-        ctk.CTkButton(
+        make_button(
             footer,
+            'primary',
+            self.COLORS,
             text="完成",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            fg_color=self.COLORS['accent'],
-            hover_color=shade_color(self.COLORS['accent'], 0.85),
-            text_color=self.COLORS['on_accent'],
-            corner_radius=10,
-            height=42,
+            font_family=self.UI_FONT,
+            height=40,
             width=120,
             command=self.destroy,
         ).pack(side="right")
