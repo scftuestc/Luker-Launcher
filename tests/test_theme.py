@@ -1,6 +1,15 @@
 import unittest
 
-from theme import DEFAULT_THEME, PRESET_THEMES, get_theme_colors, shade_color
+from theme import (
+    DEFAULT_THEME,
+    LOGO_BAR_GLOW_RGB,
+    LOGO_BAR_RGB,
+    PRESET_THEMES,
+    blend_color,
+    get_theme_colors,
+    logo_bar_brightness,
+    shade_color,
+)
 
 REQUIRED_COLOR_KEYS = (
     "bg",
@@ -39,6 +48,21 @@ class ThemeTests(unittest.TestCase):
         colors = get_theme_colors(DEFAULT_THEME)
         colors["bg"] = "#000000"
         self.assertNotEqual(PRESET_THEMES[DEFAULT_THEME]["bg"], "#000000")
+
+
+class LogoColorTests(unittest.TestCase):
+    def test_brightness_wraps_per_bar(self):
+        self.assertAlmostEqual(logo_bar_brightness(0, 0.0), 0.7)
+        self.assertEqual(logo_bar_brightness(1, 0.0), logo_bar_brightness(0, 0.25))
+
+    def test_tray_base_scales_from_black(self):
+        self.assertEqual(blend_color((0, 0, 0), LOGO_BAR_RGB[0], 0.7), "#b24a4a")
+
+    def test_glow_blends_toward_target(self):
+        self.assertEqual(
+            blend_color(LOGO_BAR_RGB[0], LOGO_BAR_GLOW_RGB[0], 0.7),
+            "#fa6f6f",
+        )
 
 
 class ShadeColorTests(unittest.TestCase):

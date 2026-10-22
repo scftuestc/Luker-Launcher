@@ -13,7 +13,7 @@ import customtkinter as ctk
 
 from config import config
 from dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
-from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB
+from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB, blend_color, logo_bar_brightness
 from win_utils import apply_window_blur, get_ui_font
 
 logger = logging.getLogger(__name__)
@@ -150,15 +150,9 @@ class TrayMenu(ctk.CTkToplevel):
         self._animation_phase = (self._animation_phase + 0.05) % 1.0
 
         if hasattr(self, '_menu_logo_bars'):
-            for i, bar in enumerate(self._menu_logo_bars):
-                phase = (self._animation_phase + i * 0.25) % 1.0
-                brightness = 0.7 + 0.3 * math.sin(phase * 2 * 3.14159)
-
-                r, g, b = LOGO_BAR_RGB[i]
-                r = int(r * brightness)
-                g = int(g * brightness)
-                b = int(b * brightness)
-                bar.configure(fg_color=f"#{r:02x}{g:02x}{b:02x}")
+            for index, bar in enumerate(self._menu_logo_bars):
+                brightness = logo_bar_brightness(index, self._animation_phase)
+                bar.configure(fg_color=blend_color((0, 0, 0), LOGO_BAR_RGB[index], brightness))
 
         self._menu_animation_id = self.after(50, self._animate_menu)
 

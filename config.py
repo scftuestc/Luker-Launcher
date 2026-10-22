@@ -216,7 +216,7 @@ class Config:
         return self._config.get('gcl_bat_path')
 
     @gcl_bat_path.setter
-    def gcl_bat_path(self, path: str) -> None:
+    def gcl_bat_path(self, path: str | None) -> None:
         self._config['gcl_bat_path'] = path
         self._save_config()
         self._notify_gcl_change()

@@ -60,7 +60,10 @@ class LogReplay:
     def _chunk(self) -> None:
         """插入一批历史日志；快照处理完后继续处理重放期间的新日志。"""
         self.job = None
-        if not self.active or not self._exists():
+        if not self.active:
+            return
+        if not self._exists():
+            self.cancel()
             return
 
         end = min(self.index + REPLAY_BATCH_SIZE, len(self.entries))

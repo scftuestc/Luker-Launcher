@@ -153,6 +153,24 @@ class ReplayTests(unittest.TestCase):
 
         self.assertEqual(window._search_calls, 1)
 
+    def test_missing_window_cancels_replay(self):
+        schedules = []
+        finished = []
+        replay = LogReplay(
+            schedule=lambda _delay, callback: schedules.append(callback) or "job",
+            cancel=lambda _job: None,
+            add_entries=lambda _entries: None,
+            exists=lambda: False,
+            on_finished=lambda: finished.append(True),
+        )
+
+        replay.start([])
+        schedules[0]()
+
+        self.assertFalse(replay.active)
+        self.assertEqual(replay.entries, [])
+        self.assertEqual(finished, [])
+
     def test_cancel_replay_clears_snapshot_and_tail(self):
         window, _batches, _after_calls, cancel_calls = self._make_window([])
         window._replay.job = "job-9"

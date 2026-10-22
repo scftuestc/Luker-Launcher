@@ -19,7 +19,14 @@ from log_replay import LogReplay
 from log_search import LogSearch
 from log_store import MAX_LOG_BYTES, LogEntry, LogStore
 from log_tags import configure_log_tags
-from theme import LOGO_BAR_COLORS, LOGO_BAR_RGB, shade_color
+from theme import (
+    LOGO_BAR_COLORS,
+    LOGO_BAR_GLOW_RGB,
+    LOGO_BAR_RGB,
+    blend_color,
+    logo_bar_brightness,
+    shade_color,
+)
 from win_utils import apply_window_blur, bind_window_drag, get_mono_font, get_ui_font
 from window_resize import WindowResizer
 
@@ -247,24 +254,15 @@ class LogWindow(ctk.CTk):
             self._glow_direction = 1
 
         if hasattr(self, '_logo_bars'):
-            colors_start = LOGO_BAR_RGB
-            colors_end = [
-                (0xF8, 0x71, 0x71),
-                (0xFF, 0xB7, 0x4D),
-                (0x22, 0xD3, 0xEE),
-                (0x4A, 0xDE, 0x80),
-            ]
-
-            for i, bar in enumerate(self._logo_bars):
-                phase = (self._glow_intensity + i * 0.25) % 1.0
-                brightness = 0.7 + 0.3 * math.sin(phase * 2 * 3.14159)
-
-                sr, sg, sb = colors_start[i]
-                er, eg, eb = colors_end[i]
-                r = int(sr + (er - sr) * brightness)
-                g = int(sg + (eg - sg) * brightness)
-                b = int(sb + (eb - sb) * brightness)
-                bar.configure(fg_color=f"#{r:02x}{g:02x}{b:02x}")
+            for index, bar in enumerate(self._logo_bars):
+                brightness = logo_bar_brightness(index, self._glow_intensity)
+                bar.configure(
+                    fg_color=blend_color(
+                        LOGO_BAR_RGB[index],
+                        LOGO_BAR_GLOW_RGB[index],
+                        brightness,
+                    )
+                )
 
         self.after(50, self._animate_glow)
 
@@ -736,7 +734,7 @@ class LogWindow(ctk.CTk):
     def _refresh_log_display(self) -> None:
         """刷新日志显示，按批插入历史，避免阻塞 Tk 主线程。"""
         if self._search_job is not None:
-            self.after_cancel(self._search_job)
+            self._cancel_after_job(self._search_job)
             self._search_job = None
 
         self._replay.cancel()
@@ -852,7 +850,7 @@ class LogWindow(ctk.CTk):
     def _on_search_change(self, *args: str) -> None:
         """输入时防抖，避免每敲一个字都对全部日志重新搜索。"""
         if self._search_job is not None:
-            self.after_cancel(self._search_job)
+            self._cancel_after_job(self._search_job)
             self._search_job = None
 
         if not self._search_var.get().strip():
@@ -884,7 +882,7 @@ class LogWindow(ctk.CTk):
     def _clear_search(self) -> None:
         """清除搜索"""
         if self._search_job is not None:
-            self.after_cancel(self._search_job)
+            self._cancel_after_job(self._search_job)
             self._search_job = None
         self._search_var.set("")
         self._search.clear_state()

@@ -1,5 +1,7 @@
 """主题预设：颜色、显示名称与设置窗口使用的元数据。"""
 
+import math
+
 PRESET_THEMES: dict[str, dict[str, str]] = {
     'deep_blue': {
         'name': '深蓝夜空',
@@ -115,6 +117,31 @@ LOGO_BAR_RGB = (
     (0x1D, 0xD1, 0xA1),
 )
 LOGO_BAR_COLORS = tuple(f'#{r:02x}{g:02x}{b:02x}' for r, g, b in LOGO_BAR_RGB)
+# 日志窗口呼吸动画的高亮终点色
+LOGO_BAR_GLOW_RGB = (
+    (0xF8, 0x71, 0x71),
+    (0xFF, 0xB7, 0x4D),
+    (0x22, 0xD3, 0xEE),
+    (0x4A, 0xDE, 0x80),
+)
+
+
+def logo_bar_brightness(index: int, phase: float) -> float:
+    """返回第 index 根 logo 竖条在给定相位下的亮度系数。"""
+    bar_phase = (phase + index * 0.25) % 1.0
+    return 0.7 + 0.3 * math.sin(bar_phase * 2 * 3.14159)
+
+
+def blend_color(
+    start: tuple[int, int, int],
+    end: tuple[int, int, int],
+    factor: float,
+) -> str:
+    """按 factor 从 start 插值到 end，返回 #rrggbb。"""
+    red = int(start[0] + (end[0] - start[0]) * factor)
+    green = int(start[1] + (end[1] - start[1]) * factor)
+    blue = int(start[2] + (end[2] - start[2]) * factor)
+    return f"#{red:02x}{green:02x}{blue:02x}"
 
 
 def get_theme_colors(name: str) -> dict[str, str]:
