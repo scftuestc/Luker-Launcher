@@ -1,5 +1,6 @@
 import tkinter as tk
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import customtkinter as ctk
@@ -50,11 +51,11 @@ class AnimationJobTests(unittest.TestCase):
         window._pulse_phase = 0.0
         window._pulse_job = None
         window._glow_job = None
-        window._search_job = None
         window.winfo_viewable = lambda: True
         window.after = lambda _delay, _callback: 'job'
         canceled: list[object] = []
         window.after_cancel = canceled.append
+        window.search = SimpleNamespace(cancel_pending=lambda: canceled.append('search'))
         return window, canceled
 
     def test_pulse_animation_tracks_its_job(self):
@@ -68,14 +69,12 @@ class AnimationJobTests(unittest.TestCase):
         window, canceled = self.make_window()
         window._glow_job = 'glow'
         window._pulse_job = 'pulse'
-        window._search_job = 'search'
 
         window._cancel_animation_jobs()
 
         self.assertEqual(canceled, ['glow', 'pulse', 'search'])
         self.assertIsNone(window._glow_job)
         self.assertIsNone(window._pulse_job)
-        self.assertIsNone(window._search_job)
 
     def test_destroy_cancels_jobs_before_teardown(self):
         window, canceled = self.make_window()
@@ -85,7 +84,7 @@ class AnimationJobTests(unittest.TestCase):
         with patch.object(ctk.CTk, 'destroy') as destroy:
             window.destroy()
 
-        self.assertEqual(canceled, ['glow', 'pulse'])
+        self.assertEqual(canceled, ['glow', 'pulse', 'search'])
         destroy.assert_called_once_with()
 
 

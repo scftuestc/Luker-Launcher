@@ -14,7 +14,7 @@ import customtkinter as ctk
 from config import APP_VERSION, config
 from log_controller import LogController
 from log_display import LogDisplay
-from log_search import LogSearch
+from log_search_bar import SearchBar
 from log_store import LogEntry
 from log_tags import configure_log_tags
 from luker_readiness import LukerState
@@ -38,10 +38,6 @@ from win_utils import (
 from window_resize import WindowResizer
 
 logger = logging.getLogger(__name__)
-
-# 搜索输入防抖时间（毫秒）
-SEARCH_DEBOUNCE_MS = 250
-SEARCH_HINT_TEXT = "搜索日志..."
 
 # Luker 三态对应的状态点、文字、播放按钮和 logo 表现
 _STATUS_PRESENTATION: dict[LukerState, tuple[str, str, str, TransportIcon, str, bool]] = {
@@ -74,7 +70,6 @@ class LogWindow(ctk.CTk):
 
         self._build_ui()
         self._ui_ready = True
-        self._search_var.trace_add('write', self._on_search_change)
         self._logs.start()
         self._resizer.bind_events()
 
@@ -139,10 +134,6 @@ class LogWindow(ctk.CTk):
         self._glow_job: str | None = None
         self._pulse_job: str | None = None
 
-        self._search_job: str | None = None
-        self._search_clearing = False
-        self._search_focused = False
-        self._search_hint: ctk.CTkLabel | None = None
         self._auto_scroll = True
 
         self._is_running = False
@@ -220,7 +211,7 @@ class LogWindow(ctk.CTk):
             # 动态状态依赖静态颜色，必须放在绑定之后
             self._apply_log_source_ui()
             configure_log_tags(self._get_textbox(), self.COLORS)
-            self._search.refresh_colors()
+            self.search.refresh_colors()
             self.update_status(self._luker_state)
 
         except Exception:
@@ -290,7 +281,7 @@ class LogWindow(ctk.CTk):
         if self._pulse_job is not None:
             self._cancel_after_job(self._pulse_job)
             self._pulse_job = None
-        self._cancel_search_job()
+        self.search.cancel_pending()
 
     def destroy(self) -> None:
         self._cancel_animation_jobs()
@@ -305,12 +296,6 @@ class LogWindow(ctk.CTk):
         self._build_log_area(main)
         self._build_statusbar(main)
 
-        self._search = LogSearch(
-            self._get_textbox,
-            self._search_count_label,
-            self._search_nav,
-            lambda: self.COLORS,
-        )
         self._display = LogDisplay(self._get_textbox, self.count_label)
         self._logs = LogController(
             schedule=self.after,
@@ -319,9 +304,9 @@ class LogWindow(ctk.CTk):
             viewable=self.winfo_viewable,
             reset_display=self._reset_log_display,
             add_entries=self._add_log_lines,
-            adjust_search=self._search.adjust,
-            has_query=lambda: bool(self._search_var.get().strip()),
-            on_search_rerun=self._run_search,
+            adjust_search=self.search.adjust,
+            has_query=self.search.has_query,
+            on_search_rerun=self.search.rerun,
         )
         self._apply_log_source_ui()
 
@@ -459,7 +444,7 @@ class LogWindow(ctk.CTk):
         # 立即恢复呼吸，避免隐藏期的 500ms 轮询造成可见延迟
         self._restart_glow()
         # 缩放此时已注册，重新对齐搜索 hint
-        self._update_search_hint()
+        self.search.on_map()
 
     def _check_window_state(self) -> None:
         with contextlib.suppress(Exception):
@@ -514,7 +499,15 @@ class LogWindow(ctk.CTk):
 
         left = ctk.CTkFrame(self._toolbar, fg_color="transparent")
         self._build_toolbar_actions(left)
-        self._build_search_box(left)
+        self.search = SearchBar(
+            left,
+            host=self,
+            ui_font=self.UI_FONT,
+            get_colors=lambda: self.COLORS,
+            get_textbox=self._get_textbox,
+            get_scaling=self._get_widget_scaling,
+        )
+        self.search.frame.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
         right = ctk.CTkFrame(self._toolbar, fg_color="transparent")
         right.pack(side="right")
@@ -555,110 +548,6 @@ class LogWindow(ctk.CTk):
         )
         self.scroll_btn.pack(side="left", padx=(0, 8))
         self._register_button(self.scroll_btn, 'secondary')
-
-    def _build_search_box(self, parent: tk.Misc) -> None:
-        # 搜索框与结果导航
-        self._search_frame = ctk.CTkFrame(
-            parent,
-            fg_color=self.COLORS['card'],
-            corner_radius=10,
-            border_width=1,
-            border_color=self.COLORS['border'],
-        )
-        self._search_frame.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self._bind_theme(self._search_frame, fg_color='card', border_color='border')
-
-        search_inner = ctk.CTkFrame(self._search_frame, fg_color="transparent")
-        search_inner.pack(fill="x", expand=True, padx=8, pady=4)
-
-        self._search_icon = ctk.CTkLabel(
-            search_inner,
-            image=toolbar_icon('search', self.COLORS['text_muted']),
-            text="",
-            width=18,
-            height=18,
-        )
-        self._search_icon.pack(side="left", padx=(4, 6))
-
-        self._search_var = ctk.StringVar()
-
-        self._search_entry = ctk.CTkEntry(
-            search_inner,
-            font=ctk.CTkFont(family=self.UI_FONT, size=13),
-            fg_color="transparent",
-            border_width=0,
-            text_color=self.COLORS['text'],
-            width=150,
-            height=32,
-            textvariable=self._search_var,
-        )
-        self._search_entry.pack(side="left", fill="x", expand=True)
-        self._bind_theme(self._search_entry, text_color='text')
-
-        # 原生 placeholder 与 textvariable 同用时不会生效，改用独立 hint 覆盖层
-        self._search_hint = ctk.CTkLabel(
-            search_inner,
-            text=SEARCH_HINT_TEXT,
-            font=ctk.CTkFont(family=self.UI_FONT, size=13),
-            text_color=self.COLORS['text_muted'],
-            fg_color="transparent",
-            height=18,
-        )
-        self._bind_theme(self._search_hint, text_color='text_muted')
-        self._search_hint.bind("<Button-1>", lambda _event: self._search_entry.focus_set())
-        self._search_entry.bind("<FocusIn>", self._on_search_focus_in)
-        self._search_entry.bind("<FocusOut>", self._on_search_focus_out)
-        self._update_search_hint()
-
-        self._search_nav = ctk.CTkFrame(search_inner, fg_color="transparent")
-        self._search_nav.pack(side="left", padx=(4, 0))
-
-        self._search_count_label = self._make_muted_label(self._search_nav, "", size=11, width=50)
-        self._search_count_label.pack(side="left")
-
-        self._search_prev_btn = make_button(
-            self._search_nav,
-            'ghost',
-            self.COLORS,
-            text="▲",
-            width=26,
-            height=26,
-            corner_radius=6,
-            font_size=10,
-            command=self._search_prev,
-        )
-        self._search_prev_btn.pack(side="left", padx=1)
-        self._register_button(self._search_prev_btn, 'ghost')
-
-        self._search_next_btn = make_button(
-            self._search_nav,
-            'ghost',
-            self.COLORS,
-            text="▼",
-            width=26,
-            height=26,
-            corner_radius=6,
-            font_size=10,
-            command=self._search_next,
-        )
-        self._search_next_btn.pack(side="left", padx=1)
-        self._register_button(self._search_next_btn, 'ghost')
-
-        self._search_clear_btn = make_button(
-            self._search_nav,
-            'danger_ghost',
-            self.COLORS,
-            text="✕",
-            width=26,
-            height=26,
-            corner_radius=6,
-            font_size=10,
-            command=self._clear_search,
-        )
-        self._search_clear_btn.pack(side="left", padx=1)
-        self._register_button(self._search_clear_btn, 'danger_ghost')
-
-        self._search_nav.pack_forget()
 
     def _build_status_card(self, parent: tk.Misc) -> None:
         self._status_card = self._make_card(parent, corner_radius=10)
@@ -767,16 +656,9 @@ class LogWindow(ctk.CTk):
         with contextlib.suppress(tk.TclError):
             self.after_cancel(job)
 
-    def _cancel_search_job(self) -> None:
-        """取消尚未执行的搜索防抖任务。"""
-        if self._search_job is not None:
-            self._cancel_after_job(self._search_job)
-            self._search_job = None
-
     def _reset_log_display(self) -> None:
         """清空文本和搜索状态，供 LogController 重建显示。"""
-        self._cancel_search_job()
-        self._search.clear_state()
+        self.search.reset()
 
         tb = self._get_textbox()
         tb.configure(state="normal")
@@ -821,7 +703,6 @@ class LogWindow(ctk.CTk):
     def _refresh_toolbar_icons(self) -> None:
         """按当前主题重新生成工具栏图标。"""
         self._clear_btn.configure(image=toolbar_icon('trash', self.COLORS['text']))
-        self._search_icon.configure(image=toolbar_icon('search', self.COLORS['text_muted']))
         self._apply_auto_scroll_ui()
 
     def _toggle_running(self) -> None:
@@ -867,78 +748,14 @@ class LogWindow(ctk.CTk):
 
     # ===== 搜索功能 =====
 
-    def _on_search_focus_in(self, _event: tk.Event | None = None) -> None:
-        self._search_focused = True
-        self._update_search_hint()
-
-    def _on_search_focus_out(self, _event: tk.Event | None = None) -> None:
-        self._search_focused = False
-        self._update_search_hint()
-
-    def _update_search_hint(self) -> None:
-        """输入为空且未聚焦时，把浅色提示覆盖在输入框文字起点上。"""
-        if self._search_hint is None:
-            return
-        if self._search_focused or self._search_var.get():
-            self._search_hint.place_forget()
-            return
-        self._search_hint.place(
-            in_=self._search_entry,
-            x=self._search_hint_x(),
-            rely=0.5,
-            anchor='w',
-        )
-
-    def _search_hint_x(self) -> int:
-        try:
-            scale = self._get_widget_scaling()
-        except AttributeError:
-            # 构造早期缩放尚未注册，先按 1.0 放置，Map 后会重新校正
-            scale = 1.0
-        return round(6 * scale)
-
-    def _on_search_change(self, *args: str) -> None:
-        """输入时防抖，避免每敲一个字都对全部日志重新搜索。"""
-        self._cancel_search_job()
-        if self._search_clearing:
-            return
-
-        if not self._search_var.get().strip():
-            self._search.clear_state()
-            self._update_search_hint()
-            return
-
-        self._search_job = self.after(SEARCH_DEBOUNCE_MS, self._run_search)
-        self._update_search_hint()
-
-    def _run_search(self) -> None:
-        """执行搜索并显示结果导航。"""
-        self._search_job = None
-        search_text = self._search_var.get().strip()
-        if not search_text:
-            self._search.clear_state()
-            return
-
-        self._search_nav.pack(side="left", padx=(4, 0))
-
-        self._search.perform(search_text)
-
     def _search_next(self) -> None:
-        """跳转到下一个搜索结果"""
-        self._search.next()
+        """跳转到下一个搜索结果。"""
+        self.search.next()
 
     def _search_prev(self) -> None:
-        """跳转到上一个搜索结果"""
-        self._search.prev()
+        """跳转到上一个搜索结果。"""
+        self.search.prev()
 
     def _clear_search(self) -> None:
-        """清除搜索；变量写入的 trace 由 _search_clearing 抑制，只清一次状态。"""
-        self._cancel_search_job()
-        self._search_clearing = True
-        try:
-            self._search_var.set("")
-        finally:
-            self._search_clearing = False
-        self._search.clear_state()
-        self._update_search_hint()
-        self._search_entry.focus_set()
+        """清除搜索；保留薄委托供窗口内部调用。"""
+        self.search.clear_and_focus()

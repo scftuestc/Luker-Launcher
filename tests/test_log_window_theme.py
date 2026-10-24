@@ -82,10 +82,9 @@ class ThemeBindingTests(unittest.TestCase):
         window.update_status = update_status
         window._refresh_toolbar_icons = refresh_toolbar_icons
         window._get_textbox = get_textbox
-        window._search = search
+        window.search = search
         window._clear_btn = FakeWidget()
         window.scroll_btn = FakeWidget()
-        window._search_icon = FakeWidget()
         window._auto_scroll = True
         window._is_running = False
         window._luker_state = LukerState.STOPPED
