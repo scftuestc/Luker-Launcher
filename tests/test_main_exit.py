@@ -1,9 +1,9 @@
 import unittest
 from unittest.mock import patch
 
-import main
+import launcher_app
+from launcher_app import LukerLauncher
 from luker_readiness import LukerState
-from main import LukerLauncher
 
 
 class FakeLogWindow:
@@ -65,7 +65,7 @@ class ExitRequestTests(unittest.TestCase):
         def fake_show(parent, state, on_confirm, on_cancel):
             captured.update(parent=parent, state=state, confirm=on_confirm, cancel=on_cancel)
 
-        with patch.object(main, 'show_exit_confirmation', fake_show):
+        with patch.object(launcher_app, 'show_exit_confirmation', fake_show):
             launcher._on_request_exit()
 
         self.assertIs(captured['parent'], window)
@@ -85,7 +85,7 @@ class ExitRequestTests(unittest.TestCase):
         def fake_show(parent, state, on_confirm, on_cancel):
             captured.update(confirm=on_confirm, cancel=on_cancel)
 
-        with patch.object(main, 'show_exit_confirmation', fake_show):
+        with patch.object(launcher_app, 'show_exit_confirmation', fake_show):
             launcher._on_request_exit()
 
         captured['cancel']()
@@ -99,7 +99,7 @@ class ExitRequestTests(unittest.TestCase):
         launcher, _, exits = self.make_launcher()
         launcher._exiting = True
 
-        with patch.object(main, 'show_exit_confirmation') as show:
+        with patch.object(launcher_app, 'show_exit_confirmation') as show:
             launcher._on_request_exit()
 
         show.assert_not_called()
@@ -109,7 +109,7 @@ class ExitRequestTests(unittest.TestCase):
         launcher, _, _ = self.make_launcher()
         launcher._exit_dialog_open = True
 
-        with patch.object(main, 'show_exit_confirmation') as show:
+        with patch.object(launcher_app, 'show_exit_confirmation') as show:
             launcher._on_request_exit()
 
         show.assert_not_called()

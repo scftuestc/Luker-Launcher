@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import main
+import launcher_app
 import pwa_browser
-from main import LukerLauncher
+from launcher_app import LukerLauncher
 
 VALID_FAMILY_NAME = "127.0.0.1-test_8wekyb3d8bbwe"
 
@@ -146,8 +146,8 @@ class AutoOpenRoutingTests(unittest.TestCase):
                 self._target()
 
         with (
-            patch.object(main.urllib.request, "urlopen", return_value=FakeResponse()),
-            patch.object(main, "Thread", FakeThread),
+            patch.object(launcher_app.urllib.request, "urlopen", return_value=FakeResponse()),
+            patch.object(launcher_app, "Thread", FakeThread),
         ):
             launcher._schedule_auto_open_browser()
 
@@ -166,8 +166,8 @@ class BrowserOpenDelegationTests(unittest.TestCase):
                 fake_config.get_server_url.return_value = "http://127.0.0.1:8000"
 
                 with (
-                    patch.object(main, "config", fake_config),
-                    patch.object(main, "open_in_browser", return_value=True) as open_mock,
+                    patch.object(launcher_app, "config", fake_config),
+                    patch.object(launcher_app, "open_in_browser", return_value=True) as open_mock,
                 ):
                     launcher._open_browser_now()
 

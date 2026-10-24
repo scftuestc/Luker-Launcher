@@ -3,7 +3,7 @@ import unittest
 from collections.abc import Callable
 from pathlib import Path
 
-from main import LukerLauncher
+from launcher_app import LukerLauncher
 from ui_dispatch import UiDispatcher
 
 

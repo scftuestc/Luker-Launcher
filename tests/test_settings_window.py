@@ -3,9 +3,9 @@ from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import patch
 
-import main
+import launcher_app
 import settings_window
-from main import LukerLauncher
+from launcher_app import LukerLauncher
 from settings_window import (
     _SCROLL_BINDING_SEQUENCES,
     SettingsWindow,
@@ -226,7 +226,7 @@ class SettingsWindowTests(unittest.TestCase):
     def test_open_uses_tray_anchor_and_reuses_alive_window(self):
         launcher = self._make_launcher()
 
-        with patch.object(main, "SettingsWindow", FakeSettingsWindow):
+        with patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow):
             launcher._open_settings_window()
             launcher._open_settings_window()
 
@@ -240,7 +240,7 @@ class SettingsWindowTests(unittest.TestCase):
     def test_closed_window_is_recreated(self):
         launcher = self._make_launcher()
 
-        with patch.object(main, "SettingsWindow", FakeSettingsWindow):
+        with patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow):
             launcher._open_settings_window()
             FakeSettingsWindow.instances[0].alive = False
             launcher._tray_anchor = (300, 400)
@@ -262,7 +262,7 @@ class SettingsWindowTests(unittest.TestCase):
         launcher = self._make_launcher()
         launcher._exiting = True
 
-        with patch.object(main, "SettingsWindow", FakeSettingsWindow):
+        with patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow):
             launcher._open_settings_window()
 
         self.assertEqual(FakeSettingsWindow.instances, [])

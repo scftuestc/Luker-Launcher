@@ -2,8 +2,8 @@ import tkinter as tk
 import unittest
 from unittest.mock import patch
 
-import main
-from main import LukerLauncher
+import launcher_app
+from launcher_app import LukerLauncher
 
 
 class FakeWindow:
@@ -89,7 +89,7 @@ class ExitTests(unittest.TestCase):
 
         launcher._on_gcl_config_change = callback
 
-        with patch.object(main.config, "remove_gcl_change_callback") as remove:
+        with patch.object(launcher_app.config, "remove_gcl_change_callback") as remove:
             launcher._finish_exit()
 
         remove.assert_called_once_with(callback)

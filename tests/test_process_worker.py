@@ -1,6 +1,6 @@
 import unittest
 
-from main import LukerLauncher
+from launcher_app import LukerLauncher
 
 
 class ProcessWorkerTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class ProcessWorkerTests(unittest.TestCase):
 
         launcher._run_async = fail
 
-        with self.assertLogs("main", level="ERROR"):
+        with self.assertLogs("launcher_app", level="ERROR"):
             started = launcher._start_process_worker(
                 lambda: None,
                 on_failure=lambda: failures.append("fallback"),
