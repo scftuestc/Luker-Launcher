@@ -50,6 +50,74 @@ class BlurChangeTests(unittest.TestCase):
         )
 
 
+class HideTests(unittest.TestCase):
+    def test_hide_cancels_animation_and_mouse_poll(self):
+        menu = object.__new__(TrayMenu)
+        menu._menu_animation_id = 'anim'
+        menu._menu_animation_active = True
+        menu._mouse_poll_id = 'poll'
+        canceled: list[object] = []
+        menu.after_cancel = canceled.append
+        withdrawn: list[bool] = []
+        menu.withdraw = lambda: withdrawn.append(True)
+
+        menu.hide()
+
+        self.assertEqual(canceled, ['anim', 'poll'])
+        self.assertIsNone(menu._menu_animation_id)
+        self.assertIsNone(menu._mouse_poll_id)
+        self.assertFalse(menu._menu_animation_active)
+        self.assertEqual(withdrawn, [True])
+
+
+class FakePack:
+    def __init__(self) -> None:
+        self.options: dict[str, object] | None = None
+
+    def pack(self, **options: object) -> None:
+        self.options = options
+
+    def pack_forget(self) -> None:
+        self.options = None
+
+
+class GclVisibilityTests(unittest.TestCase):
+    def make_menu(self) -> TrayMenu:
+        menu = object.__new__(TrayMenu)
+        menu._gcl_separator = FakePack()
+        menu._bottom_separator = object()
+        menu.menu_items = {
+            'gcl_toggle': {'frame': FakePack()},
+            'gcl_browser': {'frame': FakePack()},
+        }
+        return menu
+
+    def test_visible_items_are_inserted_before_bottom_separator(self):
+        menu = self.make_menu()
+
+        menu._set_gcl_items_visible(True)
+
+        self.assertIs(menu._gcl_separator.options['before'], menu._bottom_separator)
+        self.assertIs(
+            menu.menu_items['gcl_toggle']['frame'].options['before'],
+            menu._bottom_separator,
+        )
+        self.assertIs(
+            menu.menu_items['gcl_browser']['frame'].options['before'],
+            menu._bottom_separator,
+        )
+
+    def test_hidden_items_are_forgotten(self):
+        menu = self.make_menu()
+        menu._set_gcl_items_visible(True)
+
+        menu._set_gcl_items_visible(False)
+
+        self.assertIsNone(menu._gcl_separator.options)
+        self.assertIsNone(menu.menu_items['gcl_toggle']['frame'].options)
+        self.assertIsNone(menu.menu_items['gcl_browser']['frame'].options)
+
+
 class FakeBar:
     def __init__(self) -> None:
         self.options: dict[str, object] = {}

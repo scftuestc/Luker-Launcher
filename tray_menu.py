@@ -134,6 +134,12 @@ class TrayMenu(ctk.CTkToplevel):
         if self._mouse_poll_id is None:
             self._mouse_poll_id = self.after(100, self._check_mouse_outside)
 
+    def _stop_mouse_poll(self) -> None:
+        if self._mouse_poll_id is not None:
+            with contextlib.suppress(Exception):
+                self.after_cancel(self._mouse_poll_id)
+            self._mouse_poll_id = None
+
     def _check_mouse_outside(self) -> None:
         """菜单可见时轮询鼠标，左键点击菜单外部则收起。"""
         self._mouse_poll_id = None
@@ -341,10 +347,9 @@ class TrayMenu(ctk.CTkToplevel):
             compound='left',
             font_family=self.UI_FONT,
             anchor="w",
+            text_color=icon_color,
             command=command,
         )
-        if color:
-            btn.configure(text_color=color)
         btn.pack(fill="x", padx=4)
 
         return {'frame': frame, 'btn': btn}
@@ -390,22 +395,34 @@ class TrayMenu(ctk.CTkToplevel):
         self.hide()
         self.callbacks['exit']()
 
-    def _apply_luker_toggle(self) -> None:
-        item = self.menu_items.get('luker_toggle')
+    def _apply_toggle_item(
+        self,
+        key: str,
+        running: bool,
+        *,
+        running_text: str,
+        stopped_text: str,
+    ) -> None:
+        """按运行状态重配启动/停止菜单项的文本、颜色和图标。"""
+        item = self.menu_items.get(key)
         if item is None:
             return
-        if self._is_running:
-            item['btn'].configure(
-                text="停止 Luker",
-                text_color=self.COLORS['error'],
-                image=menu_icon('stop', self.COLORS['error'], size=MENU_ICON_SIZE),
-            )
-        else:
-            item['btn'].configure(
-                text="启动 Luker",
-                text_color=self.COLORS['success'],
-                image=menu_icon('play', self.COLORS['success'], size=MENU_ICON_SIZE),
-            )
+        text = running_text if running else stopped_text
+        color = self.COLORS['error'] if running else self.COLORS['success']
+        icon: MenuIcon = 'stop' if running else 'play'
+        item['btn'].configure(
+            text=text,
+            text_color=color,
+            image=menu_icon(icon, color, size=MENU_ICON_SIZE),
+        )
+
+    def _apply_luker_toggle(self) -> None:
+        self._apply_toggle_item(
+            'luker_toggle',
+            self._is_running,
+            running_text="停止 Luker",
+            stopped_text="启动 Luker",
+        )
 
         restart = self.menu_items.get('restart')
         if restart is not None:
@@ -424,21 +441,12 @@ class TrayMenu(ctk.CTkToplevel):
                 )
 
     def _apply_gcl_toggle(self) -> None:
-        item = self.menu_items.get('gcl_toggle')
-        if item is None:
-            return
-        if self._gcl_running:
-            item['btn'].configure(
-                text="停止 GCL",
-                text_color=self.COLORS['error'],
-                image=menu_icon('stop', self.COLORS['error'], size=MENU_ICON_SIZE),
-            )
-        else:
-            item['btn'].configure(
-                text="启动 GCL",
-                text_color=self.COLORS['success'],
-                image=menu_icon('play', self.COLORS['success'], size=MENU_ICON_SIZE),
-            )
+        self._apply_toggle_item(
+            'gcl_toggle',
+            self._gcl_running,
+            running_text="停止 GCL",
+            stopped_text="启动 GCL",
+        )
 
     def set_luker_state(self, state: LukerState) -> None:
         """主程序推送就绪状态，菜单未打开时也记住以便下次直接生效。"""
@@ -473,25 +481,22 @@ class TrayMenu(ctk.CTkToplevel):
         self._apply_luker_toggle()
         self._apply_gcl_toggle()
 
-        if gcl_enabled:
-            # 先隐藏再按顺序插到底部分隔线之前
-            self._gcl_separator.pack_forget()
-            self.menu_items['gcl_toggle']['frame'].pack_forget()
-            self.menu_items['gcl_browser']['frame'].pack_forget()
-
-            self._gcl_separator.pack(fill="x", padx=8, pady=6, before=self._bottom_separator)
-            self.menu_items['gcl_toggle']['frame'].pack(
-                fill="x", pady=2, before=self._bottom_separator
-            )
-            self.menu_items['gcl_browser']['frame'].pack(
-                fill="x", pady=2, before=self._bottom_separator
-            )
-        else:
-            self._gcl_separator.pack_forget()
-            self.menu_items['gcl_toggle']['frame'].pack_forget()
-            self.menu_items['gcl_browser']['frame'].pack_forget()
-
+        self._set_gcl_items_visible(gcl_enabled)
         self._apply_menu_logo_state()
+
+    def _set_gcl_items_visible(self, visible: bool) -> None:
+        """按 GCL 是否启用显示或隐藏分隔线和两个 GCL 菜单项。"""
+        self._gcl_separator.pack_forget()
+        self.menu_items['gcl_toggle']['frame'].pack_forget()
+        self.menu_items['gcl_browser']['frame'].pack_forget()
+        if not visible:
+            return
+
+        self._gcl_separator.pack(fill="x", padx=8, pady=6, before=self._bottom_separator)
+        self.menu_items['gcl_toggle']['frame'].pack(fill="x", pady=2, before=self._bottom_separator)
+        self.menu_items['gcl_browser']['frame'].pack(
+            fill="x", pady=2, before=self._bottom_separator
+        )
 
     def show_at(self, x: int, y: int) -> None:
         """在物理坐标 (x, y) 附近显示，并限制在光标所在显示器。"""
@@ -516,15 +521,6 @@ class TrayMenu(ctk.CTkToplevel):
         self._start_mouse_poll()
 
     def hide(self) -> None:
-        if self._menu_animation_id is not None:
-            with contextlib.suppress(Exception):
-                self.after_cancel(self._menu_animation_id)
-            self._menu_animation_id = None
-        self._menu_animation_active = False
-
-        if self._mouse_poll_id is not None:
-            with contextlib.suppress(Exception):
-                self.after_cancel(self._mouse_poll_id)
-            self._mouse_poll_id = None
-
+        self._stop_menu_animation()
+        self._stop_mouse_poll()
         self.withdraw()
