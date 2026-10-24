@@ -203,15 +203,23 @@ def logo_bar_glow_color(index: int, phase: float) -> str:
     return shade_color(LOGO_BAR_COLORS[index], brightness)
 
 
-def is_light_color(color: str) -> bool:
-    """判断 #RRGGBB 是否为浅色；用于选择窗口的模糊方式。"""
+def _parse_hex_color(color: str) -> tuple[int, int, int] | None:
+    """解析 #RRGGBB；格式或取值非法时返回 None。"""
     if len(color) != 7 or not color.startswith('#'):
-        return False
+        return None
     try:
         red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
     except ValueError:
+        return None
+    return red, green, blue
+
+
+def is_light_color(color: str) -> bool:
+    """判断 #RRGGBB 是否为浅色；用于选择窗口的模糊方式。"""
+    rgb = _parse_hex_color(color)
+    if rgb is None:
         return False
-    channels = (channel / 255 for channel in (red, green, blue))
+    channels = (channel / 255 for channel in rgb)
     linear = [
         channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
         for channel in channels
@@ -241,26 +249,18 @@ def theme_swatch_colors(name: str) -> tuple[str, str, str, str]:
 
 def shade_color(color: str, factor: float) -> str:
     """按比例调暗或调亮 #RRGGBB；factor 小于 1 调暗，大于 1 调亮。"""
-    if len(color) != 7 or not color.startswith('#'):
+    rgb = _parse_hex_color(color)
+    if rgb is None:
         return color
-    try:
-        red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
-    except ValueError:
-        return color
-    channels = (max(0, min(255, round(channel * factor))) for channel in (red, green, blue))
+    channels = (max(0, min(255, round(channel * factor))) for channel in rgb)
     return '#{:02x}{:02x}{:02x}'.format(*channels)
 
 
 def mix_color(base: str, overlay: str, ratio: float) -> str:
     """按 ratio 把 overlay 混入 base，返回 #rrggbb；用于柔和的悬停底色。"""
-    if len(base) != 7 or not base.startswith('#'):
-        return base
-    if len(overlay) != 7 or not overlay.startswith('#'):
-        return base
-    try:
-        base_rgb = tuple(int(base[index : index + 2], 16) for index in (1, 3, 5))
-        overlay_rgb = tuple(int(overlay[index : index + 2], 16) for index in (1, 3, 5))
-    except ValueError:
+    base_rgb = _parse_hex_color(base)
+    overlay_rgb = _parse_hex_color(overlay)
+    if base_rgb is None or overlay_rgb is None:
         return base
 
     factor = max(0.0, min(1.0, ratio))

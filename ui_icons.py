@@ -1,5 +1,6 @@
 """运行时绘制的界面图标，避免依赖字体符号。"""
 
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Literal
 
@@ -16,16 +17,31 @@ THEME_ICON_KINDS: tuple[ThemeIcon, ...] = ('sun', 'moon', 'tree', 'cloud', 'wave
 VIEWBOX = 24
 SUPERSAMPLE = 4
 
+IconPoint = Callable[[float, float], tuple[float, float]]
 
-@lru_cache(maxsize=16)
-def render_transport_icon(kind: TransportIcon, color: str, size: int = 64) -> Image.Image:
-    """绘制播放/停止图标，返回透明背景的 RGBA 图像。"""
+
+def _icon_context(
+    size: int,
+) -> tuple[Image.Image, ImageDraw.ImageDraw, IconPoint, int, float]:
+    """创建超采样画布、坐标换算、描边宽度和缩放比例。"""
     scale = SUPERSAMPLE * size / VIEWBOX
     canvas = Image.new('RGBA', (size * SUPERSAMPLE, size * SUPERSAMPLE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
 
     def point(x: float, y: float) -> tuple[float, float]:
         return x * scale, y * scale
+
+    return canvas, draw, point, max(1, round(2.0 * scale)), scale
+
+
+def _finish_icon(canvas: Image.Image, size: int) -> Image.Image:
+    return canvas.resize((size, size), Image.Resampling.LANCZOS)
+
+
+@lru_cache(maxsize=16)
+def render_transport_icon(kind: TransportIcon, color: str, size: int = 64) -> Image.Image:
+    """绘制播放/停止图标，返回透明背景的 RGBA 图像。"""
+    canvas, draw, point, _stroke, scale = _icon_context(size)
 
     if kind == 'play':
         draw.polygon([point(8.5, 5), point(20, 12), point(8.5, 19)], fill=color)
@@ -36,7 +52,7 @@ def render_transport_icon(kind: TransportIcon, color: str, size: int = 64) -> Im
             fill=color,
         )
 
-    return canvas.resize((size, size), Image.Resampling.LANCZOS)
+    return _finish_icon(canvas, size)
 
 
 def transport_icon(kind: TransportIcon, color: str, size: int = 16) -> ctk.CTkImage:
@@ -47,14 +63,7 @@ def transport_icon(kind: TransportIcon, color: str, size: int = 16) -> ctk.CTkIm
 
 @lru_cache(maxsize=64)
 def _render_menu_icon_cached(kind: MenuIcon, color: str, size: int) -> Image.Image:
-    scale = SUPERSAMPLE * size / VIEWBOX
-    canvas = Image.new('RGBA', (size * SUPERSAMPLE, size * SUPERSAMPLE), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
-
-    def point(x: float, y: float) -> tuple[float, float]:
-        return x * scale, y * scale
-
-    stroke = max(1, round(2.0 * scale))
+    canvas, draw, point, stroke, scale = _icon_context(size)
 
     if kind == 'play':
         draw.polygon([point(7.5, 4.5), point(20.5, 12), point(7.5, 19.5)], fill=color)
@@ -123,7 +132,7 @@ def _render_menu_icon_cached(kind: MenuIcon, color: str, size: int) -> Image.Ima
         )
         draw.line([*point(12, 2.5), *point(12, 11)], fill=color, width=stroke)
 
-    return canvas.resize((size, size), Image.Resampling.LANCZOS)
+    return _finish_icon(canvas, size)
 
 
 def render_menu_icon(kind: MenuIcon, color: str, size: int = 64) -> Image.Image:
@@ -139,14 +148,7 @@ def menu_icon(kind: MenuIcon, color: str, size: int = 18) -> ctk.CTkImage:
 
 @lru_cache(maxsize=32)
 def _render_theme_icon_cached(kind: str, color: str, size: int) -> Image.Image:
-    scale = SUPERSAMPLE * size / VIEWBOX
-    canvas = Image.new('RGBA', (size * SUPERSAMPLE, size * SUPERSAMPLE), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
-
-    def point(x: float, y: float) -> tuple[float, float]:
-        return x * scale, y * scale
-
-    stroke = max(1, round(2.0 * scale))
+    canvas, draw, point, stroke, _scale = _icon_context(size)
 
     if kind == 'moon':
         mask = Image.new('L', canvas.size, 0)
@@ -214,7 +216,7 @@ def _render_theme_icon_cached(kind: str, color: str, size: int) -> Image.Image:
                 width=stroke,
             )
 
-    return canvas.resize((size, size), Image.Resampling.LANCZOS)
+    return _finish_icon(canvas, size)
 
 
 def render_theme_icon(kind: str, color: str, size: int = 64) -> Image.Image:
@@ -230,14 +232,7 @@ def theme_icon(kind: str, color: str, size: int = 18) -> ctk.CTkImage:
 
 @lru_cache(maxsize=32)
 def _render_toolbar_icon_cached(kind: str, color: str, size: int) -> Image.Image:
-    scale = SUPERSAMPLE * size / VIEWBOX
-    canvas = Image.new('RGBA', (size * SUPERSAMPLE, size * SUPERSAMPLE), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
-
-    def point(x: float, y: float) -> tuple[float, float]:
-        return x * scale, y * scale
-
-    stroke = max(1, round(2.0 * scale))
+    canvas, draw, point, stroke, scale = _icon_context(size)
 
     if kind == 'trash':
         draw.line([point(4, 6.5), point(20, 6.5)], fill=color, width=stroke)
@@ -272,7 +267,7 @@ def _render_toolbar_icon_cached(kind: str, color: str, size: int) -> Image.Image
         draw.ellipse([*point(3.5, 3.5), *point(15.5, 15.5)], outline=color, width=stroke)
         draw.line([point(14, 14), point(21, 21)], fill=color, width=stroke)
 
-    return canvas.resize((size, size), Image.Resampling.LANCZOS)
+    return _finish_icon(canvas, size)
 
 
 def render_toolbar_icon(kind: str, color: str, size: int = 64) -> Image.Image:

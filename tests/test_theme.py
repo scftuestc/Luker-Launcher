@@ -9,6 +9,7 @@ from theme import (
     LOGO_STOPPED_COLOR,
     PRESET_THEMES,
     THEME_SWATCH_KEYS,
+    _parse_hex_color,
     blend_color,
     get_theme_colors,
     is_light_color,
@@ -227,6 +228,17 @@ class ThemeSwatchTests(unittest.TestCase):
         for name, theme in PRESET_THEMES.items():
             with self.subTest(theme=name):
                 self.assertIn(theme['icon'], THEME_ICON_KINDS)
+
+
+class HexColorParseTests(unittest.TestCase):
+    def test_parses_valid_rgb_hex(self):
+        self.assertEqual(_parse_hex_color('#aabbcc'), (0xAA, 0xBB, 0xCC))
+        self.assertEqual(_parse_hex_color('#000000'), (0, 0, 0))
+
+    def test_rejects_invalid_values(self):
+        self.assertIsNone(_parse_hex_color('aabbcc'))
+        self.assertIsNone(_parse_hex_color('#abc'))
+        self.assertIsNone(_parse_hex_color('#zzzzzz'))
 
 
 if __name__ == "__main__":
