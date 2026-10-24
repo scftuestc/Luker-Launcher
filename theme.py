@@ -133,6 +133,18 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
 
 DEFAULT_THEME = 'summer'
 
+# 主题卡片四个色块取用的调色板角色；'deep' 表示 accent 的深色版本。
+# 单独成表，避免新增主题时还要改 theme_swatch_colors 的分支。
+SwatchKey = Literal['accent', 'text_dim', 'success', 'info', 'warning', 'error', 'deep']
+THEME_SWATCH_KEYS: dict[str, tuple[SwatchKey, SwatchKey, SwatchKey, SwatchKey]] = {
+    'summer': ('accent', 'text_dim', 'deep', 'info'),
+    'purple_night': ('accent', 'text_dim', 'deep', 'warning'),
+    'forest_green': ('accent', 'text_dim', 'deep', 'warning'),
+    'cloud_gray': ('accent', 'success', 'info', 'warning'),
+    'ocean_cyan': ('accent', 'deep', 'warning', 'error'),
+    'crimson': ('accent', 'text_dim', 'info', 'warning'),
+}
+
 # 旧版本保存的主题 ID -> 当前 ID；读取配置时迁移
 LEGACY_THEME_ALIASES: dict[str, str] = {
     'deep_blue': 'summer',
@@ -218,20 +230,13 @@ def theme_swatch_colors(name: str) -> tuple[str, str, str, str]:
     """返回主题卡片展示的四个特征色：主色、浅色、深色与点缀色。"""
     effective = name if name in PRESET_THEMES else DEFAULT_THEME
     colors = get_theme_colors(effective)
-    accent = colors['accent']
-    deep = shade_color(accent, 0.6)
-    if effective == 'purple_night':
-        return (accent, colors['text_dim'], deep, colors['warning'])
-    if effective == 'forest_green':
-        return (accent, colors['text_dim'], deep, colors['warning'])
-    if effective == 'cloud_gray':
-        # 云灰的 accent 与 text_dim 都是深灰，换成绿/蓝/棕保留足够区分度
-        return (accent, colors['success'], colors['info'], colors['warning'])
-    if effective == 'ocean_cyan':
-        return (accent, deep, colors['warning'], colors['error'])
-    if effective == 'crimson':
-        return (accent, colors['text_dim'], colors['info'], colors['warning'])
-    return (accent, colors['text_dim'], deep, colors['info'])
+    keys = THEME_SWATCH_KEYS.get(effective, THEME_SWATCH_KEYS[DEFAULT_THEME])
+    deep = shade_color(colors['accent'], 0.6)
+
+    def resolve(key: SwatchKey) -> str:
+        return deep if key == 'deep' else colors[key]
+
+    return resolve(keys[0]), resolve(keys[1]), resolve(keys[2]), resolve(keys[3])
 
 
 def shade_color(color: str, factor: float) -> str:

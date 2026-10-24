@@ -8,6 +8,7 @@ from theme import (
     LOGO_BAR_RGB,
     LOGO_STOPPED_COLOR,
     PRESET_THEMES,
+    THEME_SWATCH_KEYS,
     blend_color,
     get_theme_colors,
     is_light_color,
@@ -212,6 +213,15 @@ class ThemeSwatchTests(unittest.TestCase):
             theme_swatch_colors('not-a-theme'),
             theme_swatch_colors(DEFAULT_THEME),
         )
+
+    def test_every_theme_defines_swatch_keys(self):
+        for name, theme in PRESET_THEMES.items():
+            with self.subTest(theme=name):
+                keys = THEME_SWATCH_KEYS[name]
+                self.assertEqual(len(keys), 4)
+                for key in keys:
+                    if key != 'deep':
+                        self.assertIn(key, theme)
 
     def test_theme_icons_are_known_kinds(self):
         for name, theme in PRESET_THEMES.items():

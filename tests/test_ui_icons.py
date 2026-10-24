@@ -47,6 +47,12 @@ class TransportIconTests(unittest.TestCase):
 
         self.assertEqual(icon.cget('size'), (16, 16))
 
+    def test_render_is_cached(self):
+        first = render_transport_icon('play', '#123456', size=32)
+        second = render_transport_icon('play', '#123456', size=32)
+
+        self.assertIs(first, second)
+
 
 class MenuIconTests(unittest.TestCase):
     KINDS = ('window', 'play', 'stop', 'refresh', 'globe', 'gcl', 'settings', 'power')

@@ -82,6 +82,7 @@ class ExitTests(unittest.TestCase):
         launcher._ui = FakeDispatcher()
         launcher.log_window = FakeWindow()
         launcher.tray_icon = None
+        launcher._readiness = None
 
         def callback(enabled: bool, path: str | None) -> None:
             pass

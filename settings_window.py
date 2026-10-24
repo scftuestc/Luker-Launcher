@@ -42,8 +42,9 @@ _SCROLL_BINDING_SEQUENCES = (
 def clear_scroll_bindings(widget: tk.Misc) -> None:
     """清除 CTkScrollableFrame 留在 root 上的全局绑定。
 
-    应用同时只保留一个设置窗口，重建前清空这些序列，再由新的滚动区域
-    重新注册；如果以后新增其他滚动容器，需要改为按实例移除。
+    CTk 通过 bind_all 注册这些序列，绑定挂在 "all" bindtag 上，没有按实例
+    解绑的入口；应用同时只保留一个设置窗口，所以重建前清空序列，再由新的
+    滚动区域重新注册。
     """
     for sequence in _SCROLL_BINDING_SEQUENCES:
         with contextlib.suppress(tk.TclError):

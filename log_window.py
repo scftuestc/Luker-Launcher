@@ -108,6 +108,7 @@ class LogWindow(ctk.CTk):
         self._pulse_phase = 0.0
         self._glow_phase = 0.0
         self._glow_job: str | None = None
+        self._pulse_job: str | None = None
 
         self._search_job: str | None = None
         self._search_focused = False
@@ -248,9 +249,10 @@ class LogWindow(ctk.CTk):
         self._glow_job = self.after(LOGO_GLOW_INTERVAL_MS, self._animate_glow)
 
     def _animate_status_pulse(self) -> None:
+        self._pulse_job = None
         # 窗口隐藏时降低刷新频率
         if not self.winfo_viewable():
-            self.after(500, self._animate_status_pulse)
+            self._pulse_job = self.after(500, self._animate_status_pulse)
             return
 
         if self._luker_state is LukerState.READY:
@@ -261,7 +263,23 @@ class LogWindow(ctk.CTk):
             with contextlib.suppress(tk.TclError):
                 self.status_dot.configure(text_color=pulse_color)
 
-        self.after(100, self._animate_status_pulse)
+        self._pulse_job = self.after(100, self._animate_status_pulse)
+
+    def _cancel_animation_jobs(self) -> None:
+        """销毁前取消所有定时任务，避免回调落到已销毁的控件。"""
+        if self._glow_job is not None:
+            self._cancel_after_job(self._glow_job)
+            self._glow_job = None
+        if self._pulse_job is not None:
+            self._cancel_after_job(self._pulse_job)
+            self._pulse_job = None
+        if self._search_job is not None:
+            self._cancel_after_job(self._search_job)
+            self._search_job = None
+
+    def destroy(self) -> None:
+        self._cancel_animation_jobs()
+        super().destroy()
 
     def _build_ui(self) -> None:
         main = ctk.CTkFrame(self, fg_color="transparent")
@@ -327,6 +345,7 @@ class LogWindow(ctk.CTk):
         self._title_label.pack(side="left", padx=(14, 0))
         self._bind_theme(self._title_label, text_color='text')
 
+        # Tk 鼠标事件只发给指针下的控件，不会冒泡到父控件，标题栏内可拖拽区域要各自绑定
         bind_window_drag(self, self._titlebar, left, logo, self._title_label)
 
         right = ctk.CTkFrame(self._titlebar, fg_color="transparent")
@@ -346,6 +365,7 @@ class LogWindow(ctk.CTk):
             font_weight='bold',
             command=self._toggle_log_source,
         )
+        self._register_button(self._log_source_btn, 'primary')
 
         self._min_btn = make_button(
             right,
@@ -406,9 +426,12 @@ class LogWindow(ctk.CTk):
 
             self._was_minimized = is_minimized
 
-        # 隐藏到托盘时降到 1 秒一次，减少空转
-        interval = 300 if self.winfo_viewable() else 1000
-        self.after(interval, self._check_window_state)
+        # 隐藏到托盘时降到 1 秒一次，减少空转；窗口销毁后停止轮询
+        try:
+            interval = 300 if self.winfo_viewable() else 1000
+            self.after(interval, self._check_window_state)
+        except tk.TclError:
+            logger.debug("窗口已销毁，停止状态轮询")
 
     def _restore_window(self) -> None:
         try:

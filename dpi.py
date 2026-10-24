@@ -244,7 +244,11 @@ def format_geometry(
     x: int,
     y: int,
 ) -> str:
-    """生成 Tk geometry 字符串；负坐标用 +-，兼容原始 Tk 和 CTk。"""
+    """生成 Tk geometry 字符串。
+
+    负坐标必须写成 "+-100"：Tk 会把 "-100" 解释成距屏幕右边缘/下边缘的
+    偏移（实测窗口会跑到屏幕另一端），而不是负坐标。
+    """
     size = f"{width}x{height}" if width is not None and height is not None else ""
     x_part = f"+{x}" if x >= 0 else f"+-{abs(x)}"
     y_part = f"+{y}" if y >= 0 else f"+-{abs(y)}"

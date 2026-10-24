@@ -61,6 +61,7 @@ class TrayMenu(ctk.CTkToplevel):
         self._luker_state = LukerState.STOPPED
         self._window_visible = False
         self._gcl_enabled = False
+        self._gcl_running = False
 
         self.COLORS = config.get_theme_colors()
 
@@ -315,8 +316,6 @@ class TrayMenu(ctk.CTkToplevel):
         self.menu_items['exit'] = self._create_menu_item(
             items_frame, 'power', "退出", self._on_exit, color=self.COLORS['error']
         )
-
-        self._gcl_running = False
 
     def _create_menu_item(
         self,

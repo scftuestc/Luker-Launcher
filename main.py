@@ -130,11 +130,11 @@ class LukerLauncher:
 
     def _current_luker_state(self) -> LukerState:
         """综合进程存活和本地服务探测结果，返回界面使用的三态。"""
-        manager = getattr(self, 'process_manager', None)
-        if not manager or not manager.is_running:
+        manager = self.process_manager
+        if manager is None or not manager.is_running:
             return LukerState.STOPPED
 
-        readiness = getattr(self, '_readiness', None)
+        readiness = self._readiness
         if readiness is not None and readiness.state is LukerState.READY:
             return LukerState.READY
         return LukerState.STARTING
@@ -147,20 +147,20 @@ class LukerLauncher:
         )
 
     def _apply_luker_state(self, state: LukerState) -> None:
-        if state is getattr(self, '_last_status', None):
+        if state is self._last_status:
             return
         self._last_status = state
-        window = getattr(self, 'log_window', None)
-        if window:
+        window = self.log_window
+        if window is not None:
             window.update_status(state)
-        menu = getattr(self, 'tray_menu', None)
-        if menu:
+        menu = self.tray_menu
+        if menu is not None:
             menu.set_luker_state(state)
 
     def _reset_luker_readiness(self) -> None:
         """启动/重启前清空旧的就绪结果，避免沿用上一次的 READY。"""
         self._last_status = None
-        readiness = getattr(self, '_readiness', None)
+        readiness = self._readiness
         if readiness is not None:
             readiness.reset()
 
@@ -290,8 +290,8 @@ class LukerLauncher:
         managers = [m for m in (self.process_manager, self.gcl_process_manager) if m]
 
         def worker() -> None:
-            readiness = getattr(self, '_readiness', None)
-            if readiness:
+            readiness = self._readiness
+            if readiness is not None:
                 readiness.stop()
             for manager in managers:
                 manager.stop()
@@ -306,8 +306,10 @@ class LukerLauncher:
     def _finish_exit(self) -> None:
         """停止托盘并结束 Tk 主循环。"""
         try:
-            readiness = getattr(self, '_readiness', None)
-            if readiness:
+            # worker 通常已停过；线程创建失败时走的是没有 worker 的回退路径。
+            # stop() 幂等，重复调用不会再次等待已结束的线程。
+            readiness = self._readiness
+            if readiness is not None:
                 readiness.stop()
             self._ui.stop()
             config.remove_gcl_change_callback(self._on_gcl_config_change)

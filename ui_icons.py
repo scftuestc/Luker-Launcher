@@ -17,6 +17,7 @@ VIEWBOX = 24
 SUPERSAMPLE = 4
 
 
+@lru_cache(maxsize=16)
 def render_transport_icon(kind: TransportIcon, color: str, size: int = 64) -> Image.Image:
     """绘制播放/停止图标，返回透明背景的 RGBA 图像。"""
     scale = SUPERSAMPLE * size / VIEWBOX

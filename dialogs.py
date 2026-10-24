@@ -19,6 +19,21 @@ DIALOG_WIDTH = 440
 DIALOG_HEIGHT = 230
 
 
+def dialog_position(
+    parent_x: int,
+    parent_y: int,
+    parent_width: int,
+    parent_height: int,
+    dialog_width: int,
+    dialog_height: int,
+) -> tuple[int, int]:
+    """按父窗口计算确认框坐标；副屏在左侧或上方时允许负坐标。"""
+    return (
+        parent_x + (parent_width - dialog_width) // 2,
+        parent_y + (parent_height - dialog_height) // 3,
+    )
+
+
 def show_exit_confirmation(
     parent: tk.Misc,
     state: LukerState,
@@ -128,12 +143,19 @@ class ExitConfirmationDialog(ctk.CTkToplevel):
 
         try:
             self._parent.update_idletasks()
-            x = self._parent.winfo_rootx() + (self._parent.winfo_width() - width) // 2
-            y = self._parent.winfo_rooty() + (self._parent.winfo_height() - height) // 3
+            x, y = dialog_position(
+                self._parent.winfo_rootx(),
+                self._parent.winfo_rooty(),
+                self._parent.winfo_width(),
+                self._parent.winfo_height(),
+                width,
+                height,
+            )
         except tk.TclError:
             x, y = 0, 0
 
-        self.geometry(format_geometry(DIALOG_WIDTH, DIALOG_HEIGHT, max(0, x), max(0, y)))
+        # 负坐标交给 format_geometry 编码；不能夹到 0，否则左侧副屏会跑到主屏边缘
+        self.geometry(format_geometry(DIALOG_WIDTH, DIALOG_HEIGHT, x, y))
         self.deiconify()
         apply_window_rounding(self, context="退出确认")
         self.lift()
