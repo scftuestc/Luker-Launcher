@@ -83,6 +83,14 @@ class UiDispatcherTests(unittest.TestCase):
 
         self.assertEqual(calls, [])
 
+    def test_post_reports_whether_callback_was_accepted(self):
+        dispatcher = make_dispatcher()
+
+        self.assertTrue(dispatcher.post(lambda: None))
+        self.assertTrue(dispatcher.post(lambda: None, "state"))
+        dispatcher.stop()
+        self.assertFalse(dispatcher.post(lambda: None))
+
     def test_state_callbacks_run_before_events(self):
         dispatcher = make_dispatcher()
         calls = []

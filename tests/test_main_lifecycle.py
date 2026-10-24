@@ -83,6 +83,8 @@ class ExitTests(unittest.TestCase):
         launcher.log_window = FakeWindow()
         launcher.tray_icon = None
         launcher._readiness = None
+        launcher._shutdown_done = False
+        launcher._running = True
 
         def callback(enabled: bool, path: str | None) -> None:
             pass

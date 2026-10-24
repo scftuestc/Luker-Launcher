@@ -61,15 +61,18 @@ class UiDispatcher:
             except queue.Empty:
                 break
 
-    def post(self, callback: Callable[[], None], coalesce_key: str | None = None) -> None:
-        """从任意线程投递 UI 操作；同一 coalesce_key 只保留最后一次。"""
+    def post(self, callback: Callable[[], None], coalesce_key: str | None = None) -> bool:
+        """从任意线程投递 UI 操作；返回是否被接受。
+
+        UI 泵未激活或已经停止时返回 False，调用方可以据此复位忙碌标志。
+        """
         if not self._active:
-            return
+            return False
 
         if coalesce_key is not None:
             with self._lock:
                 self._state[coalesce_key] = callback
-            return
+            return True
 
         try:
             self._queue.put_nowait(callback)
@@ -81,6 +84,7 @@ class UiDispatcher:
                 self._queue.put_nowait(callback)
             except queue.Full:
                 logger.warning("UI 事件队列已满，新事件也被丢弃")
+        return True
 
     def pump(self) -> None:
         """在主线程执行合并后的界面状态和有界事件队列。"""

@@ -53,6 +53,7 @@ class LukerLauncher:
         self._browser_busy = False  # 防止重复启动 PWA 发现线程
         self._exiting = False  # 退出流程只执行一次
         self._exit_dialog_open = False
+        self._shutdown_done = False
         self._last_status: LukerState | None = None  # 上一次通知给界面的运行状态
         self._readiness: LukerReadinessMonitor | None = None
         # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
@@ -60,8 +61,6 @@ class LukerLauncher:
         # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
         self._tray_anchor: tuple[int, int] | None = None
         self.settings_window: SettingsWindow | None = None
-
-        config.add_gcl_change_callback(self._on_gcl_config_change)
 
     def _schedule_ui(self, delay_ms: int, callback: Callable[[], None]) -> None:
         """在 Tk 主线程安排下一次 UI 泵；窗口不可用时停止续排。"""
@@ -78,9 +77,9 @@ class LukerLauncher:
         self,
         callback: Callable[[], None],
         coalesce_key: str | None = None,
-    ) -> None:
-        """从任意线程投递 UI 操作；同一 coalesce_key 只保留最后一次。"""
-        self._ui.post(callback, coalesce_key)
+    ) -> bool:
+        """从任意线程投递 UI 操作；返回是否被当前 UI 泵接受。"""
+        return self._ui.post(callback, coalesce_key)
 
     def _current_luker_state(self) -> LukerState:
         """综合进程存活和本地服务探测结果，返回界面使用的三态。"""
@@ -93,12 +92,16 @@ class LukerLauncher:
             return LukerState.READY
         return LukerState.STARTING
 
-    def _on_luker_state_change(self, state: LukerState) -> None:
-        """就绪探测线程回调；回到 Tk 主线程后再更新界面。"""
-        self._post_ui(
-            lambda: self._apply_luker_state(state),
-            UI_KEY_LUKER_STATE,
-        )
+    def _on_luker_state_change(self, _state: LukerState) -> None:
+        """就绪探测线程回调；只唤醒主线程重新计算当前状态。
+
+        回调携带的状态可能已在队列中过期，不能直接应用，否则旧的
+        STARTING 会覆盖新的 READY。
+        """
+        self._post_ui(self._refresh_luker_state, UI_KEY_LUKER_STATE)
+
+    def _refresh_luker_state(self) -> None:
+        self._apply_luker_state(self._current_luker_state())
 
     def _apply_luker_state(self, state: LukerState) -> None:
         if state is self._last_status:
@@ -188,11 +191,24 @@ class LukerLauncher:
                     if self._exiting and manager.is_running:
                         manager.stop()
             finally:
-                self._post_ui(self._finish_process_action)
+                if self._post_ui(self._finish_process_action) is False:
+                    self._process_busy = False
 
         self._start_process_worker(worker, context="路径切换")
 
     def _adopt_process_manager(self, manager: LukerProcessManager) -> None:
+        if self._exiting:
+            # 退出已开始，拒绝接管；新实例交给后台线程停止
+            logger.debug("退出中，拒绝接管新的进程管理器")
+
+            def stop_incoming() -> None:
+                manager.stop()
+
+            try:
+                self._run_async(stop_incoming)
+            except Exception:
+                logger.exception("停止退出期间创建的进程管理器失败")
+            return
         self.process_manager = manager
         self._last_status = None
 
@@ -241,14 +257,11 @@ class LukerLauncher:
         self._running = False
 
         # 停止进程可能耗时数秒，放到后台，完成后再结束主循环
-        managers = [m for m in (self.process_manager, self.gcl_process_manager) if m]
-
         def worker() -> None:
             readiness = self._readiness
             if readiness is not None:
                 readiness.stop()
-            for manager in managers:
-                manager.stop()
+            self._stop_all_process_managers()
             self._post_ui(self._finish_exit, UI_KEY_EXIT)
 
         try:
@@ -257,21 +270,51 @@ class LukerLauncher:
             logger.exception("启动退出线程失败")
             self._finish_exit()
 
+    def _stop_all_process_managers(self) -> None:
+        """停止当前所有管理器，并覆盖退出期间新接管的实例。
+
+        `_on_exit` 不再对管理器列表做快照；每轮重新读取，最多三轮，
+        避免路径切换在退出过程中安装的新实例逃过清理。
+        """
+        seen: set[int] = set()
+        for _ in range(3):
+            managers = [
+                manager
+                for manager in (self.process_manager, self.gcl_process_manager)
+                if manager is not None
+            ]
+            pending = [manager for manager in managers if id(manager) not in seen]
+            if not pending:
+                return
+            for manager in pending:
+                seen.add(id(manager))
+                try:
+                    manager.stop()
+                except Exception:
+                    logger.exception("停止进程失败")
+
     def _finish_exit(self) -> None:
         """停止托盘并结束 Tk 主循环。"""
         try:
-            # worker 通常已停过；线程创建失败时走的是没有 worker 的回退路径。
-            # stop() 幂等，重复调用不会再次等待已结束的线程。
-            readiness = self._readiness
-            if readiness is not None:
-                readiness.stop()
-            self._ui.stop()
-            config.remove_gcl_change_callback(self._on_gcl_config_change)
-            if self.tray_icon:
-                self.tray_icon.stop()
+            self._shutdown()
         finally:
             if self.log_window:
                 self.log_window.quit()
+
+    def _shutdown(self) -> None:
+        """幂等清理：正常退出和 mainloop 返回后的兜底共用同一套逻辑。"""
+        if self._shutdown_done:
+            return
+        self._shutdown_done = True
+        self._running = False
+
+        readiness = self._readiness
+        if readiness is not None:
+            readiness.stop()
+        self._ui.stop()
+        config.remove_gcl_change_callback(self._on_gcl_config_change)
+        if self.tray_icon:
+            self.tray_icon.stop()
 
     def _run_async(self, func: Callable[[], None]) -> None:
         """在守护线程中执行耗时操作，不阻塞 Tk 主循环。"""
@@ -334,7 +377,9 @@ class LukerLauncher:
             try:
                 action(manager)
             finally:
-                self._post_ui(self._finish_process_action)
+                if self._post_ui(self._finish_process_action) is False:
+                    # UI 泵已停止（通常正在退出），没有主线程来复位忙碌标志
+                    self._process_busy = False
 
         self._start_process_worker(worker)
 
@@ -367,7 +412,8 @@ class LukerLauncher:
             try:
                 action(manager)
             finally:
-                self._post_ui(self._finish_process_action)
+                if self._post_ui(self._finish_process_action) is False:
+                    self._process_busy = False
 
         self._start_process_worker(worker, context="GCL 进程操作")
 
@@ -387,7 +433,8 @@ class LukerLauncher:
             try:
                 self._open_browser_now()
             finally:
-                self._post_ui(self._finish_browser_open)
+                if self._post_ui(self._finish_browser_open) is False:
+                    self._browser_busy = False
 
         try:
             self._run_async(worker)
@@ -455,7 +502,7 @@ class LukerLauncher:
         if active and current_path == new_path:
             return
         if not active and current is None:
-            self._sync_gcl_ui(False)
+            self._sync_gcl_ui()
             return
 
         def worker() -> None:
@@ -466,13 +513,20 @@ class LukerLauncher:
                 stopped = False
 
             if stopped:
-                self._post_ui(lambda: self._finish_gcl_config_change(current, new_path, True))
+                accepted = self._post_ui(
+                    lambda: self._finish_gcl_config_change(current, new_path, True)
+                )
             else:
-                self._post_ui(lambda: self._finish_gcl_config_change(current, None, False))
+                accepted = self._post_ui(
+                    lambda: self._finish_gcl_config_change(current, None, False)
+                )
+            if accepted is False:
+                # UI 泵已停止，完成回调不会再执行，直接释放忙碌标志
+                self._process_busy = False
 
         self._start_process_worker(
             worker,
-            on_failure=lambda: self._sync_gcl_ui(current is not None),
+            on_failure=self._sync_gcl_ui,
             context="GCL 配置切换",
         )
 
@@ -487,7 +541,7 @@ class LukerLauncher:
             if not stopped:
                 self._on_log("[错误] 旧 GCL 进程未停止，已取消配置切换")
                 # 保留旧实例，菜单里仍能看到并重试停止
-                self._sync_gcl_ui(old_manager is not None)
+                self._sync_gcl_ui()
                 return
 
             if new_path is None:
@@ -500,18 +554,20 @@ class LukerLauncher:
                 self.gcl_process_manager = manager
                 self._on_log("[启动器] GCL 功能已启用")
 
-            self._sync_gcl_ui(new_path is not None)
+            self._sync_gcl_ui()
         finally:
             self._finish_process_action()
 
-    def _sync_gcl_ui(self, enabled: bool) -> None:
-        """同步日志窗口里的 GCL 控件状态。"""
+    def _sync_gcl_ui(self) -> None:
+        """同步日志窗口里的 GCL 控件状态；唯一入口。"""
         window = self.log_window
-        if window is not None:
-            self._post_ui(
-                lambda: window.set_gcl_enabled(enabled),
-                UI_KEY_GCL_UI,
-            )
+        if window is None:
+            return
+        enabled = self.gcl_process_manager is not None
+        self._post_ui(
+            lambda: window.set_gcl_enabled(enabled),
+            UI_KEY_GCL_UI,
+        )
 
     def _on_show_menu(self, x: int, y: int) -> None:
         if self._exiting:
@@ -572,10 +628,12 @@ class LukerLauncher:
         self._create_log_window()
         # 启动主线程 UI 队列泵，后台线程才能安全地请求界面操作
         self._ui.start()
+        # UI 泵就绪后再接收配置变更，避免完成回调被静默丢弃
+        config.add_gcl_change_callback(self._on_gcl_config_change)
         self._ensure_process_manager()
         self._create_readiness()
         self._create_tray_menu()
-        self._init_gcl_manager()
+        self._ensure_gcl_manager()
         self._create_tray_icon()
 
         self._running = True
@@ -628,20 +686,17 @@ class LukerLauncher:
             },
         )
 
-    def _init_gcl_manager(self) -> None:
-        window = self.log_window
-        if window is None:
-            return
-        if (
-            config.gcl_enabled
-            and config.gcl_bat_path
-            and config.is_valid_gcl_path(config.gcl_bat_path)
-        ):
-            self.gcl_process_manager = GCLProcessManager(config.gcl_bat_path)
-            self.gcl_process_manager.add_log_callback(self._on_gcl_log)
-            window.set_gcl_enabled(True)
-        else:
-            window.set_gcl_enabled(False)
+    def _ensure_gcl_manager(self) -> None:
+        """按当前配置创建 GCL 管理器，并统一同步一次界面状态。"""
+        path = config.gcl_bat_path
+        valid = bool(config.gcl_enabled and path and config.is_valid_gcl_path(path))
+        if not valid or path is None:
+            self.gcl_process_manager = None
+        elif self.gcl_process_manager is None:
+            manager = GCLProcessManager(path)
+            manager.add_log_callback(self._on_gcl_log)
+            self.gcl_process_manager = manager
+        self._sync_gcl_ui()
 
     def _create_tray_icon(self) -> None:
         self.tray_icon = TrayIcon(
@@ -684,12 +739,8 @@ class LukerLauncher:
             self._schedule_auto_open_browser()
 
     def _cleanup_after_mainloop(self) -> None:
-        # 与 _finish_exit 互为兜底，正常退出时这里已是幂等操作
-        self._ui.stop()
-        config.remove_gcl_change_callback(self._on_gcl_config_change)
-        self._running = False
-        if self.tray_icon:
-            self.tray_icon.stop()
+        # 与 _finish_exit 共用同一套幂等清理
+        self._shutdown()
 
     def _schedule_auto_open_browser(self) -> None:
         """延迟打开浏览器，等待 Luker 服务启动"""
