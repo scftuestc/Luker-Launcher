@@ -237,7 +237,16 @@ class TrayMenu(ctk.CTkToplevel):
         main = ctk.CTkFrame(self, fg_color=self.COLORS['card'], corner_radius=0)
         main.pack(fill="both", expand=True)
 
-        header = ctk.CTkFrame(main, fg_color="transparent")
+        self._build_menu_header(main)
+
+        items_frame = ctk.CTkFrame(main, fg_color="transparent")
+        items_frame.pack(fill="x", padx=8, pady=8)
+        self.menu_items: dict[str, MenuItem] = {}
+        self._build_menu_items(items_frame)
+        self._build_menu_footer(items_frame)
+
+    def _build_menu_header(self, parent: tk.Misc) -> None:
+        header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", padx=HEADER_PAD_X, pady=(HEADER_PAD_Y, 12))
 
         logo = ctk.CTkFrame(header, fg_color="transparent")
@@ -263,48 +272,40 @@ class TrayMenu(ctk.CTkToplevel):
             text_color=self.COLORS['text'],
         ).pack(side="left", padx=(12, 0))
 
-        ctk.CTkFrame(main, height=1, fg_color=self.COLORS['border']).pack(fill="x", padx=12)
+        ctk.CTkFrame(parent, height=1, fg_color=self.COLORS['border']).pack(fill="x", padx=12)
 
-        items_frame = ctk.CTkFrame(main, fg_color="transparent")
-        items_frame.pack(fill="x", padx=8, pady=8)
-
-        self.menu_items: dict[str, MenuItem] = {}
-
+    def _build_menu_items(self, parent: tk.Misc) -> None:
         self.menu_items['window'] = self._create_menu_item(
-            items_frame, 'window', "显示日志窗口", self._on_toggle_window
+            parent, 'window', "显示日志窗口", self._on_toggle_window
         )
 
-        ctk.CTkFrame(items_frame, height=1, fg_color=self.COLORS['border']).pack(
+        ctk.CTkFrame(parent, height=1, fg_color=self.COLORS['border']).pack(
             fill="x", padx=8, pady=6
         )
 
         # Luker 控制区域：启动/停止合并为一个动态按钮
         self.menu_items['luker_toggle'] = self._create_menu_item(
-            items_frame, 'play', "启动 Luker", self._on_luker_toggle, color=self.COLORS['success']
+            parent, 'play', "启动 Luker", self._on_luker_toggle, color=self.COLORS['success']
         )
-
         self.menu_items['restart'] = self._create_menu_item(
-            items_frame, 'refresh', "重启 Luker", self._on_restart, color=self.COLORS['accent']
+            parent, 'refresh', "重启 Luker", self._on_restart, color=self.COLORS['accent']
         )
-
         self.menu_items['luker_browser'] = self._create_menu_item(
-            items_frame, 'globe', "Luker 页面", self._on_open_browser, color=self.COLORS['info']
+            parent, 'globe', "Luker 页面", self._on_open_browser, color=self.COLORS['info']
         )
 
         # GCL 菜单项按配置动态显示
-        self._gcl_separator = ctk.CTkFrame(items_frame, height=1, fg_color=self.COLORS['border'])
-
+        self._gcl_separator = ctk.CTkFrame(parent, height=1, fg_color=self.COLORS['border'])
         self.menu_items['gcl_toggle'] = self._create_menu_item(
-            items_frame,
+            parent,
             'play',
             "启动 GCL",
             self._on_gcl_toggle,
             color=self.COLORS['success'],
             visible=False,
         )
-
         self.menu_items['gcl_browser'] = self._create_menu_item(
-            items_frame,
+            parent,
             'gcl',
             "GCL 页面",
             self._on_gcl_browser,
@@ -312,15 +313,14 @@ class TrayMenu(ctk.CTkToplevel):
             visible=False,
         )
 
-        self._bottom_separator = ctk.CTkFrame(items_frame, height=1, fg_color=self.COLORS['border'])
+    def _build_menu_footer(self, parent: tk.Misc) -> None:
+        self._bottom_separator = ctk.CTkFrame(parent, height=1, fg_color=self.COLORS['border'])
         self._bottom_separator.pack(fill="x", padx=8, pady=6)
-
         self.menu_items['settings'] = self._create_menu_item(
-            items_frame, 'settings', "设置", self._on_settings
+            parent, 'settings', "设置", self._on_settings
         )
-
         self.menu_items['exit'] = self._create_menu_item(
-            items_frame, 'power', "退出", self._on_exit, color=self.COLORS['error']
+            parent, 'power', "退出", self._on_exit, color=self.COLORS['error']
         )
 
     def _create_menu_item(

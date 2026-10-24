@@ -432,7 +432,19 @@ class SettingsWindow(ctk.CTkToplevel):
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.pack(fill="both", expand=True, padx=12, pady=12)
 
-        header = ctk.CTkFrame(inner, fg_color="transparent")
+        self._build_theme_card_header(inner, colors)
+        self._build_theme_swatches(inner, theme_id)
+        self._build_theme_card_status(inner, colors, is_selected)
+
+        def on_click(_event: tk.Event) -> None:
+            self._select_theme(theme_id)
+
+        bind_click_recursive(card, on_click)
+
+        return card
+
+    def _build_theme_card_header(self, parent: tk.Misc, colors: dict[str, str]) -> None:
+        header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 8))
 
         ctk.CTkLabel(
@@ -451,7 +463,8 @@ class SettingsWindow(ctk.CTkToplevel):
             height=20,
         ).pack(side="left", padx=(6, 0))
 
-        preview = ctk.CTkFrame(inner, fg_color="transparent")
+    def _build_theme_swatches(self, parent: tk.Misc, theme_id: str) -> None:
+        preview = ctk.CTkFrame(parent, fg_color="transparent")
         preview.pack(fill="x", pady=(0, 6))
 
         for index, color in enumerate(theme_swatch_colors(theme_id)):
@@ -468,21 +481,20 @@ class SettingsWindow(ctk.CTkToplevel):
             )
             preview.columnconfigure(index, weight=1)
 
+    def _build_theme_card_status(
+        self,
+        parent: tk.Misc,
+        colors: dict[str, str],
+        is_selected: bool,
+    ) -> None:
         ctk.CTkLabel(
-            inner,
+            parent,
             text="✓ 当前主题" if is_selected else "",
             font=ctk.CTkFont(family=self.UI_FONT, size=11),
             text_color=colors['accent'],
             height=18,
             anchor="w",
         ).pack(fill="x", pady=(4, 0))
-
-        def on_click(_event: tk.Event) -> None:
-            self._select_theme(theme_id)
-
-        bind_click_recursive(card, on_click)
-
-        return card
 
     def _select_theme(self, theme_id: str) -> None:
         if theme_id in PRESET_THEMES and theme_id != config.theme_name:
