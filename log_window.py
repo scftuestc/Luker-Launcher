@@ -43,6 +43,13 @@ logger = logging.getLogger(__name__)
 SEARCH_DEBOUNCE_MS = 250
 SEARCH_HINT_TEXT = "搜索日志..."
 
+# Luker 三态对应的状态点、文字、播放按钮和 logo 表现
+_STATUS_PRESENTATION: dict[LukerState, tuple[str, str, str, TransportIcon, str, bool]] = {
+    LukerState.READY: ('success', '运行中', 'success', 'stop', 'error', False),
+    LukerState.STARTING: ('warning', '启动中', 'warning', 'stop', 'error', True),
+    LukerState.STOPPED: ('error', '已停止', 'error', 'play', 'success', True),
+}
+
 
 class LogWindow(ctk.CTk):
     """Tk 根窗口，负责日志显示、搜索和主题切换；几何由 WindowResizer 管理。"""
@@ -60,7 +67,28 @@ class LogWindow(ctk.CTk):
         # 交给 logging 写入文件（并在日志窗口显示警告/错误）
         self.report_callback_exception = self._report_callback_exception
 
-        self.on_hide_callback = on_hide_callback
+        self._init_callbacks(on_hide_callback, on_start, on_stop, on_exit)
+        self._init_theme()
+        self._init_window()
+        self._init_runtime_state()
+
+        self._build_ui()
+        self._ui_ready = True
+        self._search_var.trace_add('write', self._on_search_change)
+        self._logs.start()
+        self._resizer.bind_events()
+
+        self._check_window_state()
+        self._start_animations()
+
+    def _init_callbacks(
+        self,
+        on_hide: Callable[[], None] | None,
+        on_start: Callable[[], None] | None,
+        on_stop: Callable[[], None] | None,
+        on_exit: Callable[[], None] | None,
+    ) -> None:
+        self.on_hide_callback = on_hide
         self.on_start_callback = on_start
         self.on_stop_callback = on_stop
         self.on_exit_callback = on_exit
@@ -76,14 +104,14 @@ class LogWindow(ctk.CTk):
         self._styled_buttons: list[tuple[ctk.CTkButton, ButtonRole]] = []
         self._ui_ready = False
 
+    def _init_theme(self) -> None:
         self.COLORS = config.get_theme_colors()
-
         config.add_theme_change_callback(self._on_theme_change)
         config.add_blur_change_callback(self._on_blur_change)
-
         self.UI_FONT = get_ui_font()
         self.MONO_FONT = get_mono_font()
 
+    def _init_window(self) -> None:
         self.withdraw()
 
         self.overrideredirect(True)
@@ -105,31 +133,21 @@ class LogWindow(ctk.CTk):
 
         self.bind('<Map>', self._on_map)
 
+    def _init_runtime_state(self) -> None:
         self._pulse_phase = 0.0
         self._glow_phase = 0.0
         self._glow_job: str | None = None
         self._pulse_job: str | None = None
 
         self._search_job: str | None = None
+        self._search_clearing = False
         self._search_focused = False
         self._search_hint: ctk.CTkLabel | None = None
         self._auto_scroll = True
 
-        self._build_ui()
-        self._ui_ready = True
-        self._search_var.trace_add('write', self._on_search_change)
-
         self._is_running = False
         self._luker_state = LukerState.STOPPED
         self._logo_is_gray = True
-
-        self._logs.start()
-
-        self._resizer.bind_events()
-
-        self._check_window_state()
-
-        self._start_animations()
 
     def _report_callback_exception(
         self,
@@ -215,8 +233,7 @@ class LogWindow(ctk.CTk):
     def _restart_glow(self) -> None:
         """窗口显示时立即接上呼吸链，不必等隐藏期间的 500ms 轮询。"""
         if self._glow_job is not None:
-            with contextlib.suppress(tk.TclError):
-                self.after_cancel(self._glow_job)
+            self._cancel_after_job(self._glow_job)
             self._glow_job = None
         self._animate_glow()
 
@@ -273,9 +290,7 @@ class LogWindow(ctk.CTk):
         if self._pulse_job is not None:
             self._cancel_after_job(self._pulse_job)
             self._pulse_job = None
-        if self._search_job is not None:
-            self._cancel_after_job(self._search_job)
-            self._search_job = None
+        self._cancel_search_job()
 
     def destroy(self) -> None:
         self._cancel_animation_jobs()
@@ -310,15 +325,40 @@ class LogWindow(ctk.CTk):
         )
         self._apply_log_source_ui()
 
-    def _build_titlebar(self, parent: tk.Misc) -> None:
-        self._titlebar = ctk.CTkFrame(
-            parent, height=52, fg_color=self.COLORS['card'], corner_radius=14
+    def _make_card(self, parent: tk.Misc, **kwargs: object) -> ctk.CTkFrame:
+        """创建主题卡片并登记背景色，避免每个调用点重复绑定。"""
+        card = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], **kwargs)
+        self._bind_theme(card, fg_color='card')
+        return card
+
+    def _make_muted_label(
+        self,
+        parent: tk.Misc,
+        text: str,
+        *,
+        size: int = 13,
+        **kwargs: object,
+    ) -> ctk.CTkLabel:
+        label = ctk.CTkLabel(
+            parent,
+            text=text,
+            font=ctk.CTkFont(family=self.UI_FONT, size=size),
+            text_color=self.COLORS['text_muted'],
+            **kwargs,
         )
+        self._bind_theme(label, text_color='text_muted')
+        return label
+
+    def _build_titlebar(self, parent: tk.Misc) -> None:
+        self._titlebar = self._make_card(parent, height=52, corner_radius=14)
         self._titlebar.pack(fill="x", pady=(0, 10))
         self._titlebar.pack_propagate(False)
-        self._bind_theme(self._titlebar, fg_color='card')
 
-        left = ctk.CTkFrame(self._titlebar, fg_color="transparent")
+        self._build_brand_area(self._titlebar)
+        self._build_window_buttons(self._titlebar)
+
+    def _build_brand_area(self, parent: tk.Misc) -> None:
+        left = ctk.CTkFrame(parent, fg_color="transparent")
         left.pack(side="left", padx=16, pady=12)
 
         logo = ctk.CTkFrame(left, fg_color="transparent")
@@ -348,7 +388,8 @@ class LogWindow(ctk.CTk):
         # Tk 鼠标事件只发给指针下的控件，不会冒泡到父控件，标题栏内可拖拽区域要各自绑定
         bind_window_drag(self, self._titlebar, left, logo, self._title_label)
 
-        right = ctk.CTkFrame(self._titlebar, fg_color="transparent")
+    def _build_window_buttons(self, parent: tk.Misc) -> None:
+        right = ctk.CTkFrame(parent, fg_color="transparent")
         right.pack(side="right", padx=10)
 
         # 日志源切换按钮（仅在 GCL 启用时显示）
@@ -397,14 +438,18 @@ class LogWindow(ctk.CTk):
         self._close_btn.pack(side="left", padx=2)
         self._register_button(self._close_btn, 'danger_ghost')
 
+    def _hide_to_tray(self) -> None:
+        """隐藏窗口并通知托盘同步可见状态。"""
+        self.hide()
+        if self.on_hide_callback:
+            self.on_hide_callback()
+
     def _on_minimize(self) -> None:
         """最小化按钮：收进系统托盘，Luker 和启动器继续运行。"""
         if not self._tray_available:
             return
 
-        self.hide()
-        if self.on_hide_callback:
-            self.on_hide_callback()
+        self._hide_to_tray()
 
     def _on_map(self, event: tk.Event) -> None:
         # 窗口显示后 DWM 不一定会重新取整，这里补一次
@@ -455,9 +500,7 @@ class LogWindow(ctk.CTk):
                 self.on_hide_callback()
             return
 
-        self.hide()
-        if self.on_hide_callback:
-            self.on_hide_callback()
+        self._hide_to_tray()
 
     def set_tray_available(self, available: bool) -> None:
         """托盘不可用时禁用最小化，避免窗口隐藏后无法恢复。"""
@@ -470,9 +513,19 @@ class LogWindow(ctk.CTk):
         self._toolbar.pack(fill="x", pady=(0, 10))
 
         left = ctk.CTkFrame(self._toolbar, fg_color="transparent")
+        self._build_toolbar_actions(left)
+        self._build_search_box(left)
 
+        right = ctk.CTkFrame(self._toolbar, fg_color="transparent")
+        right.pack(side="right")
+        self._build_status_card(right)
+
+        # 先让右侧状态卡占位，左侧再拿剩余宽度，搜索框才能随窗口拉伸
+        left.pack(side="left", fill="x", expand=True)
+
+    def _build_toolbar_actions(self, parent: tk.Misc) -> None:
         self._clear_btn = make_button(
-            left,
+            parent,
             'secondary',
             self.COLORS,
             text="清除",
@@ -488,7 +541,7 @@ class LogWindow(ctk.CTk):
         self._register_button(self._clear_btn, 'secondary')
 
         self.scroll_btn = make_button(
-            left,
+            parent,
             'secondary',
             self.COLORS,
             text="自动滚动",
@@ -503,9 +556,10 @@ class LogWindow(ctk.CTk):
         self.scroll_btn.pack(side="left", padx=(0, 8))
         self._register_button(self.scroll_btn, 'secondary')
 
+    def _build_search_box(self, parent: tk.Misc) -> None:
         # 搜索框与结果导航
         self._search_frame = ctk.CTkFrame(
-            left,
+            parent,
             fg_color=self.COLORS['card'],
             corner_radius=10,
             border_width=1,
@@ -559,15 +613,8 @@ class LogWindow(ctk.CTk):
         self._search_nav = ctk.CTkFrame(search_inner, fg_color="transparent")
         self._search_nav.pack(side="left", padx=(4, 0))
 
-        self._search_count_label = ctk.CTkLabel(
-            self._search_nav,
-            text="",
-            font=ctk.CTkFont(family=self.UI_FONT, size=11),
-            text_color=self.COLORS['text_muted'],
-            width=50,
-        )
+        self._search_count_label = self._make_muted_label(self._search_nav, "", size=11, width=50)
         self._search_count_label.pack(side="left")
-        self._bind_theme(self._search_count_label, text_color='text_muted')
 
         self._search_prev_btn = make_button(
             self._search_nav,
@@ -613,12 +660,9 @@ class LogWindow(ctk.CTk):
 
         self._search_nav.pack_forget()
 
-        right = ctk.CTkFrame(self._toolbar, fg_color="transparent")
-        right.pack(side="right")
-
-        self._status_card = ctk.CTkFrame(right, fg_color=self.COLORS['card'], corner_radius=10)
+    def _build_status_card(self, parent: tk.Misc) -> None:
+        self._status_card = self._make_card(parent, corner_radius=10)
         self._status_card.pack()
-        self._bind_theme(self._status_card, fg_color='card')
 
         inner = ctk.CTkFrame(self._status_card, fg_color="transparent")
         inner.pack(padx=16, pady=10)
@@ -650,13 +694,9 @@ class LogWindow(ctk.CTk):
         )
         self.status_text.pack(side="left")
 
-        # 先让右侧状态卡占位，左侧再拿剩余宽度，搜索框才能随窗口拉伸
-        left.pack(side="left", fill="x", expand=True)
-
     def _build_log_area(self, parent: tk.Misc) -> None:
-        self._log_card = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
+        self._log_card = self._make_card(parent, corner_radius=14)
         self._log_card.pack(fill="both", expand=True, pady=(0, 10))
-        self._bind_theme(self._log_card, fg_color='card')
 
         self.log_text = ctk.CTkTextbox(
             self._log_card,
@@ -682,30 +722,15 @@ class LogWindow(ctk.CTk):
         return self.log_text._textbox
 
     def _build_statusbar(self, parent: tk.Misc) -> None:
-        self._statusbar = ctk.CTkFrame(
-            parent, height=42, fg_color=self.COLORS['card'], corner_radius=10
-        )
+        self._statusbar = self._make_card(parent, height=42, corner_radius=10)
         self._statusbar.pack(fill="x")
         self._statusbar.pack_propagate(False)
-        self._bind_theme(self._statusbar, fg_color='card')
 
-        self.count_label = ctk.CTkLabel(
-            self._statusbar,
-            text="📝 0 条日志",
-            font=ctk.CTkFont(family=self.UI_FONT, size=13),
-            text_color=self.COLORS['text_muted'],
-        )
+        self.count_label = self._make_muted_label(self._statusbar, "📝 0 条日志")
         self.count_label.pack(side="left", padx=16, pady=10)
-        self._bind_theme(self.count_label, text_color='text_muted')
 
-        self._version_label = ctk.CTkLabel(
-            self._statusbar,
-            text=f"v{APP_VERSION}",
-            font=ctk.CTkFont(family=self.UI_FONT, size=13),
-            text_color=self.COLORS['text_muted'],
-        )
+        self._version_label = self._make_muted_label(self._statusbar, f"v{APP_VERSION}")
         self._version_label.pack(side="right", padx=16, pady=10)
-        self._bind_theme(self._version_label, text_color='text_muted')
 
     def add_log(self, line: str) -> None:
         """添加 Luker 日志。"""
@@ -742,11 +767,15 @@ class LogWindow(ctk.CTk):
         with contextlib.suppress(tk.TclError):
             self.after_cancel(job)
 
-    def _reset_log_display(self) -> None:
-        """清空文本和搜索状态，供 LogController 重建显示。"""
+    def _cancel_search_job(self) -> None:
+        """取消尚未执行的搜索防抖任务。"""
         if self._search_job is not None:
             self._cancel_after_job(self._search_job)
             self._search_job = None
+
+    def _reset_log_display(self) -> None:
+        """清空文本和搜索状态，供 LogController 重建显示。"""
+        self._cancel_search_job()
         self._search.clear_state()
 
         tb = self._get_textbox()
@@ -814,22 +843,16 @@ class LogWindow(ctk.CTk):
     def update_status(self, state: LukerState) -> None:
         self._luker_state = state
         self._is_running = state is not LukerState.STOPPED
-        if state is LukerState.READY:
-            self.status_dot.configure(text_color=self.COLORS['success'])
-            self.status_text.configure(text="运行中", text_color=self.COLORS['success'])
-            self._set_play_icon('stop', self.COLORS['error'])
-        elif state is LukerState.STARTING:
-            self.status_dot.configure(text_color=self.COLORS['warning'])
-            self.status_text.configure(text="启动中", text_color=self.COLORS['warning'])
-            self._set_play_icon('stop', self.COLORS['error'])
-            self._set_logo_stopped()
-        else:
-            self.status_dot.configure(text_color=self.COLORS['error'])
-            self.status_text.configure(text="已停止", text_color=self.COLORS['error'])
-            self._set_play_icon('play', self.COLORS['success'])
+        dot_key, text, text_key, icon, icon_key, gray_logo = _STATUS_PRESENTATION[state]
+        self.status_dot.configure(text_color=self.COLORS[dot_key])
+        self.status_text.configure(text=text, text_color=self.COLORS[text_key])
+        self._set_play_icon(icon, self.COLORS[icon_key])
+        if gray_logo:
             self._set_logo_stopped()
 
     def show(self) -> None:
+        # 从托盘恢复后不再按“系统最小化”处理，避免下一次轮询重复抢焦点
+        self._was_minimized = False
         self.deiconify()
         self.lift()
         self.focus_force()
@@ -876,9 +899,9 @@ class LogWindow(ctk.CTk):
 
     def _on_search_change(self, *args: str) -> None:
         """输入时防抖，避免每敲一个字都对全部日志重新搜索。"""
-        if self._search_job is not None:
-            self._cancel_after_job(self._search_job)
-            self._search_job = None
+        self._cancel_search_job()
+        if self._search_clearing:
+            return
 
         if not self._search_var.get().strip():
             self._search.clear_state()
@@ -909,10 +932,13 @@ class LogWindow(ctk.CTk):
         self._search.prev()
 
     def _clear_search(self) -> None:
-        """清除搜索"""
-        if self._search_job is not None:
-            self._cancel_after_job(self._search_job)
-            self._search_job = None
-        self._search_var.set("")
+        """清除搜索；变量写入的 trace 由 _search_clearing 抑制，只清一次状态。"""
+        self._cancel_search_job()
+        self._search_clearing = True
+        try:
+            self._search_var.set("")
+        finally:
+            self._search_clearing = False
         self._search.clear_state()
+        self._update_search_hint()
         self._search_entry.focus_set()

@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 from log_window import LogWindow
 
@@ -48,6 +49,17 @@ class LogWindowActionTests(unittest.TestCase):
         window._on_close()
 
         self.assertEqual(calls, ['hide_callback'])
+
+    def test_show_resets_minimized_flag(self):
+        window = object.__new__(LogWindow)
+        window._was_minimized = True
+        window._logs = SimpleNamespace(on_show=lambda: None)
+        for method in ('deiconify', 'lift', 'focus_force'):
+            setattr(window, method, lambda: None)
+
+        window.show()
+
+        self.assertFalse(window._was_minimized)
 
 
 if __name__ == '__main__':

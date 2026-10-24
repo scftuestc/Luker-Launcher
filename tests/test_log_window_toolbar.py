@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from log_window import LogWindow
@@ -178,6 +179,26 @@ class SearchHintTests(unittest.TestCase):
         window._on_search_focus_out()
         self.assertFalse(window._search_focused)
         self.assertEqual(len(window._search_hint.place_calls), 1)
+
+
+class SearchClearTests(unittest.TestCase):
+    def test_clear_search_clears_state_once(self):
+        window = object.__new__(LogWindow)
+        calls: list[str] = []
+        var = SimpleNamespace(value='luker')
+        var.get = lambda: var.value
+        var.set = lambda value: setattr(var, 'value', value)
+        window._search_job = None
+        window._search_clearing = False
+        window._search_var = var
+        window._search = SimpleNamespace(clear_state=lambda: calls.append('clear'))
+        window._search_entry = SimpleNamespace(focus_set=lambda: calls.append('focus'))
+        window._update_search_hint = lambda: calls.append('hint')
+
+        window._clear_search()
+
+        self.assertEqual(calls, ['clear', 'hint', 'focus'])
+        self.assertEqual(var.value, '')
 
 
 if __name__ == '__main__':
