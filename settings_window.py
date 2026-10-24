@@ -28,6 +28,10 @@ from win_utils import (
     sync_window_blur,
 )
 
+SETTINGS_WIDTH = 600
+SETTINGS_HEIGHT = 720
+SETTINGS_MARGIN = 16
+
 # CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
 # 旧控件树会被 root 的绑定脚本一直引用。
 _SCROLL_BINDING_SEQUENCES = (
@@ -71,9 +75,13 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._destroyed = False
         self._on_close_callback = on_close
+        self._blur_job: str | None = None
+        self._rebuild_job: str | None = None
+        self._pending_fit = False
 
         self.COLORS = config.get_theme_colors()
         self.UI_FONT = get_ui_font()
+        self.MONO_FONT = get_mono_font()
 
         self.title("设置")
         self.resizable(False, False)
@@ -85,7 +93,13 @@ class SettingsWindow(ctk.CTkToplevel):
             else get_monitor_info(hwnd=parent.winfo_id())
         )
         scale = sync_window_scaling(self, monitor.scale)
-        logical_width, logical_height = fit_logical_window_size(600, 720, monitor, scale, margin=16)
+        logical_width, logical_height = fit_logical_window_size(
+            SETTINGS_WIDTH,
+            SETTINGS_HEIGHT,
+            monitor,
+            scale,
+            margin=SETTINGS_MARGIN,
+        )
         # 高度不足时由窗口内部的滚动区域承载
         physical_width = round(logical_width * scale)
         physical_height = round(logical_height * scale)
@@ -101,7 +115,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._build_ui()
 
-        self.after(100, self._setup_blur)
+        self._blur_job = self.after(100, self._setup_blur)
 
         config.add_theme_change_callback(self._on_theme_change)
         config.add_blur_change_callback(self._on_blur_change)
@@ -117,8 +131,13 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _on_configure(self, event: tk.Event) -> None:
         # 合并拖动过程中连续的 Configure 事件，空闲时只检查一次显示器
-        if event.widget == self:
-            self.after_idle(self._fit_to_current_monitor)
+        if event.widget == self and not self._pending_fit:
+            self._pending_fit = True
+            self.after_idle(self._run_scheduled_fit)
+
+    def _run_scheduled_fit(self) -> None:
+        self._pending_fit = False
+        self._fit_to_current_monitor()
 
     def _fit_to_current_monitor(self) -> None:
         """移动到不同 DPI 的显示器后重新限制尺寸和位置。"""
@@ -132,7 +151,13 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._monitor_signature = signature
         scale = sync_window_scaling(self, monitor.scale)
-        logical_width, logical_height = fit_logical_window_size(600, 720, monitor, scale, margin=16)
+        logical_width, logical_height = fit_logical_window_size(
+            SETTINGS_WIDTH,
+            SETTINGS_HEIGHT,
+            monitor,
+            scale,
+            margin=SETTINGS_MARGIN,
+        )
         physical_width = round(logical_width * scale)
         physical_height = round(logical_height * scale)
         x, y = clamp_window_position(
@@ -147,6 +172,12 @@ class SettingsWindow(ctk.CTkToplevel):
     def _on_destroy(self, event: tk.Event) -> None:
         if event.widget == self:
             self._destroyed = True
+            for job in (self._blur_job, self._rebuild_job):
+                if job is not None:
+                    with contextlib.suppress(tk.TclError):
+                        self.after_cancel(job)
+            self._blur_job = None
+            self._rebuild_job = None
             config.remove_theme_change_callback(self._on_theme_change)
             config.remove_blur_change_callback(self._on_blur_change)
             discard_window_scaling(self)
@@ -164,6 +195,14 @@ class SettingsWindow(ctk.CTkToplevel):
             return False
 
     def _setup_blur(self) -> None:
+        self._blur_job = None
+        if self._destroyed:
+            return
+        try:
+            if not self.winfo_exists():
+                return
+        except tk.TclError:
+            return
         sync_window_blur(
             self,
             self.COLORS['bg'],
@@ -186,8 +225,12 @@ class SettingsWindow(ctk.CTkToplevel):
         if self._destroyed:
             return
         self.COLORS = new_colors
-        # 延后重建，避免在主题卡片的点击回调里销毁当前控件
-        self.after(0, self._rebuild_ui)
+        # 延后重建，避免在主题卡片的点击回调里销毁当前控件；
+        # 连续切换时只保留最后一次，避免排队多次整窗重建。
+        if self._rebuild_job is not None:
+            with contextlib.suppress(tk.TclError):
+                self.after_cancel(self._rebuild_job)
+        self._rebuild_job = self.after(0, self._rebuild_ui)
 
     def _build_ui(self) -> None:
         main = ctk.CTkFrame(self, fg_color="transparent")
@@ -235,10 +278,99 @@ class SettingsWindow(ctk.CTkToplevel):
             width=36,
             height=28,
             corner_radius=8,
+            font_family=self.UI_FONT,
             font_size=14,
             font_weight='bold',
             command=self.destroy,
         ).pack(side="right", padx=10)
+
+    def _make_switch(
+        self,
+        parent: tk.Misc,
+        *,
+        text: str,
+        command: Callable[[], None],
+        selected: bool,
+        font_size: int = 13,
+    ) -> ctk.CTkSwitch:
+        """创建统一配色的开关；文本为空时只作为右侧控件。"""
+        switch = ctk.CTkSwitch(
+            parent,
+            text=text,
+            font=ctk.CTkFont(family=self.UI_FONT, size=font_size),
+            text_color=self.COLORS['text_dim'] if text else self.COLORS['text'],
+            fg_color=self.COLORS['border'],
+            progress_color=self.COLORS['accent'],
+            button_color=self.COLORS['text'],
+            button_hover_color=self.COLORS['accent'],
+            command=command,
+        )
+        if selected:
+            switch.select()
+        return switch
+
+    def _create_switch_row(
+        self,
+        parent: tk.Misc,
+        title: str,
+        command: Callable[[], None],
+        selected: bool,
+    ) -> ctk.CTkSwitch:
+        """创建“标题 + 右侧开关”的 section 头部。"""
+        header = ctk.CTkFrame(parent, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 8))
+        ctk.CTkLabel(
+            header,
+            text=title,
+            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
+            text_color=self.COLORS['text'],
+        ).pack(side="left")
+        switch = self._make_switch(header, text="", command=command, selected=selected)
+        switch.pack(side="right")
+        return switch
+
+    def _create_section(self, parent: tk.Misc) -> tuple[ctk.CTkFrame, ctk.CTkFrame]:
+        """创建 section 外壳和内容区，统一边距。"""
+        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
+        section.pack(fill="x", pady=(0, 12))
+        inner = ctk.CTkFrame(section, fg_color="transparent")
+        inner.pack(fill="x", padx=16, pady=16)
+        return section, inner
+
+    def _create_path_row(
+        self,
+        parent: tk.Misc,
+        current_value: str,
+        command: Callable[[], None],
+    ) -> ctk.CTkLabel:
+        """创建“路径显示 + 选择按钮”行，返回可更新的路径标签。"""
+        path_row = ctk.CTkFrame(parent, fg_color="transparent")
+        path_row.pack(fill="x")
+
+        path_display = ctk.CTkFrame(path_row, fg_color=self.COLORS['bg'], corner_radius=8)
+        path_display.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        value_label = ctk.CTkLabel(
+            path_display,
+            text=current_value,
+            font=ctk.CTkFont(family=self.MONO_FONT, size=11),
+            text_color=self.COLORS['text_muted'],
+            anchor="w",
+        )
+        value_label.pack(fill="x", padx=10, pady=8)
+
+        make_button(
+            path_row,
+            'secondary',
+            self.COLORS,
+            text="📂 选择",
+            font_family=self.UI_FONT,
+            font_size=12,
+            height=32,
+            width=80,
+            command=command,
+        ).pack(side="right")
+        return value_label
 
     def _build_theme_section(self, parent: tk.Misc) -> None:
         section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
@@ -254,21 +386,14 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text'],
         ).pack(side="left")
 
-        self.blur_switch = ctk.CTkSwitch(
+        self.blur_switch = self._make_switch(
             header,
             text="毛玻璃",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
-            text_color=self.COLORS['text_dim'],
-            fg_color=self.COLORS['border'],
-            progress_color=self.COLORS['accent'],
-            button_color=self.COLORS['text'],
-            button_hover_color=self.COLORS['accent'],
             command=self._on_blur_toggle,
+            selected=config.blur_enabled,
+            font_size=12,
         )
         self.blur_switch.pack(side="right")
-
-        if config.blur_enabled:
-            self.blur_switch.select()
 
         grid = ctk.CTkFrame(section, fg_color="transparent")
         grid.pack(fill="x", padx=12, pady=(0, 16))
@@ -360,7 +485,7 @@ class SettingsWindow(ctk.CTkToplevel):
         return card
 
     def _select_theme(self, theme_id: str) -> None:
-        if theme_id in PRESET_THEMES:
+        if theme_id in PRESET_THEMES and theme_id != config.theme_name:
             config.theme_name = theme_id
 
     def _on_blur_toggle(self) -> None:
@@ -369,6 +494,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _rebuild_ui(self) -> None:
         """按当前主题重建整个设置界面，让卡片、文字和选中状态一起刷新。"""
+        self._rebuild_job = None
         if self._destroyed or not self.winfo_exists():
             return
 
@@ -383,37 +509,13 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _build_pwa_section(self, parent: tk.Misc) -> None:
         """构建 PWA 模式开关区域"""
-        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
-        section.pack(fill="x", pady=(0, 12))
-
-        inner = ctk.CTkFrame(section, fg_color="transparent")
-        inner.pack(fill="x", padx=16, pady=16)
-
-        header = ctk.CTkFrame(inner, fg_color="transparent")
-        header.pack(fill="x", pady=(0, 8))
-
-        ctk.CTkLabel(
-            header,
-            text="🌐  PWA 浏览器模式",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            text_color=self.COLORS['text'],
-        ).pack(side="left")
-
-        self.pwa_switch = ctk.CTkSwitch(
-            header,
-            text="",
-            font=ctk.CTkFont(family=self.UI_FONT, size=13),
-            text_color=self.COLORS['text'],
-            fg_color=self.COLORS['border'],
-            progress_color=self.COLORS['accent'],
-            button_color=self.COLORS['text'],
-            button_hover_color=self.COLORS['accent'],
-            command=self._on_pwa_toggle,
+        _section, inner = self._create_section(parent)
+        self.pwa_switch = self._create_switch_row(
+            inner,
+            "🌐  PWA 浏览器模式",
+            self._on_pwa_toggle,
+            config.use_pwa_mode,
         )
-        self.pwa_switch.pack(side="right")
-
-        if config.use_pwa_mode:
-            self.pwa_switch.select()
 
         ctk.CTkLabel(
             inner,
@@ -428,37 +530,13 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _build_gcl_section(self, parent: tk.Misc) -> None:
         """构建 GCL 设置区域"""
-        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
-        section.pack(fill="x", pady=(0, 12))
-
-        inner = ctk.CTkFrame(section, fg_color="transparent")
-        inner.pack(fill="x", padx=16, pady=16)
-
-        header = ctk.CTkFrame(inner, fg_color="transparent")
-        header.pack(fill="x", pady=(0, 8))
-
-        ctk.CTkLabel(
-            header,
-            text="🚀  GCL 功能",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
-            text_color=self.COLORS['text'],
-        ).pack(side="left")
-
-        self.gcl_switch = ctk.CTkSwitch(
-            header,
-            text="",
-            font=ctk.CTkFont(family=self.UI_FONT, size=13),
-            text_color=self.COLORS['text'],
-            fg_color=self.COLORS['border'],
-            progress_color=self.COLORS['accent'],
-            button_color=self.COLORS['text'],
-            button_hover_color=self.COLORS['accent'],
-            command=self._on_gcl_toggle,
+        _section, inner = self._create_section(parent)
+        self.gcl_switch = self._create_switch_row(
+            inner,
+            "🚀  GCL 功能",
+            self._on_gcl_toggle,
+            config.gcl_enabled,
         )
-        self.gcl_switch.pack(side="right")
-
-        if config.gcl_enabled:
-            self.gcl_switch.select()
 
         ctk.CTkLabel(
             inner,
@@ -478,33 +556,11 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text_dim'],
         ).pack(anchor="w", pady=(0, 6))
 
-        path_row = ctk.CTkFrame(self._gcl_path_frame, fg_color="transparent")
-        path_row.pack(fill="x")
-
-        gcl_path_display = ctk.CTkFrame(path_row, fg_color=self.COLORS['bg'], corner_radius=8)
-        gcl_path_display.pack(side="left", fill="x", expand=True, padx=(0, 8))
-
-        current_gcl_path = config.gcl_bat_path or "未设置"
-        self.gcl_path_label = ctk.CTkLabel(
-            gcl_path_display,
-            text=current_gcl_path,
-            font=ctk.CTkFont(family=get_mono_font(), size=11),
-            text_color=self.COLORS['text_muted'],
-            anchor="w",
+        self.gcl_path_label = self._create_path_row(
+            self._gcl_path_frame,
+            config.gcl_bat_path or "未设置",
+            self._select_gcl_path,
         )
-        self.gcl_path_label.pack(fill="x", padx=10, pady=8)
-
-        make_button(
-            path_row,
-            'secondary',
-            self.COLORS,
-            text="📂 选择",
-            font_family=self.UI_FONT,
-            font_size=12,
-            height=32,
-            width=80,
-            command=self._select_gcl_path,
-        ).pack(side="right")
 
         if config.gcl_enabled:
             self._gcl_path_frame.pack(fill="x")
@@ -536,11 +592,7 @@ class SettingsWindow(ctk.CTkToplevel):
             self.gcl_path_label.configure(text=path)
 
     def _build_path_section(self, parent: tk.Misc) -> None:
-        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
-        section.pack(fill="x", pady=(0, 12))
-
-        inner = ctk.CTkFrame(section, fg_color="transparent")
-        inner.pack(fill="x", padx=16, pady=16)
+        _section, inner = self._create_section(parent)
 
         ctk.CTkLabel(
             inner,
@@ -549,33 +601,11 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text'],
         ).pack(anchor="w", pady=(0, 10))
 
-        path_row = ctk.CTkFrame(inner, fg_color="transparent")
-        path_row.pack(fill="x")
-
-        path_display = ctk.CTkFrame(path_row, fg_color=self.COLORS['bg'], corner_radius=8)
-        path_display.pack(side="left", fill="x", expand=True, padx=(0, 8))
-
-        current_path = config.luker_path or "未设置"
-        self.path_label = ctk.CTkLabel(
-            path_display,
-            text=current_path,
-            font=ctk.CTkFont(family=get_mono_font(), size=11),
-            text_color=self.COLORS['text_muted'],
-            anchor="w",
+        self.path_label = self._create_path_row(
+            inner,
+            config.luker_path or "未设置",
+            self._select_path,
         )
-        self.path_label.pack(fill="x", padx=10, pady=8)
-
-        make_button(
-            path_row,
-            'secondary',
-            self.COLORS,
-            text="📂 选择",
-            font_family=self.UI_FONT,
-            font_size=12,
-            height=32,
-            width=80,
-            command=self._select_path,
-        ).pack(side="right")
 
     def _select_path(self) -> None:
         path = select_luker_path(self)

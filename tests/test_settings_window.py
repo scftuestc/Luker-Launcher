@@ -171,6 +171,71 @@ class BlurToggleTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class SettingsInteractionTests(unittest.TestCase):
+    def test_selecting_current_theme_is_a_noop(self):
+        window = object.__new__(SettingsWindow)
+        fake_config = SimpleNamespace(theme_name='summer')
+
+        with patch.object(settings_window, 'config', fake_config):
+            window._select_theme('summer')
+            self.assertEqual(fake_config.theme_name, 'summer')
+
+            window._select_theme('cloud_gray')
+            self.assertEqual(fake_config.theme_name, 'cloud_gray')
+
+            window._select_theme('not-a-theme')
+            self.assertEqual(fake_config.theme_name, 'cloud_gray')
+
+    def test_configure_events_are_coalesced(self):
+        window = object.__new__(SettingsWindow)
+        window._pending_fit = False
+        scheduled: list[object] = []
+        window.after_idle = scheduled.append
+        fitted: list[bool] = []
+        window._fit_to_current_monitor = lambda: fitted.append(True)
+        event = SimpleNamespace(widget=window)
+
+        window._on_configure(event)
+        window._on_configure(event)
+
+        self.assertEqual(scheduled, [window._run_scheduled_fit])
+        scheduled[0]()
+        self.assertEqual(fitted, [True])
+        self.assertFalse(window._pending_fit)
+
+    def test_theme_change_keeps_only_latest_rebuild(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._rebuild_job = 'old'
+        canceled: list[object] = []
+        scheduled: list[tuple[int, object]] = []
+        window.after_cancel = canceled.append
+        window.after = lambda delay, callback: scheduled.append((delay, callback)) or 'new'
+
+        window._on_theme_change({'bg': '#000000'})
+
+        self.assertEqual(window.COLORS, {'bg': '#000000'})
+        self.assertEqual(canceled, ['old'])
+        self.assertEqual(scheduled, [(0, window._rebuild_ui)])
+        self.assertEqual(window._rebuild_job, 'new')
+
+    def test_setup_blur_is_skipped_after_destroy(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = True
+        window._blur_job = 'job'
+        calls: list[bool] = []
+
+        with patch.object(
+            settings_window,
+            'sync_window_blur',
+            lambda *args, **kwargs: calls.append(True),
+        ):
+            window._setup_blur()
+
+        self.assertEqual(calls, [])
+        self.assertIsNone(window._blur_job)
+
+
 class FakeChild:
     def __init__(self, calls: list[tuple[str, ...]]) -> None:
         self.calls = calls
