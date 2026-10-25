@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import customtkinter as ctk
 
+import log_window
 from core.readiness import LukerState
 from log_window import LogWindow
 
@@ -76,15 +77,24 @@ class AnimationJobTests(unittest.TestCase):
         self.assertIsNone(window._glow_job)
         self.assertIsNone(window._pulse_job)
 
-    def test_destroy_cancels_jobs_before_teardown(self):
+    def test_destroy_cancels_jobs_stops_logs_and_unregisters_callbacks(self):
         window, canceled = self.make_window()
         window._glow_job = 'glow'
         window._pulse_job = 'pulse'
+        stopped: list[bool] = []
+        window._logs = SimpleNamespace(stop=lambda: stopped.append(True))
 
-        with patch.object(ctk.CTk, 'destroy') as destroy:
+        with (
+            patch.object(ctk.CTk, 'destroy') as destroy,
+            patch.object(log_window.config, 'remove_theme_change_callback') as remove_theme,
+            patch.object(log_window.config, 'remove_blur_change_callback') as remove_blur,
+        ):
             window.destroy()
 
         self.assertEqual(canceled, ['glow', 'pulse', 'search'])
+        self.assertEqual(stopped, [True])
+        remove_theme.assert_called_once_with(window._on_theme_change)
+        remove_blur.assert_called_once_with(window._on_blur_change)
         destroy.assert_called_once_with()
 
 

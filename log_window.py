@@ -284,6 +284,11 @@ class LogWindow(ctk.CTk):
 
     def destroy(self) -> None:
         self._cancel_animation_jobs()
+        logs = getattr(self, '_logs', None)
+        if logs is not None:
+            logs.stop()
+        config.remove_theme_change_callback(self._on_theme_change)
+        config.remove_blur_change_callback(self._on_blur_change)
         super().destroy()
 
     def _build_ui(self) -> None:
