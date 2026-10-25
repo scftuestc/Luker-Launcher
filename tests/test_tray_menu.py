@@ -2,9 +2,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import tray_menu
+import tray.menu as tray_menu
 from luker_readiness import LukerState
-from tray_menu import TrayMenu
+from tray.menu import TrayMenu
 from ui.theme import LOGO_STOPPED_COLOR
 
 

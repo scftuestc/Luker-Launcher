@@ -19,8 +19,8 @@ from path_dialogs import ensure_luker_path_configured
 from process_manager import GCLProcessManager, LukerProcessManager
 from pwa_browser import open_in_browser
 from settings_window import SettingsWindow
-from tray_icon import TrayIcon
-from tray_menu import TrayMenu
+from tray.icon import TrayIcon
+from tray.menu import TrayMenu
 from ui.dispatch import UiDispatcher
 
 logger = logging.getLogger(__name__)
