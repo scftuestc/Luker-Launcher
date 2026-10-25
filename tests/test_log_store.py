@@ -1,7 +1,7 @@
 import datetime
 import unittest
 
-from log_store import LogStore
+from log.store import LogStore
 
 
 class LogStoreTests(unittest.TestCase):

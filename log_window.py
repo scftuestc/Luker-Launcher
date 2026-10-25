@@ -12,11 +12,10 @@ from types import TracebackType
 import customtkinter as ctk
 
 from config import APP_VERSION, config
-from log_controller import LogController
-from log_display import LogDisplay
-from log_search_bar import SearchBar
-from log_store import LogEntry
-from log_tags import configure_log_tags
+from log.display import LogDisplay, configure_log_tags
+from log.pipeline import LogController
+from log.search import SearchBar
+from log.store import LogEntry
 from luker_readiness import LukerState
 from theme import (
     LOGO_GLOW_INTERVAL_MS,

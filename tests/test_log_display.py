@@ -1,6 +1,6 @@
 import unittest
 
-from log_tags import configure_log_tags, get_tag_for_line
+from log.display import configure_log_tags, get_tag_for_line
 
 
 class FakeTextbox:
