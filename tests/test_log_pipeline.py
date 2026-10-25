@@ -3,7 +3,13 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import log.pipeline
-from log.pipeline import ACTIVE_POLL_MS, BoundedLogQueue, LogController, LogReplay
+from log.pipeline import (
+    ACTIVE_POLL_MS,
+    LIVE_SEARCH_REFRESH_MS,
+    BoundedLogQueue,
+    LogController,
+    LogReplay,
+)
 
 
 class BoundedLogQueueTests(unittest.TestCase):
@@ -361,6 +367,46 @@ class LogReplayCancelTests(unittest.TestCase):
         self.assertEqual(replay.entries, [])
         self.assertEqual(replay.index, 0)
         self.assertEqual(len(replay.tail), 0)
+
+
+class LiveSearchRefreshTests(unittest.TestCase):
+    def test_live_logs_schedule_debounced_search_refresh(self):
+        fixture = make_controller(viewable=True, query=True)
+        fixture.controller.add_log("match")
+        fixture.controller.drain_once()
+
+        self.assertEqual(len(fixture.scheduled), 1)
+        delay, callback = fixture.scheduled[0]
+        self.assertEqual(delay, LIVE_SEARCH_REFRESH_MS)
+        callback()
+        self.assertEqual(fixture.reruns, [True])
+
+    def test_live_search_refresh_is_coalesced(self):
+        fixture = make_controller(viewable=True, query=True)
+        fixture.controller.add_log("first")
+        fixture.controller.drain_once()
+        fixture.controller.add_log("second")
+        fixture.controller.drain_once()
+
+        self.assertEqual(len(fixture.scheduled), 1)
+        self.assertEqual(fixture.reruns, [])
+
+    def test_live_search_refresh_skipped_without_query(self):
+        fixture = make_controller(viewable=True, query=False)
+        fixture.controller.add_log("match")
+        fixture.controller.drain_once()
+
+        self.assertEqual(fixture.scheduled, [])
+
+    def test_stop_cancels_live_search_refresh(self):
+        fixture = make_controller(viewable=True, query=True)
+        fixture.controller.add_log("match")
+        fixture.controller.drain_once()
+
+        fixture.controller.stop()
+
+        self.assertEqual(fixture.cancelled, ["job-1"])
+        self.assertIsNone(fixture.controller._search_job)
 
 
 if __name__ == "__main__":

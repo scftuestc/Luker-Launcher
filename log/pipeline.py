@@ -15,6 +15,8 @@ MAX_LOG_QUEUE_SIZE = 5000
 ACTIVE_POLL_MS = 10
 VISIBLE_POLL_MS = 100
 HIDDEN_POLL_MS = 500
+# 实时日志到达后合并搜索刷新，避免每批日志都全量扫描
+LIVE_SEARCH_REFRESH_MS = 250
 # 重放时每批插入的日志条数和让出主线程的间隔
 REPLAY_BATCH_SIZE = 200
 REPLAY_YIELD_MS = 1
@@ -186,6 +188,7 @@ class LogController:
         self._needs_rebuild = False
         self._started = False
         self._pump_job: str | None = None
+        self._search_job: str | None = None
         self._replay = LogReplay(
             schedule=schedule,
             cancel=cancel,
@@ -216,6 +219,7 @@ class LogController:
     def stop(self) -> None:
         """停止日志泵并取消当前重放。"""
         self._started = False
+        self._cancel_search_refresh()
         self._replay.cancel()
         if self._pump_job is not None:
             self._cancel(self._pump_job)
@@ -240,6 +244,7 @@ class LogController:
 
     def refresh(self) -> None:
         """清空当前显示，并按当前源的分批快照重建。"""
+        self._cancel_search_refresh()
         self._replay.cancel()
         self._reset_display()
         self._needs_rebuild = False
@@ -254,6 +259,7 @@ class LogController:
 
     def clear(self) -> None:
         """清空两个日志源的历史、队列和当前显示。"""
+        self._cancel_search_refresh()
         self._replay.cancel()
         self._reset_display()
         for store in self._stores.values():
@@ -280,6 +286,7 @@ class LogController:
 
     def on_hide(self) -> None:
         """窗口隐藏时中断重放，下次显示再重建。"""
+        self._cancel_search_refresh()
         if self._replay.active:
             self._needs_rebuild = True
         self._replay.cancel()
@@ -331,8 +338,29 @@ class LogController:
         removed_lines = self._add_entries(entries)
         if removed_lines:
             self._adjust_search(removed_lines)
+        if not self._replay.active and self._has_query():
+            self._schedule_search_refresh()
+
+    def _schedule_search_refresh(self) -> None:
+        """合并实时日志触发的搜索刷新，避免每批日志都全量扫描。"""
+        if self._search_job is not None:
+            return
+        self._search_job = self._schedule(LIVE_SEARCH_REFRESH_MS, self._run_search_refresh)
+
+    def _run_search_refresh(self) -> None:
+        self._search_job = None
+        if self._replay.active or not self._has_query():
+            return
+        self._on_search_rerun()
+
+    def _cancel_search_refresh(self) -> None:
+        if self._search_job is None:
+            return
+        self._cancel(self._search_job)
+        self._search_job = None
 
     def _on_replay_finished(self) -> None:
+        self._cancel_search_refresh()
         self._needs_rebuild = False
         if self._has_query():
             self._on_search_rerun()
