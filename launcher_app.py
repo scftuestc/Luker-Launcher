@@ -10,13 +10,12 @@ from pathlib import Path
 from threading import Thread
 from tkinter import messagebox
 
-import app_logging
+import logging_setup
 from config import config
 from core.browser import open_in_browser
 from core.readiness import LukerReadinessMonitor, LukerState
-from dialogs import show_exit_confirmation
+from dialogs import ensure_luker_path_configured, show_exit_confirmation
 from log_window import LogWindow
-from path_dialogs import ensure_luker_path_configured
 from process.managers import GCLProcessManager, LukerProcessManager
 from settings_window import SettingsWindow
 from tray.icon import TrayIcon
@@ -656,7 +655,7 @@ class LukerLauncher:
             on_exit=self._on_request_exit,
         )
         # 内部警告/错误同步到日志窗口
-        app_logging.add_ui_log_sink(self._on_log)
+        logging_setup.add_ui_log_sink(self._on_log)
 
     def _create_readiness(self) -> None:
         self._readiness = LukerReadinessMonitor(

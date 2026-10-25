@@ -7,7 +7,7 @@ from collections.abc import Callable
 import customtkinter as ctk
 
 from config import config
-from path_dialogs import select_gcl_bat_path, select_luker_path
+from dialogs import select_gcl_bat_path, select_luker_path
 from ui.buttons import make_button
 from ui.dpi import (
     centered_position,
