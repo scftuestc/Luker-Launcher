@@ -76,8 +76,16 @@ class LukerLauncher:
         self,
         callback: Callable[[], None],
         coalesce_key: str | None = None,
+        *,
+        control: bool = False,
     ) -> bool:
-        """从任意线程投递 UI 操作；返回是否被当前 UI 泵接受。"""
+        """从任意线程投递 UI 操作；返回是否被当前 UI 泵接受。
+
+        ``control=True`` 用于进程/浏览器完成等必须执行的生命周期回调，
+        这些回调不进入普通 UI 队列，不会被队列满时的丢弃策略挤掉。
+        """
+        if control:
+            return self._ui.post_control(callback)
         return self._ui.post(callback, coalesce_key)
 
     def _current_luker_state(self) -> LukerState:
@@ -183,14 +191,14 @@ class LukerLauncher:
                     server_port=config.get_server_port(),
                 )
                 manager.add_log_callback(self._on_log)
-                self._post_ui(lambda: self._adopt_process_manager(manager))
+                self._post_ui(lambda: self._adopt_process_manager(manager), control=True)
                 # 先切换 UI 持有的管理器，再启动；退出过程中不再拉起新进程
                 if not self._exiting:
                     manager.start()
                     if self._exiting and manager.is_running:
                         manager.stop()
             finally:
-                if self._post_ui(self._finish_process_action) is False:
+                if self._post_ui(self._finish_process_action, control=True) is False:
                     self._process_busy = False
 
         self._start_process_worker(worker, context="路径切换")
@@ -376,7 +384,7 @@ class LukerLauncher:
             try:
                 action(manager)
             finally:
-                if self._post_ui(self._finish_process_action) is False:
+                if self._post_ui(self._finish_process_action, control=True) is False:
                     # UI 泵已停止（通常正在退出），没有主线程来复位忙碌标志
                     self._process_busy = False
 
@@ -411,7 +419,7 @@ class LukerLauncher:
             try:
                 action(manager)
             finally:
-                if self._post_ui(self._finish_process_action) is False:
+                if self._post_ui(self._finish_process_action, control=True) is False:
                     self._process_busy = False
 
         self._start_process_worker(worker, context="GCL 进程操作")
@@ -432,7 +440,7 @@ class LukerLauncher:
             try:
                 self._open_browser_now()
             finally:
-                if self._post_ui(self._finish_browser_open) is False:
+                if self._post_ui(self._finish_browser_open, control=True) is False:
                     self._browser_busy = False
 
         try:
@@ -513,11 +521,13 @@ class LukerLauncher:
 
             if stopped:
                 accepted = self._post_ui(
-                    lambda: self._finish_gcl_config_change(current, new_path, True)
+                    lambda: self._finish_gcl_config_change(current, new_path, True),
+                    control=True,
                 )
             else:
                 accepted = self._post_ui(
-                    lambda: self._finish_gcl_config_change(current, None, False)
+                    lambda: self._finish_gcl_config_change(current, None, False),
+                    control=True,
                 )
             if accepted is False:
                 # UI 泵已停止，完成回调不会再执行，直接释放忙碌标志

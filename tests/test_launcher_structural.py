@@ -163,7 +163,7 @@ class BusyResetTests(unittest.TestCase):
         launcher._exiting = False
         launcher._ensure_process_manager = lambda: FakeManager()
         launcher._run_async = lambda func: func()
-        launcher._post_ui = lambda callback, key=None: False
+        launcher._post_ui = lambda callback, key=None, **_kwargs: False
         launcher._on_log = lambda line: None
 
         launcher._do_process_action(lambda manager: True)
@@ -175,12 +175,39 @@ class BusyResetTests(unittest.TestCase):
         launcher._browser_busy = False
         launcher._exiting = False
         launcher._run_async = lambda func: func()
-        launcher._post_ui = lambda callback, key=None: False
+        launcher._post_ui = lambda callback, key=None, **_kwargs: False
         launcher._open_browser_now = lambda: None
 
         launcher._on_open_browser()
 
         self.assertFalse(launcher._browser_busy)
+
+    def test_process_completion_uses_control_channel(self):
+        launcher = object.__new__(LukerLauncher)
+        launcher._process_busy = False
+        launcher._exiting = False
+        launcher._ensure_process_manager = lambda: FakeManager()
+        launcher._run_async = lambda func: func()
+        calls = []
+        launcher._post_ui = lambda callback, key=None, **kwargs: calls.append(kwargs) or True
+        launcher._on_log = lambda line: None
+
+        launcher._do_process_action(lambda manager: True)
+
+        self.assertEqual(calls, [{"control": True}])
+
+    def test_browser_completion_uses_control_channel(self):
+        launcher = object.__new__(LukerLauncher)
+        launcher._browser_busy = False
+        launcher._exiting = False
+        launcher._run_async = lambda func: func()
+        calls = []
+        launcher._post_ui = lambda callback, key=None, **kwargs: calls.append(kwargs) or True
+        launcher._open_browser_now = lambda: None
+
+        launcher._on_open_browser()
+
+        self.assertEqual(calls, [{"control": True}])
 
 
 if __name__ == "__main__":

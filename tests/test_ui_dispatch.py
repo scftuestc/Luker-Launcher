@@ -56,7 +56,7 @@ class UiDispatcherTests(unittest.TestCase):
         dispatcher.pump()
         self.assertEqual(calls, [1, 2])
 
-    def test_second_put_failure_is_logged(self):
+    def test_second_put_failure_is_logged_and_rejected(self):
         dispatcher = make_dispatcher(maxsize=1)
 
         with (
@@ -67,10 +67,28 @@ class UiDispatcherTests(unittest.TestCase):
             ),
             self.assertLogs("ui.dispatch", level="WARNING") as logs,
         ):
-            dispatcher.post(lambda: None)
+            accepted = dispatcher.post(lambda: None)
 
+        self.assertFalse(accepted)
         self.assertEqual(len(logs.output), 2)
         self.assertIn("新事件也被丢弃", logs.output[1])
+
+    def test_control_event_survives_full_normal_queue(self):
+        dispatcher = make_dispatcher(maxsize=1)
+        calls = []
+
+        dispatcher.post(lambda: calls.append("old"))
+        dispatcher.post_control(lambda: calls.append("control"))
+        dispatcher.post(lambda: calls.append("new"))
+        dispatcher.pump()
+
+        self.assertEqual(calls, ["control", "new"])
+
+    def test_control_event_rejected_after_stop(self):
+        dispatcher = make_dispatcher()
+        dispatcher.stop()
+
+        self.assertFalse(dispatcher.post_control(lambda: None))
 
     def test_post_ignored_after_stop(self):
         dispatcher = make_dispatcher()

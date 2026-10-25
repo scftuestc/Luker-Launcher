@@ -3,6 +3,7 @@
 import contextlib
 import logging
 import queue
+from collections import deque
 from collections.abc import Callable
 from threading import Lock
 
@@ -32,6 +33,8 @@ class UiDispatcher:
         self._events_per_tick = events_per_tick
         self._queue: queue.Queue[Callable[[], None]] = queue.Queue(maxsize=maxsize)
         self._state: dict[str, Callable[[], None]] = {}
+        # 生命周期完成回调单独排队，不参与普通事件的满时丢弃
+        self._control: deque[Callable[[], None]] = deque()
         self._lock = Lock()
         self._active = False
         self._stopped = False
@@ -42,49 +45,60 @@ class UiDispatcher:
 
     def start(self) -> None:
         """激活队列并立即开始泵；重复调用或停止后调用都不再生效。"""
-        if self._active or self._stopped:
-            return
-        self._active = True
+        with self._lock:
+            if self._active or self._stopped:
+                return
+            self._active = True
         self.pump()
 
     def stop(self) -> None:
         """停止派发并丢弃未执行的回调；停止后不可重新启动。"""
-        if self._stopped:
-            return
-        self._active = False
-        self._stopped = True
         with self._lock:
+            if self._stopped:
+                return
+            self._active = False
+            self._stopped = True
             self._state.clear()
-        while True:
-            try:
-                self._queue.get_nowait()
-            except queue.Empty:
-                break
+            self._control.clear()
+            while True:
+                try:
+                    self._queue.get_nowait()
+                except queue.Empty:
+                    break
 
     def post(self, callback: Callable[[], None], coalesce_key: str | None = None) -> bool:
         """从任意线程投递 UI 操作；返回是否被接受。
 
         UI 泵未激活或已经停止时返回 False，调用方可以据此复位忙碌标志。
         """
-        if not self._active:
-            return False
+        with self._lock:
+            if not self._active:
+                return False
 
-        if coalesce_key is not None:
-            with self._lock:
+            if coalesce_key is not None:
                 self._state[coalesce_key] = callback
-            return True
+                return True
 
-        try:
-            self._queue.put_nowait(callback)
-        except queue.Full:
-            logger.warning("UI 事件队列已满，丢弃最旧事件")
-            with contextlib.suppress(queue.Empty):
-                self._queue.get_nowait()
             try:
                 self._queue.put_nowait(callback)
             except queue.Full:
-                logger.warning("UI 事件队列已满，新事件也被丢弃")
-        return True
+                logger.warning("UI 事件队列已满，丢弃最旧事件")
+                with contextlib.suppress(queue.Empty):
+                    self._queue.get_nowait()
+                try:
+                    self._queue.put_nowait(callback)
+                except queue.Full:
+                    logger.warning("UI 事件队列已满，新事件也被丢弃")
+                    return False
+            return True
+
+    def post_control(self, callback: Callable[[], None]) -> bool:
+        """投递必须执行的生命周期完成回调；不参与普通队列的容量限制。"""
+        with self._lock:
+            if not self._active:
+                return False
+            self._control.append(callback)
+            return True
 
     def pump(self) -> None:
         """在主线程执行合并后的界面状态和有界事件队列。"""
@@ -93,8 +107,15 @@ class UiDispatcher:
 
         try:
             with self._lock:
+                pending_control = list(self._control)
+                self._control.clear()
                 pending_state = list(self._state.values())
                 self._state.clear()
+
+            for callback in pending_control:
+                if not self._active:
+                    return
+                self._run(callback)
 
             for callback in pending_state:
                 if not self._active:
@@ -112,8 +133,12 @@ class UiDispatcher:
         finally:
             if self._active:
                 # 还有积压时快速续跑，空闲时恢复轮询间隔
-                delay = 1 if not self._queue.empty() else self._poll_ms
+                delay = 1 if self._has_pending_work() else self._poll_ms
                 self._schedule(delay, self.pump)
+
+    def _has_pending_work(self) -> bool:
+        with self._lock:
+            return bool(self._control or self._state) or not self._queue.empty()
 
     @staticmethod
     def _run(callback: Callable[[], None]) -> None:
