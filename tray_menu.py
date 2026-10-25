@@ -12,9 +12,9 @@ from typing import TypedDict
 import customtkinter as ctk
 
 from config import config
-from dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
 from luker_readiness import LukerState
 from ui.buttons import make_button
+from ui.dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
 from ui.icons import MenuIcon, menu_icon
 from ui.theme import (
     LOGO_GLOW_INTERVAL_MS,
@@ -22,7 +22,7 @@ from ui.theme import (
     LOGO_STOPPED_COLOR,
     logo_bar_glow_color,
 )
-from win_utils import apply_window_rounding, get_ui_font, sync_window_blur
+from ui.window_utils import apply_window_rounding, get_ui_font, sync_window_blur
 
 logger = logging.getLogger(__name__)
 

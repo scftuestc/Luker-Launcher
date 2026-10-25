@@ -8,10 +8,10 @@ from collections.abc import Callable
 import customtkinter as ctk
 
 from config import config
-from dpi import format_geometry
 from luker_readiness import LukerState
 from ui.buttons import make_button
-from win_utils import apply_window_rounding, get_ui_font
+from ui.dpi import format_geometry
+from ui.window_utils import apply_window_rounding, get_ui_font
 
 logger = logging.getLogger(__name__)
 

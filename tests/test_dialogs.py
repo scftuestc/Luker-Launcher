@@ -1,7 +1,7 @@
 import unittest
 
 from dialogs import DIALOG_HEIGHT, DIALOG_WIDTH, dialog_position
-from dpi import format_geometry
+from ui.dpi import format_geometry
 
 
 class DialogPositionTests(unittest.TestCase):

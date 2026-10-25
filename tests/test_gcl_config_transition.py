@@ -4,7 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from launcher_app import LukerLauncher
-from ui_dispatch import UiDispatcher
+from ui.dispatch import UiDispatcher
 
 
 class FakeGCLManager:

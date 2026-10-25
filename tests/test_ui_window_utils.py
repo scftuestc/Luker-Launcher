@@ -2,8 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import win_utils
-from win_utils import bind_window_drag, hex_to_colorref, sync_window_blur
+import ui.window_utils as window_utils
+from ui.window_utils import bind_window_drag, hex_to_colorref, sync_window_blur
 
 
 class HexToColorrefTests(unittest.TestCase):
@@ -28,44 +28,44 @@ class FakeWindow:
 class BlurTests(unittest.TestCase):
     def test_enable_blur_propagates_api_failure(self):
         with (
-            patch.object(win_utils, "windll") as windll_mock,
+            patch.object(window_utils, "windll") as windll_mock,
             self.assertRaises(OSError),
         ):
             windll_mock.dwmapi.DwmSetWindowAttribute.side_effect = OSError("boom")
-            win_utils.WindowsBlur.enable_blur(1)
+            window_utils.WindowsBlur.enable_blur(1)
 
     def test_apply_blur_propagates_extend_failure(self):
         with (
-            patch.object(win_utils.WindowsBlur, "extend_frame", side_effect=OSError("boom")),
+            patch.object(window_utils.WindowsBlur, "extend_frame", side_effect=OSError("boom")),
             self.assertRaises(OSError),
         ):
-            win_utils.apply_blur(1, "#000000")
+            window_utils.apply_blur(1, "#000000")
 
     def test_apply_window_blur_reports_context(self):
         with (
-            patch.object(win_utils, "windll") as windll_mock,
-            patch.object(win_utils, "apply_blur", side_effect=OSError("boom")),
-            self.assertLogs("win_utils", level="WARNING") as logs,
+            patch.object(window_utils, "windll") as windll_mock,
+            patch.object(window_utils, "apply_blur", side_effect=OSError("boom")),
+            self.assertLogs("ui.window_utils", level="WARNING") as logs,
         ):
             windll_mock.user32.GetParent.return_value = 1
-            win_utils.apply_window_blur(FakeWindow(), "#000000", context="测试窗口")
+            window_utils.apply_window_blur(FakeWindow(), "#000000", context="测试窗口")
 
         self.assertIn("测试窗口毛玻璃失败", logs.output[0])
 
     def test_apply_window_blur_passes_arguments(self):
         with (
-            patch.object(win_utils, "windll") as windll_mock,
-            patch.object(win_utils, "apply_blur") as apply_mock,
+            patch.object(window_utils, "windll") as windll_mock,
+            patch.object(window_utils, "apply_blur") as apply_mock,
         ):
             windll_mock.user32.GetParent.return_value = 42
-            win_utils.apply_window_blur(FakeWindow(), "#112233", alpha=0xEE, context="测试")
+            window_utils.apply_window_blur(FakeWindow(), "#112233", alpha=0xEE, context="测试")
 
         apply_mock.assert_called_once_with(42, "#112233", alpha=0xEE, accent_state=4)
 
     def test_disable_blur_clears_accent_and_layered_style(self):
-        with patch.object(win_utils, "windll") as windll_mock:
+        with patch.object(window_utils, "windll") as windll_mock:
             windll_mock.user32.GetWindowLongW.return_value = 0x80008
-            win_utils.WindowsBlur.disable_blur(1)
+            window_utils.WindowsBlur.disable_blur(1)
 
         windll_mock.user32.SetWindowCompositionAttribute.assert_called_once()
         windll_mock.dwmapi.DwmExtendFrameIntoClientArea.assert_called_once()
@@ -75,16 +75,16 @@ class BlurTests(unittest.TestCase):
 
     def test_disable_window_blur_reports_context(self):
         with (
-            patch.object(win_utils, "windll") as windll_mock,
+            patch.object(window_utils, "windll") as windll_mock,
             patch.object(
-                win_utils.WindowsBlur,
+                window_utils.WindowsBlur,
                 "disable_blur",
                 side_effect=OSError("boom"),
             ),
-            self.assertLogs("win_utils", level="WARNING") as logs,
+            self.assertLogs("ui.window_utils", level="WARNING") as logs,
         ):
             windll_mock.user32.GetParent.return_value = 1
-            win_utils.disable_window_blur(FakeWindow(), context="测试窗口")
+            window_utils.disable_window_blur(FakeWindow(), context="测试窗口")
 
         self.assertIn("测试窗口关闭毛玻璃失败", logs.output[0])
 
@@ -103,9 +103,9 @@ class SyncWindowBlurTests(unittest.TestCase):
     def test_enabled_dark_background_uses_acrylic(self):
         window = FakeAlphaWindow()
         with (
-            patch.object(win_utils, 'apply_window_blur') as apply_mock,
-            patch.object(win_utils, 'disable_window_blur') as disable_mock,
-            patch.object(win_utils, 'apply_window_rounding') as rounding_mock,
+            patch.object(window_utils, 'apply_window_blur') as apply_mock,
+            patch.object(window_utils, 'disable_window_blur') as disable_mock,
+            patch.object(window_utils, 'apply_window_rounding') as rounding_mock,
         ):
             sync_window_blur(
                 window,
@@ -130,8 +130,8 @@ class SyncWindowBlurTests(unittest.TestCase):
     def test_enabled_light_background_uses_blur_behind(self):
         window = FakeAlphaWindow()
         with (
-            patch.object(win_utils, 'apply_window_blur') as apply_mock,
-            patch.object(win_utils, 'apply_window_rounding') as rounding_mock,
+            patch.object(window_utils, 'apply_window_blur') as apply_mock,
+            patch.object(window_utils, 'apply_window_rounding') as rounding_mock,
         ):
             sync_window_blur(
                 window,
@@ -153,9 +153,9 @@ class SyncWindowBlurTests(unittest.TestCase):
     def test_disabled_sets_opaque_alpha_and_disables_blur(self):
         window = FakeAlphaWindow()
         with (
-            patch.object(win_utils, 'apply_window_blur') as apply_mock,
-            patch.object(win_utils, 'disable_window_blur') as disable_mock,
-            patch.object(win_utils, 'apply_window_rounding') as rounding_mock,
+            patch.object(window_utils, 'apply_window_blur') as apply_mock,
+            patch.object(window_utils, 'disable_window_blur') as disable_mock,
+            patch.object(window_utils, 'apply_window_rounding') as rounding_mock,
         ):
             sync_window_blur(
                 window,
@@ -175,29 +175,29 @@ class WindowRoundingTests(unittest.TestCase):
     def test_skips_systems_without_corner_preference(self):
         with (
             patch.object(
-                win_utils.sys,
+                window_utils.sys,
                 'getwindowsversion',
                 return_value=SimpleNamespace(build=19045),
             ),
-            patch.object(win_utils, 'windll') as windll_mock,
+            patch.object(window_utils, 'windll') as windll_mock,
         ):
-            win_utils.apply_window_rounding(FakeWindow())
+            window_utils.apply_window_rounding(FakeWindow())
 
         windll_mock.dwmapi.DwmSetWindowAttribute.assert_not_called()
 
     def test_sets_round_preference_and_forces_frame_change(self):
         with (
             patch.object(
-                win_utils.sys,
+                window_utils.sys,
                 'getwindowsversion',
                 return_value=SimpleNamespace(build=22621),
             ),
-            patch.object(win_utils, 'windll') as windll_mock,
+            patch.object(window_utils, 'windll') as windll_mock,
         ):
             windll_mock.user32.GetParent.return_value = 42
             windll_mock.dwmapi.DwmSetWindowAttribute.return_value = 0
 
-            win_utils.apply_window_rounding(FakeWindow(), context="测试窗口")
+            window_utils.apply_window_rounding(FakeWindow(), context="测试窗口")
 
         windll_mock.dwmapi.DwmSetWindowAttribute.assert_called_once()
         hwnd, attribute, _, size = windll_mock.dwmapi.DwmSetWindowAttribute.call_args.args
@@ -211,23 +211,23 @@ class WindowRoundingTests(unittest.TestCase):
             0,
             0,
             0,
-            win_utils.WindowsBlur.SWP_FLAGS,
+            window_utils.WindowsBlur.SWP_FLAGS,
         )
 
     def test_rejected_corner_preference_is_logged(self):
         with (
             patch.object(
-                win_utils.sys,
+                window_utils.sys,
                 'getwindowsversion',
                 return_value=SimpleNamespace(build=22621),
             ),
-            patch.object(win_utils, 'windll') as windll_mock,
-            self.assertLogs('win_utils', level='WARNING') as logs,
+            patch.object(window_utils, 'windll') as windll_mock,
+            self.assertLogs('ui.window_utils', level='WARNING') as logs,
         ):
             windll_mock.user32.GetParent.return_value = 42
             windll_mock.dwmapi.DwmSetWindowAttribute.return_value = -1
 
-            win_utils.apply_window_rounding(FakeWindow(), context="测试窗口")
+            window_utils.apply_window_rounding(FakeWindow(), context="测试窗口")
 
         self.assertIn("测试窗口圆角设置被系统拒绝", logs.output[0])
         windll_mock.user32.SetWindowPos.assert_not_called()
@@ -235,16 +235,16 @@ class WindowRoundingTests(unittest.TestCase):
     def test_failure_is_logged(self):
         with (
             patch.object(
-                win_utils.sys,
+                window_utils.sys,
                 'getwindowsversion',
                 return_value=SimpleNamespace(build=22621),
             ),
-            patch.object(win_utils, 'windll') as windll_mock,
-            self.assertLogs('win_utils', level='WARNING') as logs,
+            patch.object(window_utils, 'windll') as windll_mock,
+            self.assertLogs('ui.window_utils', level='WARNING') as logs,
         ):
             windll_mock.user32.GetParent.side_effect = OSError("boom")
 
-            win_utils.apply_window_rounding(FakeWindow(), context="测试窗口")
+            window_utils.apply_window_rounding(FakeWindow(), context="测试窗口")
 
         self.assertIn("测试窗口设置圆角失败", logs.output[0])
 

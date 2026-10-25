@@ -4,7 +4,7 @@ import tkinter as tk
 
 import customtkinter as ctk
 
-from dpi import (
+from ui.dpi import (
     centered_position,
     clamp_window_position,
     fit_window_with_minimum,

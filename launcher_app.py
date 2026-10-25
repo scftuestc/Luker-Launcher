@@ -21,7 +21,7 @@ from pwa_browser import open_in_browser
 from settings_window import SettingsWindow
 from tray_icon import TrayIcon
 from tray_menu import TrayMenu
-from ui_dispatch import UiDispatcher
+from ui.dispatch import UiDispatcher
 
 logger = logging.getLogger(__name__)
 

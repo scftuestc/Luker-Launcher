@@ -2,7 +2,7 @@ import unittest
 
 import customtkinter as ctk
 
-from dpi import (
+from ui.dpi import (
     MonitorInfo,
     centered_position,
     clamp_popup_position,

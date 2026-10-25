@@ -19,6 +19,7 @@ from log.store import LogEntry
 from luker_readiness import LukerState
 from ui.buttons import ButtonRole, button_colors, make_button
 from ui.icons import TransportIcon, toolbar_icon, transport_icon
+from ui.resizing import WindowResizer
 from ui.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,
@@ -27,14 +28,13 @@ from ui.theme import (
     logo_bar_glow_color,
     shade_color,
 )
-from win_utils import (
+from ui.window_utils import (
     apply_window_rounding,
     bind_window_drag,
     get_mono_font,
     get_ui_font,
     sync_window_blur,
 )
-from window_resize import WindowResizer
 
 logger = logging.getLogger(__name__)
 

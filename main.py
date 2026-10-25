@@ -10,8 +10,8 @@ import customtkinter as ctk
 import app_logging
 import single_instance
 from config import APP_VERSION
-from dpi import get_process_dpi_awareness
 from launcher_app import LukerLauncher
+from ui.dpi import get_process_dpi_awareness
 
 logger = logging.getLogger(__name__)
 

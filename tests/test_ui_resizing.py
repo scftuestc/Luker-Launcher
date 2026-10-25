@@ -2,9 +2,9 @@ import re
 import unittest
 from unittest.mock import patch
 
-import window_resize
-from dpi import MonitorInfo
-from window_resize import WindowResizer
+import ui.resizing as resizing
+from ui.dpi import MonitorInfo
+from ui.resizing import WindowResizer
 
 
 class FakeEvent:
@@ -96,17 +96,17 @@ class FakeWindow:
 class WindowResizerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.monitor = MonitorInfo(0, 0, 1920, 1040, 96)
-        monitor_patch = patch.object(window_resize, 'get_monitor_info', return_value=self.monitor)
+        monitor_patch = patch.object(resizing, 'get_monitor_info', return_value=self.monitor)
         self.monitor_mock = monitor_patch.start()
         self.addCleanup(monitor_patch.stop)
         scale_patch = patch.object(
-            window_resize,
+            resizing,
             'sync_window_scaling',
             side_effect=lambda _window, scale: scale,
         )
         scale_patch.start()
         self.addCleanup(scale_patch.stop)
-        window_scale_patch = patch.object(window_resize, '_get_window_scale', return_value=1.0)
+        window_scale_patch = patch.object(resizing, '_get_window_scale', return_value=1.0)
         window_scale_patch.start()
         self.addCleanup(window_scale_patch.stop)
 

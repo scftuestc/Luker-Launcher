@@ -7,7 +7,9 @@ from collections.abc import Callable
 import customtkinter as ctk
 
 from config import config
-from dpi import (
+from path_dialogs import select_gcl_bat_path, select_luker_path
+from ui.buttons import make_button
+from ui.dpi import (
     centered_position,
     clamp_window_position,
     discard_window_scaling,
@@ -16,11 +18,9 @@ from dpi import (
     get_monitor_info,
     sync_window_scaling,
 )
-from path_dialogs import select_gcl_bat_path, select_luker_path
-from ui.buttons import make_button
 from ui.icons import theme_icon
 from ui.theme import PRESET_THEMES, theme_swatch_colors
-from win_utils import (
+from ui.window_utils import (
     apply_window_rounding,
     bind_window_drag,
     get_mono_font,
