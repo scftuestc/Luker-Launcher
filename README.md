@@ -104,7 +104,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 - Python 3.12（本项目以此版本开发和验证）
 - 运行依赖：`pip install -r requirements.txt`
 - 开发与检查：`pip install -r requirements-dev.txt`
-- 打包：`pip install pyinstaller==6.22.2`（与 CI 一致）
+- 打包：`pip install pyinstaller==6.22.2`（与本地发布构建一致）
 
 ### 运行
 
