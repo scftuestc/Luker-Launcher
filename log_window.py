@@ -12,11 +12,11 @@ from types import TracebackType
 import customtkinter as ctk
 
 from config import APP_VERSION, config
+from core.readiness import LukerState
 from log.display import LogDisplay, configure_log_tags
 from log.pipeline import LogController
 from log.search import SearchBar
 from log.store import LogEntry
-from luker_readiness import LukerState
 from ui.buttons import ButtonRole, button_colors, make_button
 from ui.icons import TransportIcon, toolbar_icon, transport_icon
 from ui.resizing import WindowResizer

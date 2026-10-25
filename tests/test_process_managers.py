@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from process_manager import GCLProcessManager, LukerProcessManager
+from process.managers import GCLProcessManager, LukerProcessManager
 
 
 class ProcessManagerTests(unittest.TestCase):

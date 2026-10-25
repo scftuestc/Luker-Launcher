@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import core.browser as browser
 import launcher_app
-import pwa_browser
 from launcher_app import LukerLauncher
 
 VALID_FAMILY_NAME = "127.0.0.1-test_8wekyb3d8bbwe"
@@ -15,43 +15,43 @@ VALID_FAMILY_NAME = "127.0.0.1-test_8wekyb3d8bbwe"
 class PwaTimeoutTests(unittest.TestCase):
     def test_is_appx_installed_timeout_returns_false(self):
         timeout = subprocess.TimeoutExpired("powershell", 10)
-        with patch.object(pwa_browser.subprocess, "run", side_effect=timeout):
-            self.assertFalse(pwa_browser.is_appx_installed(VALID_FAMILY_NAME))
+        with patch.object(browser.subprocess, "run", side_effect=timeout):
+            self.assertFalse(browser.is_appx_installed(VALID_FAMILY_NAME))
 
     def test_discover_luker_appx_timeout_returns_none(self):
         timeout = subprocess.TimeoutExpired("powershell", 10)
-        pwa_browser._discovered_appx = None
-        pwa_browser._discovery_checked_at = None
+        browser._discovered_appx = None
+        browser._discovery_checked_at = None
         try:
             with (
-                patch.object(pwa_browser.time, "monotonic", return_value=1000.0),
-                patch.object(pwa_browser.subprocess, "run", side_effect=timeout) as run,
+                patch.object(browser.time, "monotonic", return_value=1000.0),
+                patch.object(browser.subprocess, "run", side_effect=timeout) as run,
             ):
-                self.assertIsNone(pwa_browser.discover_luker_appx())
+                self.assertIsNone(browser.discover_luker_appx())
             run.assert_called_once()
         finally:
-            pwa_browser._discovered_appx = None
-            pwa_browser._discovery_checked_at = None
+            browser._discovered_appx = None
+            browser._discovery_checked_at = None
 
 
 class AppxFamilyNameTests(unittest.TestCase):
     def test_accepts_valid_family_name(self):
-        self.assertTrue(pwa_browser.is_valid_appx_family_name(VALID_FAMILY_NAME))
+        self.assertTrue(browser.is_valid_appx_family_name(VALID_FAMILY_NAME))
 
     def test_rejects_quotes_and_wildcards(self):
-        self.assertFalse(pwa_browser.is_valid_appx_family_name("x'; calc; #_8wekyb3d8bbwe"))
-        self.assertFalse(pwa_browser.is_valid_appx_family_name("127.0.0.1-*_8wekyb3d8bbwe"))
+        self.assertFalse(browser.is_valid_appx_family_name("x'; calc; #_8wekyb3d8bbwe"))
+        self.assertFalse(browser.is_valid_appx_family_name("127.0.0.1-*_8wekyb3d8bbwe"))
 
     def test_is_appx_installed_skips_powershell_for_invalid_name(self):
-        with patch.object(pwa_browser.subprocess, "run") as run:
-            self.assertFalse(pwa_browser.is_appx_installed("x'; calc; #"))
+        with patch.object(browser.subprocess, "run") as run:
+            self.assertFalse(browser.is_appx_installed("x'; calc; #"))
         run.assert_not_called()
 
     def test_is_appx_installed_queries_valid_name(self):
         completed = Mock()
         completed.stdout = "PackageFullName\n"
-        with patch.object(pwa_browser.subprocess, "run", return_value=completed) as run:
-            self.assertTrue(pwa_browser.is_appx_installed(VALID_FAMILY_NAME))
+        with patch.object(browser.subprocess, "run", return_value=completed) as run:
+            self.assertTrue(browser.is_appx_installed(VALID_FAMILY_NAME))
 
         command = run.call_args.args[0]
         self.assertEqual(command[0], "powershell")
@@ -60,21 +60,21 @@ class AppxFamilyNameTests(unittest.TestCase):
 
 class PwaDiscoveryTests(unittest.TestCase):
     def setUp(self) -> None:
-        pwa_browser._discovered_appx = None
-        pwa_browser._discovery_checked_at = None
+        browser._discovered_appx = None
+        browser._discovery_checked_at = None
 
     def tearDown(self) -> None:
-        pwa_browser._discovered_appx = None
-        pwa_browser._discovery_checked_at = None
+        browser._discovered_appx = None
+        browser._discovery_checked_at = None
 
     def test_first_call_runs_shortly_after_boot(self):
         completed = Mock()
         completed.stdout = ""
         with (
-            patch.object(pwa_browser.time, "monotonic", return_value=5.0),
-            patch.object(pwa_browser.subprocess, "run", return_value=completed) as run,
+            patch.object(browser.time, "monotonic", return_value=5.0),
+            patch.object(browser.subprocess, "run", return_value=completed) as run,
         ):
-            self.assertIsNone(pwa_browser.discover_luker_appx())
+            self.assertIsNone(browser.discover_luker_appx())
 
         run.assert_called_once()
 
@@ -83,15 +83,15 @@ class PwaDiscoveryTests(unittest.TestCase):
         completed.stdout = ""
         with (
             patch.object(
-                pwa_browser.time,
+                browser.time,
                 "monotonic",
                 side_effect=[1000.0, 1030.0, 1061.0],
             ),
-            patch.object(pwa_browser.subprocess, "run", return_value=completed) as run,
+            patch.object(browser.subprocess, "run", return_value=completed) as run,
         ):
-            self.assertIsNone(pwa_browser.discover_luker_appx())
-            self.assertIsNone(pwa_browser.discover_luker_appx())
-            self.assertIsNone(pwa_browser.discover_luker_appx())
+            self.assertIsNone(browser.discover_luker_appx())
+            self.assertIsNone(browser.discover_luker_appx())
+            self.assertIsNone(browser.discover_luker_appx())
 
         self.assertEqual(run.call_count, 2)
 
@@ -113,9 +113,9 @@ class PwaDiscoveryTests(unittest.TestCase):
                 ]
             )
 
-            with patch.object(pwa_browser.subprocess, "run", return_value=completed) as run:
-                first = pwa_browser.discover_luker_appx()
-                second = pwa_browser.discover_luker_appx()
+            with patch.object(browser.subprocess, "run", return_value=completed) as run:
+                first = browser.discover_luker_appx()
+                second = browser.discover_luker_appx()
 
         self.assertEqual(first, (VALID_FAMILY_NAME, "LukerApp"))
         self.assertEqual(second, first)

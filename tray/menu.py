@@ -12,7 +12,7 @@ from typing import TypedDict
 import customtkinter as ctk
 
 from config import config
-from luker_readiness import LukerState
+from core.readiness import LukerState
 from ui.buttons import make_button
 from ui.dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
 from ui.icons import MenuIcon, menu_icon

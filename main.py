@@ -8,9 +8,9 @@ from ctypes import windll
 import customtkinter as ctk
 
 import app_logging
-import single_instance
 from config import APP_VERSION
 from launcher_app import LukerLauncher
+from process import single_instance
 from ui.dpi import get_process_dpi_awareness
 
 logger = logging.getLogger(__name__)

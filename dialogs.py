@@ -8,7 +8,7 @@ from collections.abc import Callable
 import customtkinter as ctk
 
 from config import config
-from luker_readiness import LukerState
+from core.readiness import LukerState
 from ui.buttons import make_button
 from ui.dpi import format_geometry
 from ui.window_utils import apply_window_rounding, get_ui_font

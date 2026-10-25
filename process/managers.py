@@ -10,7 +10,7 @@ from threading import RLock, Thread, current_thread
 
 import psutil
 
-from win_job import assign_to_job
+from process.job import assign_to_job
 
 # 单次读取上限，避免子进程输出超长行时无限占用内存
 MAX_LOG_CHUNK = 64 * 1024

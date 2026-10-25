@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import patch
 
+from core.readiness import LukerState
 from log_window import LogWindow
-from luker_readiness import LukerState
 from ui.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,

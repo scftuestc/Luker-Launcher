@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import launcher_app
+from core.readiness import LukerState
 from launcher_app import LukerLauncher
-from luker_readiness import LukerState
 
 
 class FakeManager:

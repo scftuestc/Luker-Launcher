@@ -12,12 +12,12 @@ from tkinter import messagebox
 
 import app_logging
 from config import config
+from core.browser import open_in_browser
+from core.readiness import LukerReadinessMonitor, LukerState
 from dialogs import show_exit_confirmation
 from log_window import LogWindow
-from luker_readiness import LukerReadinessMonitor, LukerState
 from path_dialogs import ensure_luker_path_configured
-from process_manager import GCLProcessManager, LukerProcessManager
-from pwa_browser import open_in_browser
+from process.managers import GCLProcessManager, LukerProcessManager
 from settings_window import SettingsWindow
 from tray.icon import TrayIcon
 from tray.menu import TrayMenu
