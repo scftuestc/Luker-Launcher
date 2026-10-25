@@ -113,6 +113,24 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### 代码结构
+
+```text
+main.py / launcher_app.py           入口与应用协调
+config.py / logging_setup.py        配置读写与文件日志
+log_window.py / settings_window.py  主窗口与设置窗口
+dialogs.py                          退出确认与路径选择
+
+log/                                日志存储、管线、渲染与搜索
+tray/                               托盘图标与右键菜单
+ui/                                 主题、按钮、图标、窗口效果、DPI 与 UI 调度
+process/                            子进程管理、Job Object 与单实例保护
+core/                               Luker 就绪探测与浏览器启动
+tests/                              单元测试
+```
+
+依赖方向是“根窗口/协调器 → 功能包 → `ui`/`config`”。`ui.theme` 只包含主题数据与颜色数学，不反向依赖 `config`、窗口或协调器；各包的 `__init__.py` 不做 re-export，避免导入副作用和循环依赖。
+
 ### 打包
 
 ```bash
