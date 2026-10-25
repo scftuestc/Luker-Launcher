@@ -6,8 +6,8 @@ from collections.abc import Callable
 
 import customtkinter as ctk
 
-from ui_icons import toolbar_icon
-from ui_style import ButtonRole, button_colors, make_button
+from ui.buttons import ButtonRole, button_colors, make_button
+from ui.icons import toolbar_icon
 
 MAX_SEARCH_RESULTS = 5000
 SEARCH_DEBOUNCE_MS = 250

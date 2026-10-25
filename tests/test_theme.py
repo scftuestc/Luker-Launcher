@@ -1,7 +1,8 @@
 import math
 import unittest
 
-from theme import (
+from ui.icons import THEME_ICON_KINDS
+from ui.theme import (
     DEFAULT_THEME,
     LEGACY_THEME_ALIASES,
     LOGO_BAR_COLORS,
@@ -19,7 +20,6 @@ from theme import (
     shade_color,
     theme_swatch_colors,
 )
-from ui_icons import THEME_ICON_KINDS
 
 REQUIRED_COLOR_KEYS = (
     "bg",

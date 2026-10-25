@@ -1,7 +1,7 @@
 import unittest
 
-from theme import PRESET_THEMES, get_theme_colors, mix_color, shade_color
-from ui_style import button_colors
+from ui.buttons import button_colors
+from ui.theme import PRESET_THEMES, get_theme_colors, mix_color, shade_color
 
 
 class ButtonColorTests(unittest.TestCase):

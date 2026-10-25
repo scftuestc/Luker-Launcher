@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from log_window import LogWindow
 from luker_readiness import LukerState
-from theme import (
+from ui.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,
     LOGO_STOPPED_COLOR,

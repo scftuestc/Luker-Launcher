@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import tray_menu
 from luker_readiness import LukerState
-from theme import LOGO_STOPPED_COLOR
 from tray_menu import TrayMenu
+from ui.theme import LOGO_STOPPED_COLOR
 
 
 class BlurChangeTests(unittest.TestCase):

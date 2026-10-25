@@ -6,7 +6,7 @@ from typing import Literal
 
 import customtkinter as ctk
 
-from theme import mix_color, shade_color
+from ui.theme import mix_color, shade_color
 
 ButtonRole = Literal['primary', 'secondary', 'ghost', 'danger_ghost', 'danger', 'menu']
 FontWeight = Literal['normal', 'bold']

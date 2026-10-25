@@ -17,7 +17,9 @@ from log.pipeline import LogController
 from log.search import SearchBar
 from log.store import LogEntry
 from luker_readiness import LukerState
-from theme import (
+from ui.buttons import ButtonRole, button_colors, make_button
+from ui.icons import TransportIcon, toolbar_icon, transport_icon
+from ui.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,
     LOGO_STOPPED_COLOR,
@@ -25,8 +27,6 @@ from theme import (
     logo_bar_glow_color,
     shade_color,
 )
-from ui_icons import TransportIcon, toolbar_icon, transport_icon
-from ui_style import ButtonRole, button_colors, make_button
 from win_utils import (
     apply_window_rounding,
     bind_window_drag,

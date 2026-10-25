@@ -14,14 +14,14 @@ import customtkinter as ctk
 from config import config
 from dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
 from luker_readiness import LukerState
-from theme import (
+from ui.buttons import make_button
+from ui.icons import MenuIcon, menu_icon
+from ui.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,
     LOGO_STOPPED_COLOR,
     logo_bar_glow_color,
 )
-from ui_icons import MenuIcon, menu_icon
-from ui_style import make_button
 from win_utils import apply_window_rounding, get_ui_font, sync_window_blur
 
 logger = logging.getLogger(__name__)

@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from config import DEFAULT_PORT, Config
-from theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
+from ui.theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
 
 
 class ConfigTests(unittest.TestCase):

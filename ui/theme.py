@@ -19,7 +19,7 @@ ThemeColorKey = Literal[
     'info',
 ]
 
-# 主题图标使用 ui_icons 的 kind 名称（sun/moon/tree/cloud/wave/rose），不再是 emoji
+# 主题图标使用 ui.icons 的 kind 名称（sun/moon/tree/cloud/wave/rose），不再是 emoji
 PRESET_THEMES: dict[str, dict[str, str]] = {
     'summer': {
         'name': '夏日暖阳',

@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from log_window import LogWindow
-from theme import shade_color
+from ui.theme import shade_color
 
 
 class FakeButton:

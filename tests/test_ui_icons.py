@@ -1,6 +1,6 @@
 import unittest
 
-from ui_icons import (
+from ui.icons import (
     menu_icon,
     render_menu_icon,
     render_theme_icon,

@@ -10,8 +10,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
-from theme import get_theme_colors as _get_theme_colors
+from ui.theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
+from ui.theme import get_theme_colors as _get_theme_colors
 
 logger = logging.getLogger(__name__)
 

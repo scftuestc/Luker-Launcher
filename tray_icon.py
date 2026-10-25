@@ -8,7 +8,7 @@ from threading import Event, Lock, Thread, current_thread
 
 from PIL import Image, ImageDraw
 
-from theme import LOGO_BAR_COLORS
+from ui.theme import LOGO_BAR_COLORS
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@ import unittest
 
 from log_window import LogWindow
 from luker_readiness import LukerState
-from ui_style import button_colors
+from ui.buttons import button_colors
 
 COLORS = {
     'bg': '#000001',

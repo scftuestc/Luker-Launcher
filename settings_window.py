@@ -17,9 +17,9 @@ from dpi import (
     sync_window_scaling,
 )
 from path_dialogs import select_gcl_bat_path, select_luker_path
-from theme import PRESET_THEMES, theme_swatch_colors
-from ui_icons import theme_icon
-from ui_style import make_button
+from ui.buttons import make_button
+from ui.icons import theme_icon
+from ui.theme import PRESET_THEMES, theme_swatch_colors
 from win_utils import (
     apply_window_rounding,
     bind_window_drag,
