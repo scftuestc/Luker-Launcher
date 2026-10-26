@@ -548,12 +548,16 @@ class LukerLauncher:
             str(manager.luker_path) if manager is not None and manager.is_running else None
         )
         self._version_checking = True
+        self._on_log("[启动器] 正在检查 Luker 版本...")
+        failed = False
 
         def worker() -> None:
+            nonlocal failed
             try:
                 result = check_luker_versions(repo_path, running_path=running_path)
             except Exception as error:
-                logger.exception("检查 Luker 版本失败")
+                failed = True
+                logger.exception("检查 Luker 版本失败：%s", error)
                 local = read_local_version(repo_path, running_path=running_path)
                 result = VersionCheck(
                     repo_path=local.repo_path,
@@ -564,6 +568,8 @@ class LukerLauncher:
                 )
             finally:
                 self._version_checking = False
+            if not failed:
+                self._log_version_check(result)
             self._post_ui(
                 lambda: self._deliver_version_check(window, result),
                 control=True,
@@ -584,6 +590,31 @@ class LukerLauncher:
     ) -> None:
         if self.settings_window is window and window.is_alive():
             window.set_version_check(result)
+
+    def _log_version_check(self, result: VersionCheck) -> None:
+        """把检查结果显示到日志窗口。"""
+        local = result.local
+        version = local.describe or local.short_head
+        if not local.error and version:
+            branch = local.branch if local.branch and local.branch != "HEAD" else "分离 HEAD"
+            meta = " · ".join(part for part in (branch, local.date) if part)
+            line = f"[启动器] 当前版本：{version}"
+            self._on_log(f"{line} · {meta}" if meta else line)
+
+        release = result.release
+        if release is not None:
+            self._on_log(
+                f"[启动器] 最新发行版：{release.tag or release.label} · "
+                f"发布于 {release.published_at or '未知'} · 提交 {release.commit.sha}"
+            )
+
+        commit = result.commit
+        if commit is not None:
+            self._on_log(f"[启动器] 最新提交：{commit.commit.date or '未知'} · {commit.commit.sha}")
+
+        if result.error:
+            has_target = release is not None or commit is not None
+            self._on_log(f"[{'警告' if has_target else '错误'}] {result.error}")
 
     def _post_update_progress(
         self,

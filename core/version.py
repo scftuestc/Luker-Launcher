@@ -55,8 +55,6 @@ class CommitInfo:
     short_sha: str
     date: str
     subject: str
-    verification: str
-    verification_ok: bool | None
 
 
 @dataclass(frozen=True)
@@ -67,8 +65,6 @@ class TargetInfo:
     branch: str | None
     published_at: str
     commit: CommitInfo
-    tag_signature: str
-    tag_signature_ok: bool | None
     relation: Relation
     ahead: int
     behind: int
@@ -134,8 +130,6 @@ class _RemoteVersions:
     default_branch: str
     release_tag: str
     release_published_at: str
-    tag_signature: str
-    tag_signature_ok: bool | None
     release_commit: CommitInfo
     latest_commit: CommitInfo
 
@@ -254,17 +248,6 @@ def _short_sha(sha: str) -> str:
     return sha[:7] if sha else ""
 
 
-def _signature_label(verification: object) -> tuple[str, bool | None]:
-    if not isinstance(verification, dict):
-        return "未知", None
-    if verification.get("verified") is True:
-        return "已验证", True
-    reason = str(verification.get("reason") or "")
-    if reason == "unsigned":
-        return "未签名", False
-    return (f"未验证（{reason}）" if reason else "未验证"), False
-
-
 def _commit_from_api(data: object) -> CommitInfo:
     if not isinstance(data, dict):
         raise VersionError("GitHub 提交数据格式异常")
@@ -275,7 +258,6 @@ def _commit_from_api(data: object) -> CommitInfo:
             raise TypeError
         date = str(commit["committer"]["date"])[:10]
         subject = str(commit["message"]).splitlines()[0]
-        verification, verification_ok = _signature_label(commit.get("verification"))
     except (KeyError, TypeError, IndexError) as error:
         raise VersionError("GitHub 提交数据格式异常") from error
     return CommitInfo(
@@ -283,8 +265,6 @@ def _commit_from_api(data: object) -> CommitInfo:
         short_sha=_short_sha(sha),
         date=date,
         subject=subject,
-        verification=verification,
-        verification_ok=verification_ok,
     )
 
 
@@ -355,7 +335,6 @@ def _fetch_remote_versions() -> _RemoteVersions:
 
     if object_type == "tag":
         tag_data = _github_json(f"/git/tags/{object_sha}")
-        tag_signature, tag_signature_ok = _signature_label(tag_data.get("verification"))
         tag_target = tag_data.get("object")
         if not isinstance(tag_target, dict):
             raise VersionError("GitHub 标签目标格式异常")
@@ -363,7 +342,6 @@ def _fetch_remote_versions() -> _RemoteVersions:
         if not isinstance(release_commit_sha, str):
             raise VersionError("GitHub 标签没有指向有效提交")
     else:
-        tag_signature, tag_signature_ok = "轻量标签（无标签签名）", None
         release_commit_sha = object_sha
 
     release_commit = _commit_from_api(_github_json(f"/commits/{release_commit_sha}"))
@@ -378,8 +356,6 @@ def _fetch_remote_versions() -> _RemoteVersions:
         default_branch=default_branch,
         release_tag=release_tag,
         release_published_at=published_at,
-        tag_signature=tag_signature,
-        tag_signature_ok=tag_signature_ok,
         release_commit=release_commit,
         latest_commit=latest_commit,
     )
@@ -502,8 +478,6 @@ def _release_target(
         branch=None,
         published_at=remote.release_published_at,
         commit=remote.release_commit,
-        tag_signature=remote.tag_signature,
-        tag_signature_ok=remote.tag_signature_ok,
         relation=relation,
         ahead=ahead,
         behind=behind,
@@ -549,8 +523,6 @@ def _commit_target(
         branch=remote.default_branch,
         published_at="",
         commit=remote.latest_commit,
-        tag_signature="",
-        tag_signature_ok=None,
         relation=relation,
         ahead=ahead,
         behind=behind,

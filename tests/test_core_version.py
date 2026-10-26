@@ -29,15 +29,12 @@ def commit_json(
     *,
     date: str = "2026-10-01T00:00:00Z",
     message: str = "subject",
-    verified: bool = False,
-    reason: str = "unsigned",
 ) -> dict:
     return {
         "sha": sha,
         "commit": {
             "committer": {"date": date},
             "message": message,
-            "verification": {"verified": verified, "reason": reason},
         },
     }
 
@@ -66,23 +63,17 @@ def remote_versions() -> version._RemoteVersions:
         default_branch="release",
         release_tag="v2.8.0",
         release_published_at="2026-10-01",
-        tag_signature="未签名",
-        tag_signature_ok=False,
         release_commit=CommitInfo(
             sha="b" * 40,
             short_sha="bbbbbbb",
             date="2026-10-01",
             subject="release commit",
-            verification="未签名",
-            verification_ok=False,
         ),
         latest_commit=CommitInfo(
             sha="c" * 40,
             short_sha="ccccccc",
             date="2026-10-26",
             subject="latest commit",
-            verification="未签名",
-            verification_ok=False,
         ),
     )
 
@@ -99,29 +90,6 @@ class FakeResponse:
 
     def read(self, _limit: int = -1) -> bytes:
         return self.payload
-
-
-class SignatureLabelTests(unittest.TestCase):
-    def test_verified(self):
-        self.assertEqual(
-            version._signature_label({"verified": True, "reason": "valid"}),
-            ("已验证", True),
-        )
-
-    def test_unsigned(self):
-        self.assertEqual(
-            version._signature_label({"verified": False, "reason": "unsigned"}),
-            ("未签名", False),
-        )
-
-    def test_other_reason(self):
-        self.assertEqual(
-            version._signature_label({"verified": False, "reason": "bad_email"}),
-            ("未验证（bad_email）", False),
-        )
-
-    def test_missing(self):
-        self.assertEqual(version._signature_label(None), ("未知", None))
 
 
 class ShortShaTests(unittest.TestCase):
@@ -297,7 +265,7 @@ class GithubJsonTests(unittest.TestCase):
 
 
 class FetchRemoteVersionsTests(unittest.TestCase):
-    def test_annotated_tag_and_signatures(self):
+    def test_annotated_tag_resolves_release_commit(self):
         release_commit = commit_json("b" * 40, message="release commit")
         latest_commit = commit_json("c" * 40, message="latest commit")
         responses = {
@@ -307,10 +275,7 @@ class FetchRemoteVersionsTests(unittest.TestCase):
                 "published_at": "2026-10-01T07:42:14Z",
             },
             "/git/ref/tags/v2.8.0": {"object": {"type": "tag", "sha": "tagsha"}},
-            "/git/tags/tagsha": {
-                "verification": {"verified": False, "reason": "unsigned"},
-                "object": {"sha": "b" * 40},
-            },
+            "/git/tags/tagsha": {"object": {"sha": "b" * 40}},
             f"/commits/{'b' * 40}": release_commit,
             "/commits?per_page=1&sha=release": [latest_commit],
         }
@@ -321,12 +286,10 @@ class FetchRemoteVersionsTests(unittest.TestCase):
         self.assertEqual(remote.default_branch, "release")
         self.assertEqual(remote.release_tag, "v2.8.0")
         self.assertEqual(remote.release_published_at, "2026-10-01")
-        self.assertEqual(remote.tag_signature, "未签名")
-        self.assertFalse(remote.tag_signature_ok)
         self.assertEqual(remote.release_commit.sha, "b" * 40)
         self.assertEqual(remote.latest_commit.sha, "c" * 40)
 
-    def test_lightweight_tag_has_no_tag_signature(self):
+    def test_lightweight_tag_uses_commit(self):
         responses = {
             "": {"default_branch": "release"},
             "/releases/latest": {"tag_name": "v2.8.0", "published_at": "2026-10-01"},
@@ -338,8 +301,7 @@ class FetchRemoteVersionsTests(unittest.TestCase):
         with patch.object(version, "_github_payload", side_effect=responses.__getitem__):
             remote = version._fetch_remote_versions()
 
-        self.assertEqual(remote.tag_signature, "轻量标签（无标签签名）")
-        self.assertIsNone(remote.tag_signature_ok)
+        self.assertEqual(remote.release_commit.sha, "b" * 40)
 
     def test_missing_release_tag(self):
         with (
@@ -480,8 +442,10 @@ class CheckVersionsTests(unittest.TestCase):
         self.assertIn("回退", check.release.status)
         self.assertTrue(check.commit.actionable)
         self.assertIn("落后 77", check.commit.status)
-        self.assertEqual(check.release.tag_signature, "未签名")
-        self.assertEqual(check.release.commit.verification, "未签名")
+        self.assertEqual(check.release.tag, "v2.8.0")
+        self.assertEqual(check.release.published_at, "2026-10-01")
+        self.assertEqual(check.release.commit.sha, "b" * 40)
+        self.assertEqual(check.commit.commit.date, "2026-10-26")
 
     def test_up_to_date_targets_are_not_actionable(self):
         with (

@@ -35,14 +35,8 @@ SETTINGS_WIDTH = 600
 SETTINGS_HEIGHT = 720
 SETTINGS_MARGIN = 16
 
-PWA_HINT_TEXT = (
-    "PWA 浏览器模式会用 Edge 的独立应用窗口打开 Luker，没有地址栏，更像桌面客户端。"
-    "需要 Edge；如果 Luker 没有安装为 PWA，会回退到普通浏览器窗口。"
-)
-GCL_HINT_TEXT = (
-    "GCL 是可选的配套服务，通过它自己的 start.bat 启动。"
-    "开启后可在这里选择 bat 路径，并在托盘菜单中联动启停；不使用就保持关闭。"
-)
+PWA_HINT_TEXT = "用 Edge 独立窗口打开 Luker，更像桌面应用。"
+GCL_HINT_TEXT = "GCL 是可选配套服务，可在托盘菜单联动启停。"
 CLOSE_BEHAVIOR_OPTIONS = (
     ('ask', '每次询问'),
     ('tray', '隐藏到托盘'),
@@ -265,7 +259,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self._rebuild_job = self.after(0, self._rebuild_ui)
 
     def _build_ui(self) -> None:
-        self._tooltip = Tooltip(self, self.COLORS, self.UI_FONT)
+        self._tooltip = Tooltip(self, self.COLORS, self.UI_FONT, wraplength=380)
 
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=12, pady=12)
@@ -678,14 +672,14 @@ class SettingsWindow(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             inner,
-            text="🚪  关闭窗口行为",
+            text="🚪  当关闭日志窗口时",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
             text_color=self.COLORS['text'],
         ).pack(anchor="w", pady=(0, 10))
 
         self._close_behavior_var.set(config.close_behavior)
         row = ctk.CTkFrame(inner, fg_color="transparent")
-        row.pack(fill="x", pady=(0, 8))
+        row.pack(fill="x")
 
         for value, label in CLOSE_BEHAVIOR_OPTIONS:
             ctk.CTkRadioButton(
@@ -706,17 +700,6 @@ class SettingsWindow(ctk.CTkToplevel):
                 border_width_unchecked=2,
                 border_width_checked=6,
             ).pack(side="left", padx=(0, 18))
-
-        ctk.CTkLabel(
-            inner,
-            text=(
-                "隐藏到托盘会保持 Luker 运行；退出程序会停止 Luker。\n"
-                "选择“每次询问”后，每次关闭都会弹出选择框。"
-            ),
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
-            text_color=self.COLORS['text_muted'],
-            justify="left",
-        ).pack(anchor="w")
 
     def _on_close_behavior_change(self, value: str) -> None:
         config.close_behavior = value
@@ -783,28 +766,6 @@ class SettingsWindow(ctk.CTkToplevel):
             inner,
             "commit",
             "最新提交",
-        )
-
-        self._details_frame = ctk.CTkFrame(inner, fg_color="transparent")
-        self._details_frame.pack(fill="x", pady=(4, 0))
-
-        self._release_detail = ctk.CTkLabel(
-            self._details_frame,
-            text="",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
-            text_color=self.COLORS['text_dim'],
-            justify="left",
-            anchor="w",
-            wraplength=480,
-        )
-        self._commit_detail = ctk.CTkLabel(
-            self._details_frame,
-            text="",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
-            text_color=self.COLORS['text_dim'],
-            justify="left",
-            anchor="w",
-            wraplength=480,
         )
 
         actions = ctk.CTkFrame(inner, fg_color="transparent")
@@ -891,7 +852,7 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text_muted'],
             justify="left",
             anchor="w",
-            wraplength=350,
+            wraplength=400,
         )
         summary.pack(side="left", padx=(8, 0), fill="x", expand=True)
         return summary
@@ -916,15 +877,6 @@ class SettingsWindow(ctk.CTkToplevel):
         commit = check.commit if check is not None else None
         self._release_summary.configure(text=self._summary_text(release))
         self._commit_summary.configure(text=self._summary_text(commit))
-        self._release_detail.configure(text=self._detail_text(release))
-        self._commit_detail.configure(text=self._detail_text(commit))
-
-        if self._update_channel_var.get() == "commit":
-            self._release_detail.pack_forget()
-            self._commit_detail.pack(fill="x")
-        else:
-            self._commit_detail.pack_forget()
-            self._release_detail.pack(fill="x")
 
         target = self._selected_target()
         can_update = bool(
@@ -959,14 +911,9 @@ class SettingsWindow(ctk.CTkToplevel):
             return f"当前版本：无法读取（{local.error}）"
 
         branch = local.branch if local.branch and local.branch != "HEAD" else "分离 HEAD"
-        tag = f" · Tag {local.current_tag}" if local.current_tag else ""
-        lines = [
-            f"当前版本：{local.describe or local.short_head}",
-            f"分支：{branch}{tag}",
-            f"提交：{local.short_head} · {local.date}",
-        ]
-        if local.subject:
-            lines.append(local.subject)
+        meta = " · ".join(part for part in (branch, local.date) if part)
+        version = local.describe or local.short_head or "未知"
+        lines = [f"当前版本：{version} · {meta}" if meta else f"当前版本：{version}"]
         if local.dirty:
             lines.append("存在未提交的跟踪文件修改，更新已禁用。")
         if not local.path_matches:
@@ -977,40 +924,12 @@ class SettingsWindow(ctk.CTkToplevel):
     def _summary_text(target: TargetInfo | None) -> str:
         if target is None:
             return "尚未检查"
-        if target.kind == "release":
-            parts = [target.label]
-            if target.published_at:
-                parts.append(target.published_at)
-            parts.append(f"标签签名：{target.tag_signature}")
-            parts.append(f"提交签名：{target.commit.verification}")
-            return " · ".join(parts)
-        parts = [
-            target.branch or "默认分支",
-            target.commit.short_sha,
-            f"提交签名：{target.commit.verification}",
-        ]
-        return " · ".join(parts)
-
-    @staticmethod
-    def _detail_text(target: TargetInfo | None) -> str:
-        if target is None:
-            return "点击“检查更新”获取远程版本和签名信息。"
         commit = target.commit
         if target.kind == "release":
-            lines = [
-                f"Tag {target.tag or target.label} · 发布于 {target.published_at or '未知'}",
-                f"提交 {commit.short_sha} · {commit.date}",
-                commit.subject,
-                f"标签签名：{target.tag_signature}",
-                f"提交签名：{commit.verification}",
-            ]
-        else:
-            lines = [
-                f"{target.branch or '默认分支'} 分支 · 提交 {commit.short_sha} · {commit.date}",
-                commit.subject,
-                f"提交签名：{commit.verification}",
-            ]
-        return "\n".join(line for line in lines if line)
+            tag = target.tag or target.label
+            published = target.published_at or "未知"
+            return f"{tag} · 发布于 {published} · 提交 {commit.short_sha}"
+        return f"提交于 {commit.date or '未知'} · {commit.short_sha}"
 
     def _update_button_text(self, target: TargetInfo | None) -> str:
         if target is None:

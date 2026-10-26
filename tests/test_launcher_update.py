@@ -5,7 +5,9 @@ from unittest.mock import patch
 
 import launcher_app
 from core.version import (
+    CommitInfo,
     LocalVersion,
+    TargetInfo,
     UpdateProgress,
     UpdateResult,
     UpdateTarget,
@@ -76,6 +78,48 @@ TARGET = UpdateTarget(
     sha="b" * 40,
     tag="v2.8.0",
 )
+
+
+def remote_targets() -> tuple[TargetInfo, TargetInfo]:
+    release = TargetInfo(
+        kind="release",
+        label="v2.8.0",
+        tag="v2.8.0",
+        branch=None,
+        published_at="2026-10-01",
+        commit=CommitInfo(
+            sha="b" * 40,
+            short_sha="bbbbbbb",
+            date="2026-10-01",
+            subject="release commit",
+        ),
+        relation="behind",
+        ahead=0,
+        behind=3,
+        actionable=True,
+        downgrade=False,
+        status="有新发行版",
+    )
+    commit = TargetInfo(
+        kind="commit",
+        label="最新提交 ccccccc",
+        tag=None,
+        branch="release",
+        published_at="",
+        commit=CommitInfo(
+            sha="c" * 40,
+            short_sha="ccccccc",
+            date="2026-10-26",
+            subject="latest commit",
+        ),
+        relation="behind",
+        ahead=0,
+        behind=2,
+        actionable=True,
+        downgrade=False,
+        status="有新提交",
+    )
+    return release, commit
 
 
 class LauncherUpdateTests(unittest.TestCase):
@@ -149,6 +193,65 @@ class LauncherUpdateTests(unittest.TestCase):
         self.assertIsNotNone(window.check)
         self.assertIn("检查版本失败", window.check.error)
         self.assertFalse(launcher._version_checking)
+
+    def test_check_logs_release_and_commit_summary(self):
+        launcher, _, _, logs = self.make_launcher()
+        release, commit = remote_targets()
+        check = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=release,
+            commit=commit,
+        )
+        with (
+            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
+            patch.object(launcher_app, "check_luker_versions", return_value=check),
+        ):
+            self.assertTrue(launcher._request_luker_version_check())
+            launcher._ui.pump()
+
+        joined = "\n".join(logs)
+        self.assertIn("正在检查 Luker 版本", joined)
+        self.assertIn("当前版本：v2.8.0-75-g755925947 · release · 2026-10-26", joined)
+        self.assertIn(f"最新发行版：v2.8.0 · 发布于 2026-10-01 · 提交 {'b' * 40}", joined)
+        self.assertIn(f"最新提交：2026-10-26 · {'c' * 40}", joined)
+
+    def test_check_logs_error_when_no_targets(self):
+        launcher, _, _, logs = self.make_launcher()
+        check = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=None,
+            commit=None,
+            error="api failed",
+        )
+        with (
+            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
+            patch.object(launcher_app, "check_luker_versions", return_value=check),
+        ):
+            self.assertTrue(launcher._request_luker_version_check())
+            launcher._ui.pump()
+
+        self.assertIn("[错误] api failed", logs)
+
+    def test_check_logs_warning_when_fetch_fails(self):
+        launcher, _, _, logs = self.make_launcher()
+        release, commit = remote_targets()
+        check = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=release,
+            commit=commit,
+            error="fetch failed",
+        )
+        with (
+            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
+            patch.object(launcher_app, "check_luker_versions", return_value=check),
+        ):
+            self.assertTrue(launcher._request_luker_version_check())
+            launcher._ui.pump()
+
+        self.assertIn("[警告] fetch failed", logs)
 
     def test_check_is_rejected_when_busy_or_exiting(self):
         launcher, _, _, _ = self.make_launcher()

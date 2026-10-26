@@ -247,15 +247,14 @@ def make_local(**overrides) -> LocalVersion:
     return replace(base, **overrides)
 
 
-def make_commit() -> CommitInfo:
-    return CommitInfo(
+def make_commit(**overrides) -> CommitInfo:
+    base = CommitInfo(
         sha="b" * 40,
         short_sha="bbbbbbb",
         date="2026-10-01",
         subject="remote subject",
-        verification="未签名",
-        verification_ok=False,
     )
+    return replace(base, **overrides)
 
 
 def make_target(
@@ -266,7 +265,9 @@ def make_target(
     downgrade: bool = False,
     ahead: int = 0,
     behind: int = 0,
+    commit: CommitInfo | None = None,
 ) -> TargetInfo:
+    target_commit = commit or make_commit()
     if kind == "release":
         return TargetInfo(
             kind="release",
@@ -274,9 +275,7 @@ def make_target(
             tag="v2.8.0",
             branch=None,
             published_at="2026-10-01",
-            commit=make_commit(),
-            tag_signature="未签名",
-            tag_signature_ok=False,
+            commit=target_commit,
             relation=relation,
             ahead=ahead,
             behind=behind,
@@ -290,9 +289,7 @@ def make_target(
         tag=None,
         branch="release",
         published_at="",
-        commit=make_commit(),
-        tag_signature="",
-        tag_signature_ok=None,
+        commit=target_commit,
         relation=relation,
         ahead=ahead,
         behind=behind,
@@ -542,25 +539,41 @@ class UpdateUiTests(unittest.TestCase):
 
         text = window._current_text()
 
-        self.assertIn("当前版本：v2.8.0-75-g755925947", text)
-        self.assertIn("分支：release", text)
+        self.assertIn("当前版本：v2.8.0-75-g755925947 · release · 2026-10-26", text)
         self.assertIn("未提交", text)
         self.assertIn("路径已更改", text)
+        self.assertNotIn("local subject", text)
 
-    def test_summary_and_detail_include_signatures(self):
-        release = make_target("release", "behind", actionable=True)
-        commit = make_target("commit", "behind", actionable=True)
+    def test_summary_text_shows_requested_version_fields(self):
+        release = make_target(
+            "release",
+            "behind",
+            actionable=True,
+            commit=make_commit(sha="b" * 40, short_sha="bbbbbbb", date="2026-10-01"),
+        )
+        commit = make_target(
+            "commit",
+            "behind",
+            actionable=True,
+            commit=make_commit(sha="c" * 40, short_sha="ccccccc", date="2026-10-26"),
+        )
 
         release_summary = SettingsWindow._summary_text(release)
         commit_summary = SettingsWindow._summary_text(commit)
-        release_detail = SettingsWindow._detail_text(release)
-        commit_detail = SettingsWindow._detail_text(commit)
 
-        self.assertIn("标签签名：未签名", release_summary)
-        self.assertIn("提交签名：未签名", release_summary)
-        self.assertIn("release", commit_summary)
-        self.assertIn("Tag v2.8.0", release_detail)
-        self.assertIn("release 分支", commit_detail)
+        self.assertEqual(
+            release_summary,
+            "v2.8.0 · 发布于 2026-10-01 · 提交 bbbbbbb",
+        )
+        self.assertEqual(commit_summary, "提交于 2026-10-26 · ccccccc")
+        self.assertNotIn("签名", release_summary)
+        self.assertNotIn("签名", commit_summary)
+
+    def test_hints_are_short_single_sentences(self):
+        for text in (settings_window.PWA_HINT_TEXT, settings_window.GCL_HINT_TEXT):
+            self.assertNotIn("\n", text)
+            self.assertEqual(text.count("。"), 1)
+            self.assertLessEqual(len(text), 30)
 
     def test_status_text_and_color_use_progress(self):
         window = object.__new__(SettingsWindow)
