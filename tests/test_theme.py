@@ -1,3 +1,4 @@
+import colorsys
 import math
 import unittest
 
@@ -124,6 +125,14 @@ class LogoGlowColorTests(unittest.TestCase):
                     for channel in range(3)
                 ]
                 self.assertGreater(max(channel_ranges), 100)
+
+
+class LogoPaletteTests(unittest.TestCase):
+    def test_blue_and_green_bars_are_hue_separated(self):
+        def hue(rgb: tuple[int, int, int]) -> float:
+            return colorsys.rgb_to_hsv(*(channel / 255 for channel in rgb))[0] * 360
+
+        self.assertGreaterEqual(abs(hue(LOGO_BAR_RGB[2]) - hue(LOGO_BAR_RGB[3])), 35)
 
 
 class ShadeColorTests(unittest.TestCase):
