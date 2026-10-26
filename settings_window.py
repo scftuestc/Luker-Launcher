@@ -20,6 +20,7 @@ from ui.dpi import (
 )
 from ui.icons import theme_icon
 from ui.theme import PRESET_THEMES, theme_swatch_colors
+from ui.tooltip import Tooltip
 from ui.window_utils import (
     apply_window_rounding,
     bind_window_drag,
@@ -31,6 +32,15 @@ from ui.window_utils import (
 SETTINGS_WIDTH = 600
 SETTINGS_HEIGHT = 720
 SETTINGS_MARGIN = 16
+
+PWA_HINT_TEXT = (
+    "PWA 浏览器模式会用 Edge 的独立应用窗口打开 Luker，没有地址栏，更像桌面客户端。"
+    "需要 Edge；如果 Luker 没有安装为 PWA，会回退到普通浏览器窗口。"
+)
+GCL_HINT_TEXT = (
+    "GCL 是可选的配套服务，通过它自己的 start.bat 启动。"
+    "开启后可在这里选择 bat 路径，并在托盘菜单中联动启停；不使用就保持关闭。"
+)
 
 # CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
 # 旧控件树会被 root 的绑定脚本一直引用。
@@ -178,6 +188,9 @@ class SettingsWindow(ctk.CTkToplevel):
                         self.after_cancel(job)
             self._blur_job = None
             self._rebuild_job = None
+            tooltip = getattr(self, '_tooltip', None)
+            if tooltip is not None:
+                tooltip.destroy()
             config.remove_theme_change_callback(self._on_theme_change)
             config.remove_blur_change_callback(self._on_blur_change)
             discard_window_scaling(self)
@@ -233,6 +246,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self._rebuild_job = self.after(0, self._rebuild_ui)
 
     def _build_ui(self) -> None:
+        self._tooltip = Tooltip(self, self.COLORS, self.UI_FONT)
+
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=12, pady=12)
 
@@ -315,8 +330,10 @@ class SettingsWindow(ctk.CTkToplevel):
         title: str,
         command: Callable[[], None],
         selected: bool,
+        *,
+        hint: str | None = None,
     ) -> ctk.CTkSwitch:
-        """创建“标题 + 右侧开关”的 section 头部。"""
+        """创建“标题 + 右侧开关”的 section 头部；hint 为标题后的悬停说明。"""
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 8))
         ctk.CTkLabel(
@@ -325,9 +342,37 @@ class SettingsWindow(ctk.CTkToplevel):
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
             text_color=self.COLORS['text'],
         ).pack(side="left")
+        if hint is not None:
+            self._create_hint(header, hint)
         switch = self._make_switch(header, text="", command=command, selected=selected)
         switch.pack(side="right")
         return switch
+
+    def _create_hint(self, parent: tk.Misc, text: str) -> None:
+        """在标题后创建圆形问号，悬停时高亮并显示说明。"""
+        hint = ctk.CTkLabel(
+            parent,
+            text="?",
+            width=18,
+            height=18,
+            corner_radius=9,
+            fg_color=self.COLORS['card_hover'],
+            text_color=self.COLORS['text_muted'],
+            font=ctk.CTkFont(family=self.UI_FONT, size=11, weight="bold"),
+        )
+        hint.pack(side="left", padx=(6, 0))
+        self._tooltip.attach(hint, text)
+        hint.bind('<Enter>', lambda _event: self._on_hint_enter(hint), add='+')
+        hint.bind('<Leave>', lambda _event: self._on_hint_leave(hint), add='+')
+
+    def _on_hint_enter(self, hint: ctk.CTkLabel) -> None:
+        hint.configure(fg_color=self.COLORS['accent'], text_color=self.COLORS['on_accent'])
+
+    def _on_hint_leave(self, hint: ctk.CTkLabel) -> None:
+        hint.configure(
+            fg_color=self.COLORS['card_hover'],
+            text_color=self.COLORS['text_muted'],
+        )
 
     def _create_section(self, parent: tk.Misc) -> tuple[ctk.CTkFrame, ctk.CTkFrame]:
         """创建 section 外壳和内容区，统一边距。"""
@@ -527,6 +572,7 @@ class SettingsWindow(ctk.CTkToplevel):
             "🌐  PWA 浏览器模式",
             self._on_pwa_toggle,
             config.use_pwa_mode,
+            hint=PWA_HINT_TEXT,
         )
 
         ctk.CTkLabel(
@@ -548,6 +594,7 @@ class SettingsWindow(ctk.CTkToplevel):
             "🚀  GCL 功能",
             self._on_gcl_toggle,
             config.gcl_enabled,
+            hint=GCL_HINT_TEXT,
         )
 
         ctk.CTkLabel(
