@@ -405,6 +405,59 @@ class LauncherUpdateTests(unittest.TestCase):
         self.assertIsNone(launcher._version_check_cache)
         self.assertTrue(any("Luker 已重启" in line for line in logs))
 
+    def test_start_exception_after_update_reports_manual_start(self):
+        launcher, manager, window, logs = self.make_launcher()
+
+        def failing_start() -> bool:
+            manager.events.append("start")
+            raise OSError("boom")
+
+        manager.start = failing_start
+        with (
+            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
+            patch.object(launcher_app, "read_local_version", return_value=local_version()),
+            patch.object(
+                launcher_app,
+                "apply_luker_update",
+                return_value=UpdateResult(True, False, "updated", True),
+            ),
+        ):
+            self.assertTrue(launcher._apply_luker_update(TARGET))
+            launcher._ui.pump()
+
+        self.assertEqual(manager.events, ["stop", "start"])
+        self.assertEqual(window.progress[-1].level, "error")
+        self.assertIn("Luker 启动异常", window.progress[-1].message)
+        self.assertIn("请手动启动", window.progress[-1].message)
+        self.assertTrue(any("启动异常" in line for line in logs))
+        self.assertFalse(launcher._updating)
+
+    def test_rollback_start_exception_reports_manual_start(self):
+        launcher, manager, window, _ = self.make_launcher()
+
+        def failing_start() -> bool:
+            manager.events.append("start")
+            raise OSError("boom")
+
+        manager.start = failing_start
+        with (
+            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
+            patch.object(launcher_app, "read_local_version", return_value=local_version()),
+            patch.object(
+                launcher_app,
+                "apply_luker_update",
+                return_value=UpdateResult(False, True, "failed", True),
+            ),
+        ):
+            self.assertTrue(launcher._apply_luker_update(TARGET))
+            launcher._ui.pump()
+
+        self.assertEqual(manager.events, ["stop", "start"])
+        self.assertEqual(window.progress[-1].level, "error")
+        self.assertIn("原版本启动异常", window.progress[-1].message)
+        self.assertIn("请手动启动", window.progress[-1].message)
+        self.assertFalse(launcher._updating)
+
     def test_stop_failure_cancels_update(self):
         launcher, manager, window, _ = self.make_launcher()
         manager.stop_result = False
@@ -527,6 +580,31 @@ class LauncherUpdateTests(unittest.TestCase):
         self.assertEqual(manager.events, [])
         self.assertIn("路径已更改", window.progress[-1].message)
 
+    def test_preflight_git_checks_run_in_worker(self):
+        launcher, manager, window, _ = self.make_launcher()
+        pending = []
+        launcher._run_async = pending.append
+
+        with (
+            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
+            patch.object(
+                launcher_app,
+                "read_local_version",
+                return_value=local_version(dirty=True),
+            ) as read,
+        ):
+            self.assertTrue(launcher._apply_luker_update(TARGET))
+            read.assert_not_called()
+            self.assertEqual(manager.events, [])
+
+            pending[0]()
+            launcher._ui.pump()
+
+        self.assertTrue(read.called)
+        self.assertEqual(manager.events, [])
+        self.assertIn("未提交", window.progress[-1].message)
+        self.assertFalse(launcher._updating)
+
     def test_dirty_worktree_is_rejected_before_stopping(self):
         launcher, manager, window, _ = self.make_launcher()
         with (
@@ -537,11 +615,12 @@ class LauncherUpdateTests(unittest.TestCase):
                 return_value=local_version(dirty=True),
             ),
         ):
-            self.assertFalse(launcher._apply_luker_update(TARGET))
+            self.assertTrue(launcher._apply_luker_update(TARGET))
             launcher._ui.pump()
 
         self.assertEqual(manager.events, [])
         self.assertIn("未提交", window.progress[-1].message)
+        self.assertFalse(launcher._updating)
 
     def test_closed_settings_window_does_not_break_update(self):
         launcher, manager, window, _ = self.make_launcher()

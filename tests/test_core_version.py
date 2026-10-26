@@ -710,31 +710,104 @@ class ApplyUpdateTests(unittest.TestCase):
         git.assert_not_called()
 
 
+class FakeNpmProcess:
+    def __init__(
+        self,
+        returncode: int = 0,
+        stdout: str = "",
+        stderr: str = "",
+        *,
+        timeout_once: bool = False,
+    ) -> None:
+        self.pid = 4242
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.timeout_once = timeout_once
+        self.communicate_calls = 0
+        self.killed = False
+
+    def communicate(self, timeout: int | None = None):
+        self.communicate_calls += 1
+        if self.timeout_once and self.communicate_calls == 1:
+            raise subprocess.TimeoutExpired(["npm"], timeout)
+        return self.stdout, self.stderr
+
+    def kill(self) -> None:
+        self.killed = True
+
+
 class RunNpmTests(unittest.TestCase):
-    def test_uses_start_bat_compatible_command(self):
+    def test_uses_resolved_npm_path(self):
+        process = FakeNpmProcess()
+        npm = "C:/Program Files/nodejs/npm.CMD"
         with (
-            patch.object(version, "_npm_executable", return_value="npm"),
-            patch.object(version, "_run", return_value=completed()) as run,
+            patch.object(version, "_npm_executable", return_value=npm),
+            patch.object(version.subprocess, "Popen", return_value=process) as popen,
         ):
             version._run_npm(Path("C:/Luker"))
 
-        command = run.call_args.args[0]
-        self.assertEqual(command[:3], ["cmd", "/c", "npm"])
+        command = popen.call_args.args[0]
+        self.assertEqual(command[0], npm)
+        self.assertEqual(command[1], "install")
+        self.assertNotIn("cmd", [part.lower() for part in command])
         self.assertIn("--omit=dev", command)
         self.assertIn("--ignore-scripts", command)
-        self.assertEqual(run.call_args.kwargs["cwd"], Path("C:/Luker"))
+        self.assertEqual(Path(popen.call_args.kwargs["cwd"]), Path("C:/Luker"))
 
     def test_failure_raises(self):
+        process = FakeNpmProcess(returncode=1, stderr="boom")
         with (
-            patch.object(version, "_npm_executable", return_value="npm"),
-            patch.object(version, "_run", return_value=completed(1, stderr="boom")),
+            patch.object(version, "_npm_executable", return_value="npm.cmd"),
+            patch.object(version.subprocess, "Popen", return_value=process),
             self.assertRaisesRegex(VersionError, "npm install 失败"),
         ):
             version._run_npm(Path("C:/Luker"))
 
+    def test_timeout_kills_process_tree(self):
+        process = FakeNpmProcess(timeout_once=True)
+        with (
+            patch.object(version, "_npm_executable", return_value="npm.cmd"),
+            patch.object(version.subprocess, "Popen", return_value=process),
+            patch.object(version, "_terminate_process_tree") as terminate,
+            self.assertRaisesRegex(VersionError, "超时"),
+        ):
+            version._run_npm(Path("C:/Luker"))
+
+        terminate.assert_called_once_with(process.pid)
+        self.assertEqual(process.communicate_calls, 2)
+
+    def test_terminate_process_tree_uses_taskkill(self):
+        with (
+            patch.object(
+                version.shutil,
+                "which",
+                return_value="C:/Windows/System32/taskkill.exe",
+            ),
+            patch.object(version.subprocess, "run", return_value=completed()) as run,
+        ):
+            version._terminate_process_tree(1234)
+
+        command = run.call_args.args[0]
+        self.assertIn("/T", command)
+        self.assertIn("/F", command)
+        self.assertIn("1234", command)
+
     def test_missing_npm_raises(self):
         with (
             patch.object(version, "_npm_executable", return_value=None),
+            self.assertRaisesRegex(VersionError, "未找到 npm"),
+        ):
+            version._run_npm(Path("C:/Luker"))
+
+    def test_popen_missing_raises(self):
+        with (
+            patch.object(version, "_npm_executable", return_value="npm.cmd"),
+            patch.object(
+                version.subprocess,
+                "Popen",
+                side_effect=FileNotFoundError("missing"),
+            ),
             self.assertRaisesRegex(VersionError, "未找到 npm"),
         ):
             version._run_npm(Path("C:/Luker"))

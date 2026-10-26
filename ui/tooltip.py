@@ -10,6 +10,22 @@ from ui.dpi import MonitorInfo, get_monitor_info
 
 logger = logging.getLogger(__name__)
 
+TOOLTIP_MARGIN = 8
+TOOLTIP_PADDING = 20
+
+
+def tooltip_wraplength(
+    preferred: int,
+    monitor: MonitorInfo,
+    *,
+    margin: int = TOOLTIP_MARGIN,
+    padding: int = TOOLTIP_PADDING,
+) -> int:
+    """按工作区宽度限制提示文字换行宽度，避免提示框横向溢出。"""
+    physical = monitor.width - 2 * margin - padding
+    available = max(40, int(physical / max(monitor.scale, 1.0)))
+    return min(preferred, available)
+
 
 def tooltip_position(
     anchor: tuple[int, int, int, int],
@@ -70,9 +86,12 @@ class Tooltip:
         if window is None or label is None:
             return
 
-        label.configure(text=text)
-        window.update_idletasks()
         monitor = get_monitor_info(hwnd=self._master.winfo_id())
+        label.configure(
+            text=text,
+            wraplength=tooltip_wraplength(self._wraplength, monitor),
+        )
+        window.update_idletasks()
         x, y = tooltip_position(
             (
                 widget.winfo_rootx(),

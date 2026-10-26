@@ -17,6 +17,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
+import psutil
+
 logger = logging.getLogger(__name__)
 
 LUKER_REPO = "funnycups/Luker"
@@ -28,8 +30,8 @@ GIT_FETCH_TIMEOUT = 120
 NPM_TIMEOUT = 600
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 NPM_INSTALL_ARGS = (
-    "npm",
     "install",
     "--no-save",
     "--no-audit",
@@ -606,11 +608,89 @@ def check_luker_versions(
     )
 
 
+def _terminate_process_tree(pid: int) -> None:
+    """超时后强制结束 npm 及其 Node 子进程，避免残留进程继续改 node_modules。"""
+    taskkill = shutil.which("taskkill")
+    if taskkill is not None:
+        try:
+            result = subprocess.run(
+                [taskkill, "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+                creationflags=CREATE_NO_WINDOW,
+                check=False,
+            )
+            if result.returncode == 0:
+                return
+        except (OSError, subprocess.TimeoutExpired):
+            logger.debug("taskkill 终止 npm 进程树失败", exc_info=True)
+
+    # taskkill 不可用或失败时，用 psutil 兜底清理整棵进程树
+    try:
+        parent = psutil.Process(pid)
+        children = parent.children(recursive=True)
+        for child in children:
+            with contextlib.suppress(psutil.Error):
+                child.kill()
+        with contextlib.suppress(psutil.Error):
+            parent.kill()
+        psutil.wait_procs([*children, parent], timeout=5)
+    except psutil.Error:
+        logger.debug("psutil 终止 npm 进程树失败", exc_info=True)
+
+
+def _run_npm_process(command: list[str], repo: Path) -> subprocess.CompletedProcess[str]:
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=str(repo),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
+        )
+    except FileNotFoundError as error:
+        raise VersionError("未找到 npm，无法安装依赖") from error
+    except OSError as error:
+        raise VersionError(f"执行 npm 失败：{error}") from error
+
+    try:
+        stdout, stderr = process.communicate(timeout=NPM_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        _terminate_process_tree(process.pid)
+        try:
+            process.communicate(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            with contextlib.suppress(OSError):
+                process.kill()
+            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                process.communicate(timeout=5)
+        raise VersionError(
+            f"npm install 超时（{NPM_TIMEOUT // 60} 分钟），已终止 npm 及其子进程"
+        ) from None
+    except OSError as error:
+        _terminate_process_tree(process.pid)
+        raise VersionError(f"执行 npm 失败：{error}") from error
+
+    return subprocess.CompletedProcess(
+        command,
+        process.returncode if process.returncode is not None else -1,
+        stdout,
+        stderr,
+    )
+
+
 def _run_npm(repo: Path) -> None:
-    if _npm_executable() is None:
+    npm = _npm_executable()
+    if npm is None:
         raise VersionError("未找到 npm，无法安装依赖")
-    command = ["cmd", "/c", *NPM_INSTALL_ARGS]
-    result = _run(command, cwd=repo, timeout=NPM_TIMEOUT)
+    command = [npm, *NPM_INSTALL_ARGS]
+    result = _run_npm_process(command, repo)
     if result.returncode != 0:
         detail = _cut(result.stderr or result.stdout)
         raise VersionError(f"npm install 失败：{detail}" if detail else "npm install 失败")

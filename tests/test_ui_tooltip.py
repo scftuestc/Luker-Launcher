@@ -1,7 +1,7 @@
 import unittest
 
 from ui.dpi import MonitorInfo
-from ui.tooltip import Tooltip, tooltip_position
+from ui.tooltip import Tooltip, tooltip_position, tooltip_wraplength
 
 MONITOR = MonitorInfo(0, 0, 1920, 1080, 96)
 COLORS = {
@@ -36,6 +36,21 @@ class TooltipPositionTests(unittest.TestCase):
 
         self.assertGreaterEqual(x, 8)
         self.assertGreaterEqual(y, 8)
+
+    def test_wraplength_is_capped_to_small_work_area(self):
+        monitor = MonitorInfo(0, 0, 120, 80, 96)
+
+        self.assertEqual(tooltip_wraplength(380, monitor), 84)
+        self.assertEqual(tooltip_wraplength(380, MONITOR), 380)
+
+    def test_wraplength_accounts_for_dpi_scaling(self):
+        monitor = MonitorInfo(0, 0, 192, 80, 144)
+
+        self.assertEqual(tooltip_wraplength(380, monitor), 104)
+        self.assertEqual(
+            tooltip_wraplength(380, MonitorInfo(0, 0, 120, 80, 144)),
+            56,
+        )
 
 
 class FakeWidget:

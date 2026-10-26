@@ -670,6 +670,15 @@ class LukerLauncher:
         if self.settings_window is window and window.is_alive():
             window.set_update_progress(progress)
 
+    @staticmethod
+    def _start_luker_safely(manager: LukerProcessManager) -> str | None:
+        """启动 Luker；返回 None 表示成功，否则返回可展示的失败原因。"""
+        try:
+            return None if manager.start() else "启动失败"
+        except Exception as error:
+            logger.exception("更新后启动 Luker 失败")
+            return f"启动异常：{error}"
+
     def _apply_luker_update(self, target: UpdateTarget) -> bool:
         """停止 Luker、切换版本、安装依赖并按原状态重启。"""
         if self._updating or self._process_busy or self._version_checking or self._exiting:
@@ -705,34 +714,6 @@ class LukerLauncher:
             )
             return False
 
-        local = read_local_version(str(manager.luker_path))
-        if local.error:
-            self._post_update_progress(
-                window,
-                UpdateProgress("error", local.error, "error", False),
-                control=True,
-            )
-            return False
-        if not local.npm_available:
-            self._post_update_progress(
-                window,
-                UpdateProgress("error", "未找到 npm，无法安装依赖", "error", False),
-                control=True,
-            )
-            return False
-        if local.dirty:
-            self._post_update_progress(
-                window,
-                UpdateProgress(
-                    "error",
-                    "检测到未提交的修改，已取消更新",
-                    "warning",
-                    False,
-                ),
-                control=True,
-            )
-            return False
-
         active_manager = manager
         was_running = manager.is_running
         self._updating = True
@@ -741,6 +722,39 @@ class LukerLauncher:
 
         def worker() -> None:
             try:
+                self._post_update_progress(
+                    window,
+                    UpdateProgress("checking", "正在检查更新条件...", "info", True),
+                )
+                local = read_local_version(str(active_manager.luker_path))
+                if local.error:
+                    message = local.error
+                    self._on_log(f"[错误] {message}")
+                    self._post_update_progress(
+                        window,
+                        UpdateProgress("error", message, "error", False),
+                        control=True,
+                    )
+                    return
+                if not local.npm_available:
+                    message = "未找到 npm，无法安装依赖"
+                    self._on_log(f"[错误] {message}")
+                    self._post_update_progress(
+                        window,
+                        UpdateProgress("error", message, "error", False),
+                        control=True,
+                    )
+                    return
+                if local.dirty:
+                    message = "检测到未提交的修改，已取消更新"
+                    self._on_log(f"[警告] {message}")
+                    self._post_update_progress(
+                        window,
+                        UpdateProgress("error", message, "warning", False),
+                        control=True,
+                    )
+                    return
+
                 if was_running:
                     self._on_log("[启动器] 正在停止 Luker 以更新版本...")
                     self._post_update_progress(
@@ -786,8 +800,9 @@ class LukerLauncher:
                         window,
                         UpdateProgress("restarting", "正在重启 Luker...", "info", True),
                     )
-                    if not active_manager.start():
-                        message = f"{result.message}，但 Luker 启动失败，请手动启动"
+                    start_error = self._start_luker_safely(active_manager)
+                    if start_error is not None:
+                        message = f"{result.message}，但 Luker {start_error}，请手动启动"
                         self._on_log(f"[错误] {message}")
                         self._post_update_progress(
                             window,
@@ -819,8 +834,9 @@ class LukerLauncher:
                         window,
                         UpdateProgress("restarting", "正在恢复原版本...", "warning", True),
                     )
-                    if not active_manager.start():
-                        message = f"{result.message}；原版本启动失败，请手动启动"
+                    start_error = self._start_luker_safely(active_manager)
+                    if start_error is not None:
+                        message = f"{result.message}；原版本{start_error}，请手动启动"
                         self._on_log(f"[错误] {message}")
                         self._post_update_progress(
                             window,
