@@ -216,7 +216,11 @@ def _parse_hex_color(color: str) -> tuple[int, int, int] | None:
 
 
 def is_light_color(color: str) -> bool:
-    """判断 #RRGGBB 是否为浅色；用于选择窗口的模糊方式。"""
+    """判断 #RRGGBB 是否应按浅色窗口处理；用于选择模糊方式。
+
+    阈值取 0.4 而不是 0.5：中灰背景配深色文字仍属于浅色界面，使用
+    blur-behind 可避免 acrylic 的亮色 tint 把文字和卡片整体冲淡。
+    """
     rgb = _parse_hex_color(color)
     if rgb is None:
         return False
@@ -226,7 +230,7 @@ def is_light_color(color: str) -> bool:
         for channel in channels
     ]
     luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-    return luminance > 0.5
+    return luminance > 0.4
 
 
 def get_theme_colors(name: str) -> dict[str, str]:

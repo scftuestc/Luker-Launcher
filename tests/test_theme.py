@@ -167,8 +167,8 @@ class MixColorTests(unittest.TestCase):
 class LightColorTests(unittest.TestCase):
     def test_light_and_dark_backgrounds(self):
         self.assertTrue(is_light_color("#f0ede8"))
+        self.assertTrue(is_light_color(PRESET_THEMES["mist_gray"]["bg"]))
         self.assertTrue(is_light_color("#ffffff"))
-        self.assertFalse(is_light_color(PRESET_THEMES["mist_gray"]["bg"]))
         self.assertFalse(is_light_color(PRESET_THEMES["summer"]["bg"]))
         self.assertFalse(is_light_color("#000000"))
 
@@ -184,9 +184,6 @@ class MistGrayTests(unittest.TestCase):
             with self.subTest(key=key):
                 channels = [int(theme[key][index : index + 2], 16) for index in (1, 3, 5)]
                 self.assertLessEqual(max(channels) - min(channels), 16)
-
-    def test_background_uses_acrylic_blur(self):
-        self.assertFalse(is_light_color(PRESET_THEMES["mist_gray"]["bg"]))
 
 
 def _srgb_to_lab(color: str) -> tuple[float, float, float]:
