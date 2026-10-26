@@ -22,6 +22,7 @@ from settings_window import (
     bind_hover_recursive,
     clear_scroll_bindings,
     theme_card_hover_colors,
+    update_button_state_colors,
 )
 
 
@@ -201,6 +202,34 @@ class ThemeCardHoverColorTests(unittest.TestCase):
         )
 
 
+class UpdateButtonStateColorTests(unittest.TestCase):
+    colors: ClassVar[dict[str, str]] = {
+        'text_dim': '#606060',
+        'accent': '#a0a0a0',
+        'border': '#404040',
+    }
+
+    def test_disabled_and_enabled_colors(self):
+        self.assertEqual(
+            update_button_state_colors(self.colors, 0),
+            ('#606060', '#404040'),
+        )
+        self.assertEqual(
+            update_button_state_colors(self.colors, 1),
+            ('#a0a0a0', '#a0a0a0'),
+        )
+
+    def test_progress_is_clamped(self):
+        self.assertEqual(
+            update_button_state_colors(self.colors, -1),
+            update_button_state_colors(self.colors, 0),
+        )
+        self.assertEqual(
+            update_button_state_colors(self.colors, 2),
+            update_button_state_colors(self.colors, 1),
+        )
+
+
 class ThemeHoverJobTests(unittest.TestCase):
     def test_cancel_all_hover_jobs(self):
         window = object.__new__(SettingsWindow)
@@ -212,6 +241,17 @@ class ThemeHoverJobTests(unittest.TestCase):
 
         self.assertCountEqual(cancelled, ['first', 'second'])
         self.assertEqual(window._theme_hover_jobs, set())
+
+    def test_cancel_update_button_fade(self):
+        window = object.__new__(SettingsWindow)
+        window._update_button_job = 'fade'
+        cancelled: list[str] = []
+        window.after_cancel = cancelled.append
+
+        window._cancel_update_button_fade()
+
+        self.assertEqual(cancelled, ['fade'])
+        self.assertIsNone(window._update_button_job)
 
 
 class FakeSwitch:
@@ -455,6 +495,26 @@ class UpdateUiTests(unittest.TestCase):
             "当前不可更新",
         )
 
+    def test_status_emphasis_for_newer_or_downgrade_targets(self):
+        self.assertTrue(
+            SettingsWindow._status_emphasis(make_target("release", "behind", actionable=True))
+        )
+        self.assertTrue(
+            SettingsWindow._status_emphasis(make_target("commit", "behind", actionable=True))
+        )
+        self.assertTrue(
+            SettingsWindow._status_emphasis(
+                make_target("release", "ahead", actionable=True, downgrade=True)
+            )
+        )
+        self.assertFalse(
+            SettingsWindow._status_emphasis(make_target("release", "up_to_date", actionable=False))
+        )
+        self.assertFalse(
+            SettingsWindow._status_emphasis(make_target("commit", "ahead", actionable=False))
+        )
+        self.assertFalse(SettingsWindow._status_emphasis(None))
+
     def test_channel_change_only_rerenders(self):
         window = object.__new__(SettingsWindow)
         calls = []
@@ -635,10 +695,21 @@ class UpdateUiTests(unittest.TestCase):
 
         text = window._current_text()
 
-        self.assertIn("当前版本：v2.8.0-75-g755925947 · release · 2026-10-26", text)
+        self.assertIn("当前版本：提交 aaaaaaa · 2026-10-26", text)
         self.assertIn("未提交", text)
         self.assertIn("路径已更改", text)
         self.assertNotIn("local subject", text)
+
+    def test_current_text_shows_current_tag(self):
+        window = object.__new__(SettingsWindow)
+        window._version_check = make_check(local=make_local(current_tag="v2.8.0"))
+
+        text = window._current_text()
+
+        self.assertIn(
+            "当前版本：Tag v2.8.0 · 提交 aaaaaaa · 2026-10-26",
+            text,
+        )
 
     def test_summary_text_shows_requested_version_fields(self):
         release = make_target(
@@ -765,6 +836,7 @@ class RebuildOrderTests(unittest.TestCase):
         window._destroyed = False
         window.COLORS = {'bg': '#123456'}
         window._theme_hover_jobs = set()
+        window._update_button_job = None
         calls = []
         window.winfo_exists = lambda: True
         window.winfo_children = lambda: [FakeChild(calls)]

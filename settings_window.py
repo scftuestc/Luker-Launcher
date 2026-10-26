@@ -44,6 +44,8 @@ CLOSE_BEHAVIOR_OPTIONS = (
 )
 THEME_HOVER_STEPS = 6
 THEME_HOVER_INTERVAL_MS = 18
+BUTTON_FADE_STEPS = 6
+BUTTON_FADE_INTERVAL_MS = 18
 
 # CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
 # 旧控件树会被 root 的绑定脚本一直引用。
@@ -99,6 +101,17 @@ def theme_card_hover_colors(
     return fill, border
 
 
+def update_button_state_colors(
+    colors: dict[str, str],
+    progress: float,
+) -> tuple[str, str]:
+    """返回更新按钮启用/禁用过渡中的文字色和边框色。"""
+    factor = max(0.0, min(1.0, progress))
+    text = mix_color(colors['text_dim'], colors['accent'], factor)
+    border = mix_color(colors['border'], colors['accent'], factor)
+    return text, border
+
+
 class SettingsWindow(ctk.CTkToplevel):
     """设置窗口：主题、PWA、GCL、关闭行为和 Luker 管理。"""
 
@@ -123,6 +136,9 @@ class SettingsWindow(ctk.CTkToplevel):
         self._blur_job: str | None = None
         self._rebuild_job: str | None = None
         self._theme_hover_jobs: set[str] = set()
+        self._update_button_tone: float | None = None
+        self._update_button_target = 0.0
+        self._update_button_job: str | None = None
         self._pending_fit = False
         self._version_check: VersionCheck | None = initial_version_check
         self._update_progress: UpdateProgress | None = None
@@ -226,6 +242,7 @@ class SettingsWindow(ctk.CTkToplevel):
         if event.widget == self:
             self._destroyed = True
             self._cancel_theme_hover_jobs()
+            self._cancel_update_button_fade()
             for job in (self._blur_job, self._rebuild_job):
                 if job is not None:
                     with contextlib.suppress(tk.TclError):
@@ -248,6 +265,69 @@ class SettingsWindow(ctk.CTkToplevel):
             with contextlib.suppress(tk.TclError):
                 self.after_cancel(job)
         self._theme_hover_jobs.clear()
+
+    def _cancel_update_button_fade(self) -> None:
+        if self._update_button_job is not None:
+            with contextlib.suppress(tk.TclError):
+                self.after_cancel(self._update_button_job)
+            self._update_button_job = None
+
+    def _apply_update_button_tone(self) -> None:
+        tone = self._update_button_tone
+        if tone is None:
+            return
+        text, border = update_button_state_colors(self.COLORS, tone)
+        with contextlib.suppress(tk.TclError):
+            self._update_button.configure(
+                text_color=text,
+                text_color_disabled=text,
+                border_color=border,
+            )
+
+    def _set_update_button_enabled(self, enabled: bool) -> None:
+        target = 1.0 if enabled else 0.0
+        if self._update_button_tone is None:
+            self._update_button_tone = target
+            self._update_button_target = target
+            self._apply_update_button_tone()
+            return
+
+        self._update_button_target = target
+        self._apply_update_button_tone()
+        if self._update_button_job is None and self._update_button_tone != target:
+            try:
+                self._update_button_job = self.after(0, self._tick_update_button)
+            except tk.TclError:
+                self._update_button_job = None
+
+    def _tick_update_button(self) -> None:
+        self._update_button_job = None
+        tone = self._update_button_tone
+        if self._destroyed or tone is None:
+            return
+        try:
+            if not self._update_button.winfo_exists():
+                return
+        except tk.TclError:
+            return
+
+        target = self._update_button_target
+        step = 1.0 / BUTTON_FADE_STEPS
+        if tone < target:
+            tone = min(target, tone + step)
+        elif tone > target:
+            tone = max(target, tone - step)
+        self._update_button_tone = tone
+        self._apply_update_button_tone()
+
+        if tone != target:
+            try:
+                self._update_button_job = self.after(
+                    BUTTON_FADE_INTERVAL_MS,
+                    self._tick_update_button,
+                )
+            except tk.TclError:
+                self._update_button_job = None
 
     def is_alive(self) -> bool:
         """窗口是否仍存在，供主窗口复用单例前检查。"""
@@ -451,7 +531,7 @@ class SettingsWindow(ctk.CTkToplevel):
         value_label = ctk.CTkLabel(
             path_display,
             text=current_value,
-            font=ctk.CTkFont(family=self.MONO_FONT, size=11),
+            font=ctk.CTkFont(family=self.MONO_FONT, size=12),
             text_color=self.COLORS['text_muted'],
             anchor="w",
         )
@@ -668,6 +748,7 @@ class SettingsWindow(ctk.CTkToplevel):
             return
 
         self._cancel_theme_hover_jobs()
+        self._cancel_update_button_fade()
         for child in self.winfo_children():
             child.destroy()
 
@@ -821,7 +902,7 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             inner,
             text="安装路径",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=13, weight="bold"),
             text_color=self.COLORS['text_dim'],
         ).pack(anchor="w", pady=(0, 6))
 
@@ -839,7 +920,7 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             inner,
             text="版本管理",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=13, weight="bold"),
             text_color=self.COLORS['text_dim'],
         ).pack(anchor="w", pady=(0, 6))
 
@@ -895,10 +976,16 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self._update_button.pack(side="right")
 
+        self._status_font = ctk.CTkFont(family=self.UI_FONT, size=12)
+        self._status_font_bold = ctk.CTkFont(
+            family=self.UI_FONT,
+            size=12,
+            weight="bold",
+        )
         self._version_status = ctk.CTkLabel(
             inner,
             text="",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            font=self._status_font,
             text_color=self.COLORS['text_muted'],
             justify="left",
             anchor="w",
@@ -982,13 +1069,20 @@ class SettingsWindow(ctk.CTkToplevel):
             and not busy
             and self._on_apply_luker_update is not None
         )
+        self._set_update_button_enabled(can_update)
         self._update_button.configure(
             state="normal" if can_update else "disabled",
             text=self._update_button_text(target),
         )
+        emphasize = (
+            self._update_progress is None
+            and not self._version_checking
+            and self._status_emphasis(target)
+        )
         self._version_status.configure(
             text=self._status_text(target),
             text_color=self._status_color(target),
+            font=self._status_font_bold if emphasize else self._status_font,
         )
 
     def _selected_target(self) -> TargetInfo | None:
@@ -999,6 +1093,11 @@ class SettingsWindow(ctk.CTkToplevel):
             return check.commit
         return check.release
 
+    @staticmethod
+    def _status_emphasis(target: TargetInfo | None) -> bool:
+        """有可用的新版本或需要回退时，加粗状态提示。"""
+        return bool(target is not None and (target.relation == "behind" or target.downgrade))
+
     def _current_text(self) -> str:
         check = self._version_check
         if check is None:
@@ -1007,10 +1106,16 @@ class SettingsWindow(ctk.CTkToplevel):
         if local.error:
             return f"当前版本：无法读取（{local.error}）"
 
-        branch = local.branch if local.branch and local.branch != "HEAD" else "分离 HEAD"
-        meta = " · ".join(part for part in (branch, local.date) if part)
-        version = local.describe or local.short_head or "未知"
-        lines = [f"当前版本：{version} · {meta}" if meta else f"当前版本：{version}"]
+        sha = local.short_head or (local.head[:7] if local.head else "")
+        parts = []
+        if local.current_tag:
+            parts.append(f"Tag {local.current_tag}")
+        if sha:
+            parts.append(f"提交 {sha}")
+        if local.date:
+            parts.append(local.date)
+        version = " · ".join(parts) or "未知"
+        lines = [f"当前版本：{version}"]
         if local.dirty:
             lines.append("存在未提交的跟踪文件修改，更新已禁用。")
         if not local.path_matches:

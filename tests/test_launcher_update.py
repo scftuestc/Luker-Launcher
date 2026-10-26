@@ -214,7 +214,7 @@ class LauncherUpdateTests(unittest.TestCase):
 
         joined = "\n".join(logs)
         self.assertIn("正在检查 Luker 版本", joined)
-        self.assertIn("当前版本：v2.8.0-75-g755925947 · release · 2026-10-26", joined)
+        self.assertIn(f"当前版本：提交 {'a' * 40} · 2026-10-26", joined)
         self.assertIn(f"最新发行版：v2.8.0 · 发布于 2026-10-01 · 提交 {'b' * 40}", joined)
         self.assertIn(f"最新提交：2026-10-26 · {'c' * 40}", joined)
 

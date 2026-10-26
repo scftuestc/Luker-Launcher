@@ -621,12 +621,17 @@ class LukerLauncher:
     def _log_version_check(self, result: VersionCheck) -> None:
         """把检查结果显示到日志窗口。"""
         local = result.local
-        version = local.describe or local.short_head
-        if not local.error and version:
-            branch = local.branch if local.branch and local.branch != "HEAD" else "分离 HEAD"
-            meta = " · ".join(part for part in (branch, local.date) if part)
-            line = f"[启动器] 当前版本：{version}"
-            self._on_log(f"{line} · {meta}" if meta else line)
+        if not local.error:
+            head = local.head or local.short_head
+            parts = []
+            if local.current_tag:
+                parts.append(f"Tag {local.current_tag}")
+            if head:
+                parts.append(f"提交 {head}")
+            if local.date:
+                parts.append(local.date)
+            if parts:
+                self._on_log(f"[启动器] 当前版本：{' · '.join(parts)}")
 
         release = result.release
         if release is not None:

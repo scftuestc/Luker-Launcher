@@ -458,7 +458,7 @@ def _release_target(
         status = f"当前已包含最新发行版 {tag}（领先 {ahead} 个提交），更新会回退"
         base_actionable = True
     elif relation == "behind":
-        status = f"有新发行版 {tag} 可用（落后 {behind} 个提交）"
+        status = f"有新发行版 {tag} 可用，目前落后 {behind} 个提交"
         base_actionable = True
     elif relation == "diverged":
         status = f"当前提交与最新发行版 {tag} 不在同一历史线"
@@ -500,7 +500,7 @@ def _commit_target(
         status = f"已是最新提交 {short}"
         base_actionable = False
     elif relation == "behind":
-        status = f"有新提交可用（落后 {behind} 个提交）"
+        status = f"有新提交可用，目前落后 {behind} 个提交"
         base_actionable = True
     elif relation == "ahead":
         status = f"当前领先最新提交 {ahead} 个提交（存在本地提交），已禁用更新"
