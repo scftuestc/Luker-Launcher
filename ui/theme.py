@@ -75,23 +75,23 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
         'warning': '#eab308',
         'info': '#34d399',
     },
-    'cloud_gray': {
-        'name': '云灰微光',
-        'short_name': '云灰',
+    'mist_gray': {
+        'name': '雾灰静谧',
+        'short_name': '雾灰',
         'icon': 'cloud',
-        'bg': '#d8d5d0',
-        'card': '#f0ede8',
-        'card_hover': '#e4e0da',
-        'border': '#bdb8b0',
-        'text': '#1c1917',
-        'text_dim': '#4e4943',
-        'text_muted': '#716b63',
+        'bg': '#aeb3b9',
+        'card': '#c9ced3',
+        'card_hover': '#bcc2c8',
+        'border': '#878e96',
+        'text': '#171b1f',
+        'text_dim': '#343b42',
+        'text_muted': '#4f575f',
         'accent': '#475569',
         'on_accent': '#ffffff',
-        'success': '#15803d',
-        'error': '#b91c1c',
-        'warning': '#92400e',
-        'info': '#1d4ed8',
+        'success': '#14532d',
+        'error': '#991b1b',
+        'warning': '#7c2d12',
+        'info': '#1e40af',
     },
     'ocean_cyan': {
         'name': '深海青碧',
@@ -140,7 +140,7 @@ THEME_SWATCH_KEYS: dict[str, tuple[SwatchKey, SwatchKey, SwatchKey, SwatchKey]] 
     'summer': ('accent', 'text_dim', 'deep', 'info'),
     'purple_night': ('accent', 'text_dim', 'deep', 'warning'),
     'forest_green': ('accent', 'text_dim', 'deep', 'warning'),
-    'cloud_gray': ('accent', 'success', 'info', 'warning'),
+    'mist_gray': ('accent', 'success', 'info', 'warning'),
     'ocean_cyan': ('accent', 'deep', 'warning', 'error'),
     'crimson': ('accent', 'text_dim', 'info', 'warning'),
 }
@@ -149,8 +149,9 @@ THEME_SWATCH_KEYS: dict[str, tuple[SwatchKey, SwatchKey, SwatchKey, SwatchKey]] 
 LEGACY_THEME_ALIASES: dict[str, str] = {
     'deep_blue': 'summer',
     'rose_pink': 'crimson',
-    'warm_orange': 'cloud_gray',
-    'bright_white': 'cloud_gray',
+    'cloud_gray': 'mist_gray',
+    'warm_orange': 'mist_gray',
+    'bright_white': 'mist_gray',
 }
 
 # 启动器 logo 的四条竖条基础颜色；动画按亮度在基色与暗色之间摆动

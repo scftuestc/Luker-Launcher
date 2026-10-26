@@ -62,6 +62,9 @@ class ThemeTests(unittest.TestCase):
                 self.assertIn(current, PRESET_THEMES)
                 self.assertNotIn(legacy, PRESET_THEMES)
 
+    def test_cloud_gray_alias_migrates_to_mist_gray(self):
+        self.assertEqual(LEGACY_THEME_ALIASES["cloud_gray"], "mist_gray")
+
     def test_returned_theme_is_a_copy(self):
         colors = get_theme_colors(DEFAULT_THEME)
         colors["bg"] = "#000000"
@@ -163,14 +166,27 @@ class MixColorTests(unittest.TestCase):
 
 class LightColorTests(unittest.TestCase):
     def test_light_and_dark_backgrounds(self):
-        self.assertTrue(is_light_color(PRESET_THEMES["cloud_gray"]["bg"]))
+        self.assertTrue(is_light_color("#f0ede8"))
         self.assertTrue(is_light_color("#ffffff"))
+        self.assertFalse(is_light_color(PRESET_THEMES["mist_gray"]["bg"]))
         self.assertFalse(is_light_color(PRESET_THEMES["summer"]["bg"]))
         self.assertFalse(is_light_color("#000000"))
 
     def test_invalid_color_is_not_light(self):
         self.assertFalse(is_light_color("not-a-color"))
         self.assertFalse(is_light_color("#12345"))
+
+
+class MistGrayTests(unittest.TestCase):
+    def test_surfaces_are_neutral_gray(self):
+        theme = PRESET_THEMES["mist_gray"]
+        for key in ("bg", "card", "card_hover", "border"):
+            with self.subTest(key=key):
+                channels = [int(theme[key][index : index + 2], 16) for index in (1, 3, 5)]
+                self.assertLessEqual(max(channels) - min(channels), 16)
+
+    def test_background_uses_acrylic_blur(self):
+        self.assertFalse(is_light_color(PRESET_THEMES["mist_gray"]["bg"]))
 
 
 def _srgb_to_lab(color: str) -> tuple[float, float, float]:

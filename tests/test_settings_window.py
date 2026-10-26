@@ -180,11 +180,11 @@ class SettingsInteractionTests(unittest.TestCase):
             window._select_theme('summer')
             self.assertEqual(fake_config.theme_name, 'summer')
 
-            window._select_theme('cloud_gray')
-            self.assertEqual(fake_config.theme_name, 'cloud_gray')
+            window._select_theme('mist_gray')
+            self.assertEqual(fake_config.theme_name, 'mist_gray')
 
             window._select_theme('not-a-theme')
-            self.assertEqual(fake_config.theme_name, 'cloud_gray')
+            self.assertEqual(fake_config.theme_name, 'mist_gray')
 
     def test_configure_events_are_coalesced(self):
         window = object.__new__(SettingsWindow)
