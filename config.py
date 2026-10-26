@@ -30,6 +30,9 @@ APP_VERSION = "3.1"
 DEFAULT_PORT = 8000
 # GCL 默认访问地址
 DEFAULT_GCL_URL = "http://127.0.0.1:7861/"
+# 点击日志窗口关闭按钮时的行为：每次询问 / 隐藏到托盘 / 退出程序
+CLOSE_BEHAVIORS = ('ask', 'tray', 'exit')
+DEFAULT_CLOSE_BEHAVIOR = 'ask'
 
 # 配置文件允许的键和类型；读取时统一过滤，避免手改配置导致运行时类型错误
 _STRING_KEYS = (
@@ -44,7 +47,7 @@ _BOOL_KEYS = ("use_pwa_mode", "gcl_enabled", "blur_enabled")
 
 
 class Config:
-    """launcher_config.json 的读写与主题/GCL 变更通知。"""
+    """launcher_config.json 的读写与主题/GCL/毛玻璃/关闭行为变更通知。"""
 
     CONFIG_FILE = "launcher_config.json"
 
@@ -56,6 +59,7 @@ class Config:
         self._theme_change_callbacks: list[Callable[[dict[str, str]], None]] = []
         self._gcl_change_callbacks: list[Callable[[bool, str | None], None]] = []
         self._blur_change_callbacks: list[Callable[[bool], None]] = []
+        self._close_behavior_callbacks: list[Callable[[str], None]] = []
 
     def _load_config(self) -> dict[str, Any]:
         if not self.config_path.exists():
@@ -94,6 +98,10 @@ class Config:
             theme = LEGACY_THEME_ALIASES.get(theme, theme)
             if theme in PRESET_THEMES:
                 normalized['theme'] = theme
+
+        close_behavior = data.get('close_behavior')
+        if isinstance(close_behavior, str) and close_behavior in CLOSE_BEHAVIORS:
+            normalized['close_behavior'] = close_behavior
 
         return normalized
 
@@ -165,6 +173,23 @@ class Config:
             except Exception:
                 logger.exception("毛玻璃配置回调执行失败")
 
+    def add_close_behavior_change_callback(self, callback: Callable[[str], None]) -> None:
+        """添加关闭窗口行为变更回调。"""
+        self._close_behavior_callbacks.append(callback)
+
+    def remove_close_behavior_change_callback(self, callback: Callable[[str], None]) -> None:
+        """移除关闭窗口行为变更回调；未注册时忽略。"""
+        if callback in self._close_behavior_callbacks:
+            self._close_behavior_callbacks.remove(callback)
+
+    def _notify_close_behavior_change(self) -> None:
+        behavior = self.close_behavior
+        for callback in self._close_behavior_callbacks:
+            try:
+                callback(behavior)
+            except Exception:
+                logger.exception("关闭窗口行为回调执行失败")
+
     @property
     def theme_name(self) -> str:
         name = self._config.get('theme', DEFAULT_THEME)
@@ -201,6 +226,20 @@ class Config:
         self._config['blur_enabled'] = bool(value)
         self._save_config()
         self._notify_blur_change()
+
+    @property
+    def close_behavior(self) -> str:
+        """点击日志窗口关闭按钮时的行为：ask / tray / exit。"""
+        value = self._config.get('close_behavior', DEFAULT_CLOSE_BEHAVIOR)
+        return value if value in CLOSE_BEHAVIORS else DEFAULT_CLOSE_BEHAVIOR
+
+    @close_behavior.setter
+    def close_behavior(self, value: str) -> None:
+        if value not in CLOSE_BEHAVIORS:
+            return
+        self._config['close_behavior'] = value
+        self._save_config()
+        self._notify_close_behavior_change()
 
     @property
     def pwa_app_id(self) -> str | None:

@@ -478,7 +478,7 @@ class LogWindow(ctk.CTk):
             logger.warning("恢复窗口失败", exc_info=True)
 
     def _on_close(self) -> None:
-        """关闭按钮：交给主程序确认并退出启动器。"""
+        """关闭按钮：交给主程序决定隐藏到托盘、退出或询问。"""
         if self.on_exit_callback is not None:
             self.on_exit_callback()
             return

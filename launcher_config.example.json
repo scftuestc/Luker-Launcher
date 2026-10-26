@@ -2,6 +2,7 @@
   "luker_path": "",
   "use_pwa_mode": false,
   "blur_enabled": true,
+  "close_behavior": "ask",
   "theme": "summer",
   "gcl_enabled": false,
   "gcl_bat_path": "",

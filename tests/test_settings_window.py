@@ -171,6 +171,51 @@ class BlurToggleTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class FakeVariable:
+    def __init__(self) -> None:
+        self.value: str | None = None
+
+    def set(self, value: str) -> None:
+        self.value = value
+
+
+class CloseBehaviorTests(unittest.TestCase):
+    def test_change_writes_selected_value(self):
+        for value in ('ask', 'tray', 'exit'):
+            with self.subTest(value=value):
+                window = object.__new__(SettingsWindow)
+                fake_config = SimpleNamespace(close_behavior='ask')
+
+                with patch.object(settings_window, 'config', fake_config):
+                    window._on_close_behavior_change(value)
+
+                self.assertEqual(fake_config.close_behavior, value)
+
+    def test_config_callback_updates_variable_when_alive(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._close_behavior_var = FakeVariable()
+
+        window._on_close_behavior_config_change('tray')
+
+        self.assertEqual(window._close_behavior_var.value, 'tray')
+
+    def test_config_callback_ignored_after_destroy(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = True
+        window._close_behavior_var = FakeVariable()
+
+        window._on_close_behavior_config_change('exit')
+
+        self.assertIsNone(window._close_behavior_var.value)
+
+    def test_config_callback_without_variable_is_ignored(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+
+        window._on_close_behavior_config_change('ask')
+
+
 class SettingsInteractionTests(unittest.TestCase):
     def test_selecting_current_theme_is_a_noop(self):
         window = object.__new__(SettingsWindow)

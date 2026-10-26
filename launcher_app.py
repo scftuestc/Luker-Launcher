@@ -14,7 +14,7 @@ import logging_setup
 from config import config
 from core.browser import open_in_browser
 from core.readiness import LukerReadinessMonitor, LukerState
-from dialogs import ensure_luker_path_configured, show_exit_confirmation
+from dialogs import ensure_luker_path_configured, show_close_choice
 from log_window import LogWindow
 from process.managers import GCLProcessManager, LukerProcessManager
 from settings_window import SettingsWindow
@@ -52,6 +52,7 @@ class LukerLauncher:
         self._browser_busy = False  # 防止重复启动 PWA 发现线程
         self._exiting = False  # 退出流程只执行一次
         self._exit_dialog_open = False
+        self._tray_ready = False
         self._shutdown_done = False
         self._last_status: LukerState | None = None  # 上一次通知给界面的运行状态
         self._readiness: LukerReadinessMonitor | None = None
@@ -220,15 +221,35 @@ class LukerLauncher:
         self._last_status = None
 
     def _on_request_exit(self) -> None:
-        """日志窗口关闭按钮：先确认，再停止 Luker 并退出启动器。"""
+        """日志窗口关闭按钮：按配置隐藏到托盘、退出或询问。"""
         if self._exiting or self._exit_dialog_open or not self.log_window:
+            return
+
+        behavior = config.close_behavior
+        allow_hide = self._tray_ready and self.tray_icon is not None
+
+        if behavior == 'exit':
+            self.log_window.hide()
+            self._on_exit()
+            return
+
+        if behavior == 'tray' and allow_hide:
+            self._hide_window()
             return
 
         self._exit_dialog_open = True
         state = self._current_luker_state()
 
-        def on_confirm() -> None:
+        def on_hide(remember: bool) -> None:
             self._exit_dialog_open = False
+            if remember:
+                config.close_behavior = 'tray'
+            self._hide_window()
+
+        def on_exit(remember: bool) -> None:
+            self._exit_dialog_open = False
+            if remember:
+                config.close_behavior = 'exit'
             if self.log_window:
                 self.log_window.hide()
             self._on_exit()
@@ -239,23 +260,42 @@ class LukerLauncher:
                 self.log_window.focus_force()
 
         try:
-            show_exit_confirmation(self.log_window, state, on_confirm, on_cancel)
+            show_close_choice(
+                self.log_window,
+                state,
+                allow_hide=allow_hide,
+                on_hide=on_hide,
+                on_exit=on_exit,
+                on_cancel=on_cancel,
+            )
         except Exception:
-            logger.exception("显示退出确认框失败，回退到系统对话框")
+            logger.exception("显示关闭窗口选择框失败，回退到系统对话框")
             self._exit_dialog_open = False
             try:
-                confirmed = messagebox.askyesno(
-                    "退出 Luker",
-                    "退出会停止 Luker 进程，并关闭 Luker Launcher。\n确定要退出吗？",
-                    parent=self.log_window,
-                )
+                if allow_hide:
+                    answer = messagebox.askyesnocancel(
+                        "关闭窗口",
+                        "要隐藏到系统托盘吗？\n选择“否”将退出 Luker Launcher，选择“取消”返回。",
+                        parent=self.log_window,
+                    )
+                    if answer is None:
+                        on_cancel()
+                    elif answer:
+                        on_hide(False)
+                    else:
+                        on_exit(False)
+                else:
+                    confirmed = messagebox.askyesno(
+                        "关闭窗口",
+                        "系统托盘不可用，关闭窗口将退出 Luker Launcher。\n确定要退出吗？",
+                        parent=self.log_window,
+                    )
+                    if confirmed:
+                        on_exit(False)
+                    else:
+                        on_cancel()
             except Exception:
-                logger.exception("显示系统退出确认框失败")
-                return
-            if confirmed:
-                on_confirm()
-            else:
-                on_cancel()
+                logger.exception("显示系统关闭窗口对话框失败")
 
     def _on_exit(self) -> None:
         if self._exiting:
@@ -720,6 +760,7 @@ class LukerLauncher:
         if icon is None:
             return False
         tray_ready = icon.run_detached()
+        self._tray_ready = tray_ready
         self._schedule_status_poll()
         return tray_ready
 

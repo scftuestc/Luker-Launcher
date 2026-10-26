@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from config import DEFAULT_PORT, Config
+from config import DEFAULT_CLOSE_BEHAVIOR, DEFAULT_PORT, Config
 from ui.theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
 
 
@@ -24,6 +24,7 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.use_pwa_mode)
         self.assertFalse(config.gcl_enabled)
         self.assertTrue(config.blur_enabled)
+        self.assertEqual(config.close_behavior, DEFAULT_CLOSE_BEHAVIOR)
         self.assertIsNone(config.luker_path)
 
     def test_invalid_json_uses_defaults(self):
@@ -38,6 +39,7 @@ class ConfigTests(unittest.TestCase):
                 "use_pwa_mode": "false",
                 "gcl_enabled": 1,
                 "blur_enabled": "false",
+                "close_behavior": "unknown",
                 "theme": "unknown",
                 "luker_path": 123,
                 "gcl_url": "  ",
@@ -48,6 +50,7 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.use_pwa_mode)
         self.assertFalse(config.gcl_enabled)
         self.assertTrue(config.blur_enabled)
+        self.assertEqual(config.close_behavior, DEFAULT_CLOSE_BEHAVIOR)
         self.assertEqual(config.theme_name, DEFAULT_THEME)
         self.assertIsNone(config.luker_path)
 
@@ -106,6 +109,40 @@ class ConfigTests(unittest.TestCase):
         config.remove_blur_change_callback(callback)
         config.blur_enabled = True
         self.assertEqual(calls, [False])
+
+    def test_close_behavior_roundtrips(self):
+        config = Config(self.config_path)
+        config.close_behavior = "tray"
+
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["close_behavior"], "tray")
+
+        reloaded = Config(self.config_path)
+        self.assertEqual(reloaded.close_behavior, "tray")
+
+    def test_invalid_close_behavior_is_ignored(self):
+        config = Config(self.config_path)
+        config.close_behavior = "tray"
+        config.close_behavior = "invalid"
+
+        self.assertEqual(config.close_behavior, "tray")
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["close_behavior"], "tray")
+
+    def test_close_behavior_callback_can_be_removed(self):
+        config = Config(self.config_path)
+        calls = []
+
+        def callback(value):
+            calls.append(value)
+
+        config.add_close_behavior_change_callback(callback)
+        config.close_behavior = "exit"
+        self.assertEqual(calls, ["exit"])
+
+        config.remove_close_behavior_change_callback(callback)
+        config.close_behavior = "ask"
+        self.assertEqual(calls, ["exit"])
 
     def test_blur_enabled_roundtrips(self):
         config = Config(self.config_path)

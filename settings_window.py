@@ -19,7 +19,7 @@ from ui.dpi import (
     sync_window_scaling,
 )
 from ui.icons import theme_icon
-from ui.theme import PRESET_THEMES, theme_swatch_colors
+from ui.theme import PRESET_THEMES, shade_color, theme_swatch_colors
 from ui.tooltip import Tooltip
 from ui.window_utils import (
     apply_window_rounding,
@@ -40,6 +40,11 @@ PWA_HINT_TEXT = (
 GCL_HINT_TEXT = (
     "GCL 是可选的配套服务，通过它自己的 start.bat 启动。"
     "开启后可在这里选择 bat 路径，并在托盘菜单中联动启停；不使用就保持关闭。"
+)
+CLOSE_BEHAVIOR_OPTIONS = (
+    ('ask', '每次询问'),
+    ('tray', '隐藏到托盘'),
+    ('exit', '退出程序'),
 )
 
 # CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
@@ -73,7 +78,7 @@ def bind_click_recursive(widget: tk.Misc, callback: Callable[[tk.Event], None]) 
 
 
 class SettingsWindow(ctk.CTkToplevel):
-    """设置窗口：主题、PWA 模式、GCL 和 Luker 路径。"""
+    """设置窗口：主题、PWA 模式、GCL、关闭行为和 Luker 路径。"""
 
     def __init__(
         self,
@@ -92,6 +97,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.COLORS = config.get_theme_colors()
         self.UI_FONT = get_ui_font()
         self.MONO_FONT = get_mono_font()
+        self._close_behavior_var = tk.StringVar(master=self, value=config.close_behavior)
 
         self.title("设置")
         self.resizable(False, False)
@@ -129,6 +135,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         config.add_theme_change_callback(self._on_theme_change)
         config.add_blur_change_callback(self._on_blur_change)
+        config.add_close_behavior_change_callback(self._on_close_behavior_config_change)
 
         self.bind('<Map>', self._on_map, add='+')
         self.bind('<Configure>', self._on_configure, add='+')
@@ -193,6 +200,7 @@ class SettingsWindow(ctk.CTkToplevel):
                 tooltip.destroy()
             config.remove_theme_change_callback(self._on_theme_change)
             config.remove_blur_change_callback(self._on_blur_change)
+            config.remove_close_behavior_change_callback(self._on_close_behavior_config_change)
             discard_window_scaling(self)
             clear_scroll_bindings(self)
             if self._on_close_callback is not None:
@@ -266,6 +274,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self._build_pwa_section(scroll_frame)
 
         self._build_gcl_section(scroll_frame)
+
+        self._build_close_behavior_section(scroll_frame)
 
         self._build_path_section(scroll_frame)
 
@@ -649,6 +659,62 @@ class SettingsWindow(ctk.CTkToplevel):
         path = select_gcl_bat_path(self)
         if path:
             self.gcl_path_label.configure(text=path)
+
+    def _build_close_behavior_section(self, parent: tk.Misc) -> None:
+        """构建关闭窗口行为选择区域。"""
+        _section, inner = self._create_section(parent)
+
+        ctk.CTkLabel(
+            inner,
+            text="🚪  关闭窗口行为",
+            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
+            text_color=self.COLORS['text'],
+        ).pack(anchor="w", pady=(0, 10))
+
+        self._close_behavior_var.set(config.close_behavior)
+        row = ctk.CTkFrame(inner, fg_color="transparent")
+        row.pack(fill="x", pady=(0, 8))
+
+        for value, label in CLOSE_BEHAVIOR_OPTIONS:
+            ctk.CTkRadioButton(
+                row,
+                text=label,
+                value=value,
+                variable=self._close_behavior_var,
+                command=lambda value=value: self._on_close_behavior_change(value),
+                width=128,
+                font=ctk.CTkFont(family=self.UI_FONT, size=12),
+                text_color=self.COLORS['text'],
+                fg_color=self.COLORS['accent'],
+                hover_color=shade_color(self.COLORS['accent'], 0.85),
+                border_color=self.COLORS['border'],
+                radiobutton_width=18,
+                radiobutton_height=18,
+                corner_radius=9,
+                border_width_unchecked=2,
+                border_width_checked=6,
+            ).pack(side="left", padx=(0, 18))
+
+        ctk.CTkLabel(
+            inner,
+            text=(
+                "隐藏到托盘会保持 Luker 运行；退出程序会停止 Luker。\n"
+                "选择“每次询问”后，每次关闭都会弹出选择框。"
+            ),
+            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            text_color=self.COLORS['text_muted'],
+            justify="left",
+        ).pack(anchor="w")
+
+    def _on_close_behavior_change(self, value: str) -> None:
+        config.close_behavior = value
+
+    def _on_close_behavior_config_change(self, value: str) -> None:
+        if self._destroyed:
+            return
+        variable = getattr(self, '_close_behavior_var', None)
+        if variable is not None:
+            variable.set(value)
 
     def _build_path_section(self, parent: tk.Misc) -> None:
         _section, inner = self._create_section(parent)

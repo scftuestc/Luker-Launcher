@@ -12,12 +12,13 @@ from config import config, get_app_dir
 from core.readiness import LukerState
 from ui.buttons import make_button
 from ui.dpi import format_geometry
+from ui.theme import shade_color
 from ui.window_utils import apply_window_rounding, get_ui_font
 
 logger = logging.getLogger(__name__)
 
-DIALOG_WIDTH = 440
-DIALOG_HEIGHT = 230
+DIALOG_WIDTH = 480
+DIALOG_HEIGHT = 300
 
 
 def dialog_position(
@@ -35,34 +36,59 @@ def dialog_position(
     )
 
 
-def show_exit_confirmation(
+def close_dialog_message(state: LukerState, *, allow_hide: bool) -> str:
+    """关闭窗口对话框的正文；托盘不可用时只说明退出。"""
+    if not allow_hide:
+        return "系统托盘不可用。\n关闭窗口将退出 Luker Launcher。"
+    if state is LukerState.STOPPED:
+        return "Luker 当前未运行。\n关闭窗口后要隐藏到系统托盘，还是退出 Luker Launcher？"
+    return "Luker 正在运行。\n隐藏到托盘会保持 Luker 继续运行；退出程序会停止 Luker 并关闭启动器。"
+
+
+def show_close_choice(
     parent: tk.Misc,
     state: LukerState,
-    on_confirm: Callable[[], None],
+    *,
+    allow_hide: bool,
+    on_hide: Callable[[bool], None],
+    on_exit: Callable[[bool], None],
     on_cancel: Callable[[], None],
 ) -> None:
-    """显示退出确认框；确认或取消后调用对应回调。"""
-    ExitConfirmationDialog(parent, state, on_confirm, on_cancel)
+    """显示关闭窗口选择框；隐藏/退出回调携带“记住选择”的勾选状态。"""
+    CloseChoiceDialog(
+        parent,
+        state,
+        allow_hide=allow_hide,
+        on_hide=on_hide,
+        on_exit=on_exit,
+        on_cancel=on_cancel,
+    )
 
 
-class ExitConfirmationDialog(ctk.CTkToplevel):
-    """退出确认框：退出会停止 Luker 进程并关闭启动器。"""
+class CloseChoiceDialog(ctk.CTkToplevel):
+    """关闭窗口选择框：隐藏到托盘、退出程序或取消，可记住选择。"""
 
     def __init__(
         self,
         parent: tk.Misc,
         state: LukerState,
-        on_confirm: Callable[[], None],
+        *,
+        allow_hide: bool,
+        on_hide: Callable[[bool], None],
+        on_exit: Callable[[bool], None],
         on_cancel: Callable[[], None],
     ) -> None:
         super().__init__(parent)
 
         self._parent = parent
-        self._on_confirm = on_confirm
+        self._allow_hide = allow_hide
+        self._on_hide = on_hide
+        self._on_exit = on_exit
         self._on_cancel = on_cancel
         self._closed = False
         self.COLORS = config.get_theme_colors()
         self.UI_FONT = get_ui_font()
+        self._remember_var = tk.IntVar(master=self, value=0)
 
         self.withdraw()
         self.overrideredirect(True)
@@ -82,26 +108,39 @@ class ExitConfirmationDialog(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             content,
-            text="退出 Luker",
+            text="关闭 Luker Launcher",
             font=ctk.CTkFont(family=self.UI_FONT, size=17, weight="bold"),
             text_color=self.COLORS['text'],
             anchor="w",
         ).pack(fill="x")
 
-        if state is LukerState.STOPPED:
-            message = "Luker 当前未运行。\n确定要关闭 Luker Launcher 吗？"
-        else:
-            message = "退出会停止 Luker 进程，并关闭 Luker Launcher。\n确定要退出吗？"
-
         ctk.CTkLabel(
             content,
-            text=message,
+            text=close_dialog_message(state, allow_hide=self._allow_hide),
             font=ctk.CTkFont(family=self.UI_FONT, size=13),
             text_color=self.COLORS['text_dim'],
             justify="left",
             anchor="w",
-            wraplength=380,
-        ).pack(fill="x", pady=(10, 18))
+            wraplength=420,
+        ).pack(fill="x", pady=(10, 12))
+
+        ctk.CTkCheckBox(
+            content,
+            text="记住我的选择",
+            variable=self._remember_var,
+            onvalue=1,
+            offvalue=0,
+            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            text_color=self.COLORS['text_dim'],
+            fg_color=self.COLORS['accent'],
+            hover_color=shade_color(self.COLORS['accent'], 0.85),
+            border_color=self.COLORS['border'],
+            checkmark_color=self.COLORS['on_accent'],
+            checkbox_width=18,
+            checkbox_height=18,
+            corner_radius=4,
+            border_width=2,
+        ).pack(anchor="w", pady=(0, 16))
 
         buttons = ctk.CTkFrame(content, fg_color="transparent")
         buttons.pack(side="bottom", fill="x")
@@ -111,24 +150,37 @@ class ExitConfirmationDialog(ctk.CTkToplevel):
             'secondary',
             self.COLORS,
             text="取消",
-            width=100,
+            width=96,
             height=36,
             font_family=self.UI_FONT,
             command=self._cancel,
         )
         self._cancel_btn.pack(side="right")
 
-        self._confirm_btn = make_button(
+        self._exit_btn = make_button(
             buttons,
             'danger',
             self.COLORS,
-            text="退出 Luker",
-            width=124,
+            text="退出程序",
+            width=112,
             height=36,
             font_family=self.UI_FONT,
-            command=self._confirm,
+            command=self._exit,
         )
-        self._confirm_btn.pack(side="right", padx=(0, 8))
+        self._exit_btn.pack(side="right", padx=(0, 8))
+
+        if self._allow_hide:
+            self._hide_btn = make_button(
+                buttons,
+                'primary',
+                self.COLORS,
+                text="隐藏到托盘",
+                width=124,
+                height=36,
+                font_family=self.UI_FONT,
+                command=self._hide,
+            )
+            self._hide_btn.pack(side="right", padx=(0, 8))
 
     def _present(self) -> None:
         if self._closed or not self.winfo_exists():
@@ -158,21 +210,36 @@ class ExitConfirmationDialog(ctk.CTkToplevel):
         # 负坐标交给 format_geometry 编码；不能夹到 0，否则左侧副屏会跑到主屏边缘
         self.geometry(format_geometry(DIALOG_WIDTH, DIALOG_HEIGHT, x, y))
         self.deiconify()
-        apply_window_rounding(self, context="退出确认")
+        apply_window_rounding(self, context="关闭窗口")
         self.lift()
         self.focus_force()
         try:
             self.grab_set()
         except tk.TclError:
-            logger.debug("退出确认框 grab_set 失败", exc_info=True)
+            logger.debug("关闭窗口选择框 grab_set 失败", exc_info=True)
         self._cancel_btn.focus_set()
 
-    def _confirm(self) -> None:
+    def _remember_selected(self) -> bool:
+        try:
+            return self._remember_var.get() == 1
+        except tk.TclError:
+            return False
+
+    def _hide(self) -> None:
         if self._closed:
             return
+        remember = self._remember_selected()
         self._closed = True
         self._close_window()
-        self._on_confirm()
+        self._on_hide(remember)
+
+    def _exit(self) -> None:
+        if self._closed:
+            return
+        remember = self._remember_selected()
+        self._closed = True
+        self._close_window()
+        self._on_exit(remember)
 
     def _cancel(self) -> None:
         if self._closed:
@@ -206,17 +273,17 @@ def _dialog_owner(
 
 
 def select_luker_path(parent: tk.Tk | tk.Toplevel | None = None) -> str | None:
-    """让用户选择 Luker 安装目录并校验，返回有效路径或 None。"""
+    """让用户选择 Luker 安装根目录并校验，返回有效路径或 None。"""
     owner, temp_root = _dialog_owner(parent)
     try:
         messagebox.showinfo(
             "Luker 启动器",
-            "请选择 Luker 的安装目录\n（包含 Start.bat 的文件夹）",
+            "请选择 Luker 的安装根目录\n该目录应包含 Start.bat 和 server.js。",
             parent=owner,
         )
 
         path = filedialog.askdirectory(
-            title="选择 Luker 安装目录",
+            title="选择 Luker 安装根目录",
             parent=owner,
         )
         if not path:
@@ -228,7 +295,7 @@ def select_luker_path(parent: tk.Tk | tk.Toplevel | None = None) -> str | None:
 
         messagebox.showerror(
             "错误",
-            f"所选目录不是有效的 Luker 安装目录！\n"
+            f"所选目录不是有效的 Luker 安装根目录！\n"
             f"未找到 Start.bat 或 server.js 文件。\n\n"
             f"选择的路径: {path}",
             parent=owner,

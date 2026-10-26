@@ -39,10 +39,10 @@
 | 单击托盘图标 | 显示 / 隐藏日志窗口 |
 | 右键托盘图标 | 启动、停止、重启、打开 Luker 页面、设置、退出 |
 | 最小化日志窗口（─） | 收进系统托盘，Luker 继续运行 |
-| 关闭日志窗口（×） | 弹窗确认后停止 Luker 并退出启动器 |
+| 关闭日志窗口（×） | 按「关闭窗口行为」设置：每次询问、隐藏到托盘或退出程序（默认每次询问） |
 | 托盘菜单 / 日志窗口的 Luker logo | Luker 服务就绪后播放呼吸效果；启动中或已停止时显示为灰色 |
 
-如果托盘创建失败，最小化按钮会被禁用，关闭日志窗口仍会弹窗确认后退出。
+如果托盘创建失败，最小化按钮会被禁用；关闭窗口不会隐藏到托盘，会按设置直接退出，或弹出只含“退出程序/取消”的选择框。
 
 Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置。
 
@@ -56,17 +56,19 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 - 🪟 毛玻璃效果开关
 - 🌐 PWA 模式
 - 🚀 GCL 联动
+- 🚪 关闭窗口行为
 - 📁 Luker 安装路径
 
 ### 配置文件
 
-大部分选项可以在设置窗口修改；需要手动调整时，编辑 exe 同目录的 `launcher_config.json`。可参考仓库中的 [`launcher_config.example.json`](launcher_config.example.json)；空字符串表示未设置，首次运行会提示选择 Luker 目录。
+大部分选项可以在设置窗口修改；需要手动调整时，编辑 exe 同目录的 `launcher_config.json`。可参考仓库中的 [`launcher_config.example.json`](launcher_config.example.json)；空字符串表示未设置，首次运行会提示选择 Luker 安装根目录。
 
 | 键 | 说明 |
 | :--- | :--- |
-| `luker_path` | Luker 安装目录 |
+| `luker_path` | Luker 安装根目录 |
 | `use_pwa_mode` | 是否使用 PWA 模式 |
 | `blur_enabled` | 是否启用毛玻璃效果 |
+| `close_behavior` | 关闭日志窗口时的行为：`ask` 每次询问 / `tray` 隐藏到托盘 / `exit` 退出程序 |
 | `theme` | 主题 ID |
 | `gcl_enabled` | 是否启用 GCL |
 | `gcl_bat_path` | GCL 的 `start.bat` 路径 |
