@@ -774,10 +774,10 @@ class RollbackTests(unittest.TestCase):
 
 class SamePathTests(unittest.TestCase):
     def test_same_path_with_mixed_separators(self):
-        self.assertTrue(version._same_path("C:/Luker", "C:\\Luker"))
+        self.assertTrue(version.same_path("C:/Luker", "C:\\Luker"))
 
     def test_different_paths(self):
-        self.assertFalse(version._same_path("C:/Luker", "C:/Other"))
+        self.assertFalse(version.same_path("C:/Luker", "C:/Other"))
 
 
 if __name__ == "__main__":

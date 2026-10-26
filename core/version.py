@@ -361,7 +361,7 @@ def _fetch_remote_versions() -> _RemoteVersions:
     )
 
 
-def _same_path(first: str, second: str) -> bool:
+def same_path(first: str, second: str) -> bool:
     try:
         return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
     except OSError:
@@ -381,7 +381,7 @@ def read_local_version(
     git_available = shutil.which("git") is not None
     npm_available = _npm_executable() is not None
     is_git_repo = bool(path is not None and path.is_dir() and (path / ".git").exists())
-    path_matches = running_path is None or not repo_path or _same_path(repo_path, running_path)
+    path_matches = running_path is None or not repo_path or same_path(repo_path, running_path)
     local = LocalVersion(
         repo_path=str(path) if path is not None else "",
         git_available=git_available,

@@ -21,7 +21,7 @@ from ui.dpi import (
     sync_window_scaling,
 )
 from ui.icons import theme_icon
-from ui.theme import PRESET_THEMES, shade_color, theme_swatch_colors
+from ui.theme import PRESET_THEMES, mix_color, shade_color, theme_swatch_colors
 from ui.tooltip import Tooltip
 from ui.window_utils import (
     apply_window_rounding,
@@ -42,6 +42,8 @@ CLOSE_BEHAVIOR_OPTIONS = (
     ('tray', '隐藏到托盘'),
     ('exit', '退出程序'),
 )
+THEME_HOVER_STEPS = 6
+THEME_HOVER_INTERVAL_MS = 18
 
 # CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
 # 旧控件树会被 root 的绑定脚本一直引用。
@@ -73,6 +75,30 @@ def bind_click_recursive(widget: tk.Misc, callback: Callable[[tk.Event], None]) 
         bind_click_recursive(child, callback)
 
 
+def bind_hover_recursive(
+    widget: tk.Misc,
+    on_enter: Callable[[tk.Event], None],
+    on_leave: Callable[[tk.Event], None],
+) -> None:
+    """把悬停事件绑定到控件及其所有后代，避免子控件打断卡片状态。"""
+    widget.bind('<Enter>', on_enter, add='+')
+    widget.bind('<Leave>', on_leave, add='+')
+    for child in widget.winfo_children():
+        bind_hover_recursive(child, on_enter, on_leave)
+
+
+def theme_card_hover_colors(
+    colors: dict[str, str],
+    selected: bool,
+    progress: float,
+) -> tuple[str, str]:
+    """返回主题卡片悬停过渡中的底色和边框颜色。"""
+    factor = max(0.0, min(1.0, progress))
+    fill = mix_color(colors['card'], colors['card_hover'], factor)
+    border = colors['accent'] if selected else mix_color(colors['border'], colors['accent'], factor)
+    return fill, border
+
+
 class SettingsWindow(ctk.CTkToplevel):
     """设置窗口：主题、PWA、GCL、关闭行为和 Luker 管理。"""
 
@@ -83,6 +109,9 @@ class SettingsWindow(ctk.CTkToplevel):
         on_close: Callable[[], None] | None = None,
         on_check_luker_update: Callable[[], bool] | None = None,
         on_apply_luker_update: Callable[[UpdateTarget], bool] | None = None,
+        on_luker_path_changed: Callable[[], None] | None = None,
+        initial_version_check: VersionCheck | None = None,
+        initial_version_checking: bool = False,
     ) -> None:
         super().__init__(parent)
 
@@ -90,12 +119,14 @@ class SettingsWindow(ctk.CTkToplevel):
         self._on_close_callback = on_close
         self._on_check_luker_update = on_check_luker_update
         self._on_apply_luker_update = on_apply_luker_update
+        self._on_luker_path_changed = on_luker_path_changed
         self._blur_job: str | None = None
         self._rebuild_job: str | None = None
+        self._theme_hover_jobs: set[str] = set()
         self._pending_fit = False
-        self._version_check: VersionCheck | None = None
+        self._version_check: VersionCheck | None = initial_version_check
         self._update_progress: UpdateProgress | None = None
-        self._version_checking = False
+        self._version_checking = initial_version_checking
         self._update_busy = False
 
         self.COLORS = config.get_theme_colors()
@@ -194,6 +225,7 @@ class SettingsWindow(ctk.CTkToplevel):
     def _on_destroy(self, event: tk.Event) -> None:
         if event.widget == self:
             self._destroyed = True
+            self._cancel_theme_hover_jobs()
             for job in (self._blur_job, self._rebuild_job):
                 if job is not None:
                     with contextlib.suppress(tk.TclError):
@@ -210,6 +242,12 @@ class SettingsWindow(ctk.CTkToplevel):
             clear_scroll_bindings(self)
             if self._on_close_callback is not None:
                 self._on_close_callback()
+
+    def _cancel_theme_hover_jobs(self) -> None:
+        for job in self._theme_hover_jobs:
+            with contextlib.suppress(tk.TclError):
+                self.after_cancel(job)
+        self._theme_hover_jobs.clear()
 
     def is_alive(self) -> bool:
         """窗口是否仍存在，供主窗口复用单例前检查。"""
@@ -497,10 +535,68 @@ class SettingsWindow(ctk.CTkToplevel):
         self._build_theme_swatches(inner, theme_id)
         self._build_theme_card_status(inner, colors, is_selected)
 
+        progress = 0
+        target = 0
+        job: str | None = None
+
+        def apply_hover() -> None:
+            fill, border = theme_card_hover_colors(
+                colors,
+                is_selected,
+                progress / THEME_HOVER_STEPS,
+            )
+            with contextlib.suppress(tk.TclError):
+                card.configure(fg_color=fill, border_color=border)
+
+        def tick() -> None:
+            nonlocal progress, job
+            if job is not None:
+                self._theme_hover_jobs.discard(job)
+                job = None
+            if self._destroyed:
+                return
+            try:
+                if not card.winfo_exists():
+                    return
+            except tk.TclError:
+                return
+
+            if progress < target:
+                progress += 1
+            elif progress > target:
+                progress -= 1
+            apply_hover()
+
+            if progress != target:
+                try:
+                    job = self.after(THEME_HOVER_INTERVAL_MS, tick)
+                except tk.TclError:
+                    job = None
+                else:
+                    self._theme_hover_jobs.add(job)
+
+        def set_hover(active: bool) -> None:
+            nonlocal target, job
+            target = THEME_HOVER_STEPS if active else 0
+            if job is None and progress != target:
+                try:
+                    job = self.after(0, tick)
+                except tk.TclError:
+                    job = None
+                else:
+                    self._theme_hover_jobs.add(job)
+
+        def on_enter(_event: tk.Event) -> None:
+            set_hover(True)
+
+        def on_leave(_event: tk.Event) -> None:
+            set_hover(False)
+
         def on_click(_event: tk.Event) -> None:
             self._select_theme(theme_id)
 
         bind_click_recursive(card, on_click)
+        bind_hover_recursive(card, on_enter, on_leave)
 
         return card
 
@@ -571,6 +667,7 @@ class SettingsWindow(ctk.CTkToplevel):
         if self._destroyed or not self.winfo_exists():
             return
 
+        self._cancel_theme_hover_jobs()
         for child in self.winfo_children():
             child.destroy()
 
@@ -786,7 +883,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._update_button = make_button(
             actions,
-            'primary',
+            'outline',
             self.COLORS,
             text="更新",
             width=190,
@@ -1100,6 +1197,8 @@ class SettingsWindow(ctk.CTkToplevel):
             self._update_progress = None
             self._version_checking = False
             self._update_busy = False
+            if self._on_luker_path_changed is not None:
+                self._on_luker_path_changed()
             self._render_luker_state()
 
     def _build_footer(self, parent: tk.Misc) -> None:

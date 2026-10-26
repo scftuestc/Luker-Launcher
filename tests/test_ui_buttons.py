@@ -31,6 +31,19 @@ class ButtonColorTests(unittest.TestCase):
             },
         )
 
+    def test_outline_is_unfilled_with_readable_disabled_text(self):
+        self.assertEqual(
+            button_colors('outline', self.colors),
+            {
+                'fg_color': 'transparent',
+                'hover_color': mix_color(self.colors['card'], self.colors['accent'], 0.12),
+                'text_color': self.colors['accent'],
+                'text_color_disabled': self.colors['text_dim'],
+                'border_width': 1,
+                'border_color': self.colors['border'],
+            },
+        )
+
     def test_ghost_is_transparent(self):
         self.assertEqual(
             button_colors('ghost', self.colors),

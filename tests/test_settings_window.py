@@ -19,7 +19,9 @@ from settings_window import (
     _SCROLL_BINDING_SEQUENCES,
     SettingsWindow,
     bind_click_recursive,
+    bind_hover_recursive,
     clear_scroll_bindings,
+    theme_card_hover_colors,
 )
 
 
@@ -58,12 +60,18 @@ class FakeSettingsWindow:
         on_close: object = None,
         on_check_luker_update: object = None,
         on_apply_luker_update: object = None,
+        on_luker_path_changed: object = None,
+        initial_version_check: object = None,
+        initial_version_checking: bool = False,
     ) -> None:
         self.parent = parent
         self.anchor_point = anchor_point
         self.on_close = on_close
         self.on_check_luker_update = on_check_luker_update
         self.on_apply_luker_update = on_apply_luker_update
+        self.on_luker_path_changed = on_luker_path_changed
+        self.initial_version_check = initial_version_check
+        self.initial_version_checking = initial_version_checking
         self.focused = 0
         self.alive = True
         type(self).instances.append(self)
@@ -119,6 +127,91 @@ class ClickBindingTests(unittest.TestCase):
 
         for widget in (root, middle, leaf):
             self.assertEqual(widget.bindings, [('<Button-1>', on_click)])
+
+
+class HoverWidget:
+    def __init__(self, children: list["HoverWidget"] | None = None) -> None:
+        self.children = children or []
+        self.bindings: list[tuple[str, object, str | None]] = []
+
+    def bind(self, sequence: str, callback: object, add: str | None = None) -> None:
+        self.bindings.append((sequence, callback, add))
+
+    def winfo_children(self) -> list["HoverWidget"]:
+        return self.children
+
+
+class HoverBindingTests(unittest.TestCase):
+    def test_binds_enter_and_leave_on_all_descendants(self):
+        leaf = HoverWidget()
+        middle = HoverWidget([leaf])
+        root = HoverWidget([middle])
+
+        def on_enter(_event: object) -> None:
+            pass
+
+        def on_leave(_event: object) -> None:
+            pass
+
+        bind_hover_recursive(root, on_enter, on_leave)
+
+        for widget in (root, middle, leaf):
+            self.assertEqual(
+                widget.bindings,
+                [('<Enter>', on_enter, '+'), ('<Leave>', on_leave, '+')],
+            )
+
+
+class ThemeCardHoverColorTests(unittest.TestCase):
+    colors: ClassVar[dict[str, str]] = {
+        'card': '#101010',
+        'card_hover': '#202020',
+        'accent': '#303030',
+        'border': '#404040',
+    }
+
+    def test_unselected_card_animates_fill_and_border(self):
+        self.assertEqual(
+            theme_card_hover_colors(self.colors, False, 0),
+            ('#101010', '#404040'),
+        )
+        self.assertEqual(
+            theme_card_hover_colors(self.colors, False, 1),
+            ('#202020', '#303030'),
+        )
+
+    def test_selected_card_keeps_accent_border(self):
+        self.assertEqual(
+            theme_card_hover_colors(self.colors, True, 0),
+            ('#101010', '#303030'),
+        )
+        self.assertEqual(
+            theme_card_hover_colors(self.colors, True, 1),
+            ('#202020', '#303030'),
+        )
+
+    def test_progress_is_clamped(self):
+        self.assertEqual(
+            theme_card_hover_colors(self.colors, False, -1),
+            theme_card_hover_colors(self.colors, False, 0),
+        )
+        self.assertEqual(
+            theme_card_hover_colors(self.colors, False, 2),
+            theme_card_hover_colors(self.colors, False, 1),
+        )
+
+
+class ThemeHoverJobTests(unittest.TestCase):
+    def test_cancel_all_hover_jobs(self):
+        window = object.__new__(SettingsWindow)
+        window._theme_hover_jobs = {'first', 'second'}
+        cancelled: list[str] = []
+        window.after_cancel = cancelled.append
+
+        window._cancel_theme_hover_jobs()
+
+        self.assertCountEqual(cancelled, ['first', 'second'])
+        self.assertEqual(window._theme_hover_jobs, set())
 
 
 class FakeSwitch:
@@ -520,6 +613,8 @@ class UpdateUiTests(unittest.TestCase):
         window._version_checking = True
         window._update_busy = True
         window._render_luker_state = lambda: None
+        changed: list[bool] = []
+        window._on_luker_path_changed = lambda: changed.append(True)
         window.path_label = SimpleNamespace(
             configure=lambda **kwargs: setattr(window, "configured_path", kwargs["text"])
         )
@@ -528,6 +623,7 @@ class UpdateUiTests(unittest.TestCase):
             window._select_path()
 
         self.assertEqual(window.configured_path, "D:/New")
+        self.assertEqual(changed, [True])
         self.assertIsNone(window._version_check)
         self.assertIsNone(window._update_progress)
         self.assertFalse(window._version_checking)
@@ -668,6 +764,7 @@ class RebuildOrderTests(unittest.TestCase):
         window = object.__new__(SettingsWindow)
         window._destroyed = False
         window.COLORS = {'bg': '#123456'}
+        window._theme_hover_jobs = set()
         calls = []
         window.winfo_exists = lambda: True
         window.winfo_children = lambda: [FakeChild(calls)]
@@ -705,7 +802,39 @@ class SettingsWindowTests(unittest.TestCase):
         launcher.log_window = object()
         launcher.settings_window = None
         launcher._tray_anchor = (100, 200)
+        launcher._version_checking = False
+        launcher._version_check_cache = None
+        launcher._version_check_seq = 0
         return launcher
+
+    def test_open_passes_cached_check_to_new_window(self):
+        launcher = self._make_launcher()
+        cached = make_check()
+        launcher._version_check_cache = cached
+        launcher._version_checking = True
+
+        with (
+            patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow),
+            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
+        ):
+            launcher._open_settings_window()
+
+        window = FakeSettingsWindow.instances[0]
+        self.assertIs(window.initial_version_check, cached)
+        self.assertTrue(window.initial_version_checking)
+
+    def test_open_drops_cached_check_for_other_path(self):
+        launcher = self._make_launcher()
+        launcher._version_check_cache = make_check()
+
+        with (
+            patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow),
+            patch.object(launcher_app, "config", SimpleNamespace(luker_path="D:/Other")),
+        ):
+            launcher._open_settings_window()
+
+        self.assertIsNone(FakeSettingsWindow.instances[0].initial_version_check)
+        self.assertIsNone(launcher._version_check_cache)
 
     def test_open_uses_tray_anchor_and_reuses_alive_window(self):
         launcher = self._make_launcher()
@@ -725,6 +854,7 @@ class SettingsWindowTests(unittest.TestCase):
             '_request_luker_version_check',
         )
         self.assertEqual(window.on_apply_luker_update.__name__, '_apply_luker_update')
+        self.assertEqual(window.on_luker_path_changed.__name__, '_on_luker_path_changed')
 
     def test_closed_window_is_recreated(self):
         launcher = self._make_launcher()

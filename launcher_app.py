@@ -21,6 +21,7 @@ from core.version import (
     apply_luker_update,
     check_luker_versions,
     read_local_version,
+    same_path,
 )
 from dialogs import ensure_luker_path_configured, show_close_choice
 from log_window import LogWindow
@@ -63,6 +64,8 @@ class LukerLauncher:
         self._tray_ready = False
         self._version_checking = False
         self._updating = False
+        self._version_check_cache: VersionCheck | None = None
+        self._version_check_seq = 0
         self._shutdown_done = False
         self._last_status: LukerState | None = None  # 上一次通知给界面的运行状态
         self._readiness: LukerReadinessMonitor | None = None
@@ -521,12 +524,23 @@ class LukerLauncher:
             window.focus_force()
             return
 
+        cached = self._version_check_cache
+        current_path = config.luker_path
+        if cached is not None and (
+            not current_path or not same_path(cached.repo_path, current_path)
+        ):
+            self._version_check_cache = None
+            cached = None
+
         self.settings_window = SettingsWindow(
             self.log_window,
             anchor_point=self._tray_anchor,
             on_close=self._on_settings_closed,
             on_check_luker_update=self._request_luker_version_check,
             on_apply_luker_update=self._apply_luker_update,
+            on_luker_path_changed=self._on_luker_path_changed,
+            initial_version_check=cached,
+            initial_version_checking=self._version_checking,
         )
         self.settings_window.focus_force()
 
@@ -534,9 +548,15 @@ class LukerLauncher:
         """设置窗口销毁后清理引用。"""
         self.settings_window = None
 
+    def _on_luker_path_changed(self) -> None:
+        """路径变更后丢弃旧路径的检查结果和进行中的请求。"""
+        self._version_check_seq += 1
+        self._version_check_cache = None
+        self._version_checking = False
+
     def _request_luker_version_check(self) -> bool:
         """在后台检查本地版本、最新发行版和最新提交。"""
-        if self._version_checking or self._exiting:
+        if self._version_checking or self._updating or self._exiting:
             return False
         window = self.settings_window
         if window is None:
@@ -548,6 +568,8 @@ class LukerLauncher:
             str(manager.luker_path) if manager is not None and manager.is_running else None
         )
         self._version_checking = True
+        self._version_check_seq += 1
+        seq = self._version_check_seq
         self._on_log("[启动器] 正在检查 Luker 版本...")
         failed = False
 
@@ -567,11 +589,12 @@ class LukerLauncher:
                     error=f"检查版本失败：{error}",
                 )
             finally:
-                self._version_checking = False
+                if seq == self._version_check_seq:
+                    self._version_checking = False
             if not failed:
                 self._log_version_check(result)
             self._post_ui(
-                lambda: self._deliver_version_check(window, result),
+                lambda: self._deliver_version_check(result, seq),
                 control=True,
             )
 
@@ -583,12 +606,16 @@ class LukerLauncher:
             return False
         return True
 
-    def _deliver_version_check(
-        self,
-        window: SettingsWindow,
-        result: VersionCheck,
-    ) -> None:
-        if self.settings_window is window and window.is_alive():
+    def _deliver_version_check(self, result: VersionCheck, seq: int) -> None:
+        if seq != self._version_check_seq:
+            return
+        current_path = config.luker_path
+        if not current_path or not same_path(result.repo_path, current_path):
+            return
+        if result.release is not None or result.commit is not None:
+            self._version_check_cache = result
+        window = self.settings_window
+        if window is not None and window.is_alive():
             window.set_version_check(result)
 
     def _log_version_check(self, result: VersionCheck) -> None:
@@ -640,7 +667,7 @@ class LukerLauncher:
 
     def _apply_luker_update(self, target: UpdateTarget) -> bool:
         """停止 Luker、切换版本、安装依赖并按原状态重启。"""
-        if self._updating or self._process_busy or self._exiting:
+        if self._updating or self._process_busy or self._version_checking or self._exiting:
             return False
         window = self.settings_window
         if window is None:
@@ -704,6 +731,8 @@ class LukerLauncher:
         active_manager = manager
         was_running = manager.is_running
         self._updating = True
+        self._version_check_cache = None
+        self._version_check_seq += 1
 
         def worker() -> None:
             try:

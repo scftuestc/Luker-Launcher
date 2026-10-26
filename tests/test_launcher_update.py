@@ -134,6 +134,8 @@ class LauncherUpdateTests(unittest.TestCase):
         launcher._process_busy = False
         launcher._version_checking = False
         launcher._updating = False
+        launcher._version_check_cache = None
+        launcher._version_check_seq = 0
         launcher._ui = UiDispatcher(lambda _delay, _callback: None)
         launcher._ui.start()
         self.addCleanup(launcher._ui.stop)
@@ -260,14 +262,123 @@ class LauncherUpdateTests(unittest.TestCase):
         launcher._version_checking = False
         launcher._exiting = True
         self.assertFalse(launcher._request_luker_version_check())
+        launcher._exiting = False
+        launcher._updating = True
+        self.assertFalse(launcher._request_luker_version_check())
 
     def test_check_is_rejected_without_settings_window(self):
         launcher, _, _, _ = self.make_launcher()
         launcher.settings_window = None
         self.assertFalse(launcher._request_luker_version_check())
 
+    def test_successful_check_is_cached(self):
+        launcher, _, _, _ = self.make_launcher()
+        release, commit = remote_targets()
+        check = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=release,
+            commit=commit,
+        )
+        with (
+            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
+            patch.object(launcher_app, "check_luker_versions", return_value=check),
+        ):
+            self.assertTrue(launcher._request_luker_version_check())
+            launcher._ui.pump()
+
+        self.assertIs(launcher._version_check_cache, check)
+
+    def test_error_without_targets_is_not_cached(self):
+        launcher, _, window, _ = self.make_launcher()
+        check = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=None,
+            commit=None,
+            error="api failed",
+        )
+        launcher._version_check_seq = 1
+        with patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")):
+            launcher._deliver_version_check(check, 1)
+
+        self.assertIsNone(launcher._version_check_cache)
+        self.assertIs(window.check, check)
+
+    def test_closed_window_still_caches_result(self):
+        launcher, _, _, _ = self.make_launcher()
+        release, commit = remote_targets()
+        check = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=release,
+            commit=commit,
+        )
+        launcher.settings_window = None
+        launcher._version_check_seq = 1
+        with patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")):
+            launcher._deliver_version_check(check, 1)
+
+        self.assertIs(launcher._version_check_cache, check)
+
+    def test_stale_check_result_is_ignored(self):
+        launcher, _, window, _ = self.make_launcher()
+        release, commit = remote_targets()
+        check = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=release,
+            commit=commit,
+        )
+        launcher._version_check_seq = 2
+        with patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")):
+            launcher._deliver_version_check(check, 1)
+
+        self.assertIsNone(launcher._version_check_cache)
+        self.assertIsNone(window.check)
+
+    def test_result_for_other_path_is_ignored(self):
+        launcher, _, window, _ = self.make_launcher()
+        release, commit = remote_targets()
+        check = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=release,
+            commit=commit,
+        )
+        launcher._version_check_seq = 1
+        with patch.object(launcher_app, "config", SimpleNamespace(luker_path="D:/Other")):
+            launcher._deliver_version_check(check, 1)
+
+        self.assertIsNone(launcher._version_check_cache)
+        self.assertIsNone(window.check)
+
+    def test_path_change_clears_cache_and_invalidates_check(self):
+        launcher, _, _, _ = self.make_launcher()
+        launcher._version_checking = True
+        launcher._version_check_cache = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=None,
+            commit=None,
+        )
+        launcher._version_check_seq = 1
+
+        launcher._on_luker_path_changed()
+
+        self.assertFalse(launcher._version_checking)
+        self.assertIsNone(launcher._version_check_cache)
+        self.assertEqual(launcher._version_check_seq, 2)
+
     def test_update_stops_applies_and_restarts(self):
         launcher, manager, window, logs = self.make_launcher()
+        release, commit = remote_targets()
+        launcher._version_check_cache = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=release,
+            commit=commit,
+        )
         events = []
 
         def fake_apply(path, target, on_stage=None):
@@ -291,6 +402,7 @@ class LauncherUpdateTests(unittest.TestCase):
         self.assertFalse(launcher._process_busy)
         self.assertEqual(window.progress[-1].stage, "done")
         self.assertFalse(window.progress[-1].busy)
+        self.assertIsNone(launcher._version_check_cache)
         self.assertTrue(any("Luker 已重启" in line for line in logs))
 
     def test_stop_failure_cancels_update(self):
@@ -383,6 +495,17 @@ class LauncherUpdateTests(unittest.TestCase):
     def test_update_is_rejected_when_process_is_busy(self):
         launcher, manager, _, _ = self.make_launcher()
         launcher._process_busy = True
+        with patch.object(
+            launcher_app,
+            "config",
+            SimpleNamespace(luker_path="C:/Luker"),
+        ):
+            self.assertFalse(launcher._apply_luker_update(TARGET))
+        self.assertEqual(manager.events, [])
+
+    def test_update_is_rejected_while_checking_versions(self):
+        launcher, manager, _, _ = self.make_launcher()
+        launcher._version_checking = True
         with patch.object(
             launcher_app,
             "config",
