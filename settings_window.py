@@ -3,10 +3,12 @@
 import contextlib
 import tkinter as tk
 from collections.abc import Callable
+from tkinter import messagebox
 
 import customtkinter as ctk
 
 from config import config
+from core.version import TargetInfo, UpdateProgress, UpdateTarget, VersionCheck
 from dialogs import select_gcl_bat_path, select_luker_path
 from ui.buttons import make_button
 from ui.dpi import (
@@ -78,26 +80,35 @@ def bind_click_recursive(widget: tk.Misc, callback: Callable[[tk.Event], None]) 
 
 
 class SettingsWindow(ctk.CTkToplevel):
-    """设置窗口：主题、PWA 模式、GCL、关闭行为和 Luker 路径。"""
+    """设置窗口：主题、PWA、GCL、关闭行为和 Luker 管理。"""
 
     def __init__(
         self,
         parent: tk.Misc,
         anchor_point: tuple[int, int] | None = None,
         on_close: Callable[[], None] | None = None,
+        on_check_luker_update: Callable[[], bool] | None = None,
+        on_apply_luker_update: Callable[[UpdateTarget], bool] | None = None,
     ) -> None:
         super().__init__(parent)
 
         self._destroyed = False
         self._on_close_callback = on_close
+        self._on_check_luker_update = on_check_luker_update
+        self._on_apply_luker_update = on_apply_luker_update
         self._blur_job: str | None = None
         self._rebuild_job: str | None = None
         self._pending_fit = False
+        self._version_check: VersionCheck | None = None
+        self._update_progress: UpdateProgress | None = None
+        self._version_checking = False
+        self._update_busy = False
 
         self.COLORS = config.get_theme_colors()
         self.UI_FONT = get_ui_font()
         self.MONO_FONT = get_mono_font()
         self._close_behavior_var = tk.StringVar(master=self, value=config.close_behavior)
+        self._update_channel_var = tk.StringVar(master=self, value="release")
 
         self.title("设置")
         self.resizable(False, False)
@@ -277,7 +288,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._build_close_behavior_section(scroll_frame)
 
-        self._build_path_section(scroll_frame)
+        self._build_luker_section(scroll_frame)
 
         self._build_footer(main)
 
@@ -397,8 +408,8 @@ class SettingsWindow(ctk.CTkToplevel):
         parent: tk.Misc,
         current_value: str,
         command: Callable[[], None],
-    ) -> ctk.CTkLabel:
-        """创建“路径显示 + 选择按钮”行，返回可更新的路径标签。"""
+    ) -> tuple[ctk.CTkLabel, ctk.CTkButton]:
+        """创建“路径显示 + 选择按钮”行，返回路径标签和按钮。"""
         path_row = ctk.CTkFrame(parent, fg_color="transparent")
         path_row.pack(fill="x")
 
@@ -414,7 +425,7 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         value_label.pack(fill="x", padx=10, pady=8)
 
-        make_button(
+        button = make_button(
             path_row,
             'secondary',
             self.COLORS,
@@ -424,8 +435,9 @@ class SettingsWindow(ctk.CTkToplevel):
             height=32,
             width=80,
             command=command,
-        ).pack(side="right")
-        return value_label
+        )
+        button.pack(side="right")
+        return value_label, button
 
     def _build_theme_section(self, parent: tk.Misc) -> None:
         section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
@@ -625,7 +637,7 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text_dim'],
         ).pack(anchor="w", pady=(0, 6))
 
-        self.gcl_path_label = self._create_path_row(
+        self.gcl_path_label, _ = self._create_path_row(
             self._gcl_path_frame,
             config.gcl_bat_path or "未设置",
             self._select_gcl_path,
@@ -716,26 +728,460 @@ class SettingsWindow(ctk.CTkToplevel):
         if variable is not None:
             variable.set(value)
 
-    def _build_path_section(self, parent: tk.Misc) -> None:
+    def _build_luker_section(self, parent: tk.Misc) -> None:
         _section, inner = self._create_section(parent)
 
         ctk.CTkLabel(
             inner,
-            text="📁  Luker 路径",
+            text="📁  Luker 管理",
             font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
             text_color=self.COLORS['text'],
         ).pack(anchor="w", pady=(0, 10))
 
-        self.path_label = self._create_path_row(
+        ctk.CTkLabel(
+            inner,
+            text="安装路径",
+            font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
+            text_color=self.COLORS['text_dim'],
+        ).pack(anchor="w", pady=(0, 6))
+
+        self.path_label, self.path_button = self._create_path_row(
             inner,
             config.luker_path or "未设置",
             self._select_path,
         )
 
+        ctk.CTkFrame(inner, height=1, fg_color=self.COLORS['border']).pack(
+            fill="x",
+            pady=12,
+        )
+
+        ctk.CTkLabel(
+            inner,
+            text="版本管理",
+            font=ctk.CTkFont(family=self.UI_FONT, size=12, weight="bold"),
+            text_color=self.COLORS['text_dim'],
+        ).pack(anchor="w", pady=(0, 6))
+
+        self._current_label = ctk.CTkLabel(
+            inner,
+            text="",
+            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            text_color=self.COLORS['text_dim'],
+            justify="left",
+            anchor="w",
+            wraplength=480,
+        )
+        self._current_label.pack(fill="x", pady=(0, 8))
+
+        self._release_summary = self._create_version_choice(
+            inner,
+            "release",
+            "最新发行版",
+        )
+        self._commit_summary = self._create_version_choice(
+            inner,
+            "commit",
+            "最新提交",
+        )
+
+        self._details_frame = ctk.CTkFrame(inner, fg_color="transparent")
+        self._details_frame.pack(fill="x", pady=(4, 0))
+
+        self._release_detail = ctk.CTkLabel(
+            self._details_frame,
+            text="",
+            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            text_color=self.COLORS['text_dim'],
+            justify="left",
+            anchor="w",
+            wraplength=480,
+        )
+        self._commit_detail = ctk.CTkLabel(
+            self._details_frame,
+            text="",
+            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            text_color=self.COLORS['text_dim'],
+            justify="left",
+            anchor="w",
+            wraplength=480,
+        )
+
+        actions = ctk.CTkFrame(inner, fg_color="transparent")
+        actions.pack(fill="x", pady=(10, 0))
+
+        self._check_button = make_button(
+            actions,
+            'secondary',
+            self.COLORS,
+            text="检查更新",
+            width=100,
+            height=32,
+            font_family=self.UI_FONT,
+            font_size=12,
+            command=self._on_check_update,
+        )
+        self._check_button.pack(side="left")
+
+        self._update_button = make_button(
+            actions,
+            'primary',
+            self.COLORS,
+            text="更新",
+            width=190,
+            height=32,
+            font_family=self.UI_FONT,
+            font_size=12,
+            command=self._on_apply_update,
+            state="disabled",
+        )
+        self._update_button.pack(side="right")
+
+        self._version_status = ctk.CTkLabel(
+            inner,
+            text="",
+            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            text_color=self.COLORS['text_muted'],
+            justify="left",
+            anchor="w",
+            wraplength=480,
+        )
+        self._version_status.pack(fill="x", pady=(8, 0))
+
+        self._render_luker_state()
+
+    def _create_version_choice(
+        self,
+        parent: tk.Misc,
+        value: str,
+        label: str,
+    ) -> ctk.CTkLabel:
+        """创建“单选项 + 一行版本摘要”，返回摘要标签。"""
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", pady=(0, 4))
+
+        radio = ctk.CTkRadioButton(
+            row,
+            text=label,
+            value=value,
+            variable=self._update_channel_var,
+            command=self._on_update_channel_change,
+            width=110,
+            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            text_color=self.COLORS['text'],
+            fg_color=self.COLORS['accent'],
+            hover_color=shade_color(self.COLORS['accent'], 0.85),
+            border_color=self.COLORS['border'],
+            radiobutton_width=18,
+            radiobutton_height=18,
+            corner_radius=9,
+            border_width_unchecked=2,
+            border_width_checked=6,
+        )
+        radio.pack(side="left")
+        if value == "release":
+            self._release_radio = radio
+        else:
+            self._commit_radio = radio
+
+        summary = ctk.CTkLabel(
+            row,
+            text="尚未检查",
+            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            text_color=self.COLORS['text_muted'],
+            justify="left",
+            anchor="w",
+            wraplength=350,
+        )
+        summary.pack(side="left", padx=(8, 0), fill="x", expand=True)
+        return summary
+
+    def _render_luker_state(self) -> None:
+        if self._destroyed:
+            return
+
+        busy = self._version_checking or self._update_busy
+        state = "disabled" if busy else "normal"
+        self.path_button.configure(state=state)
+        self._release_radio.configure(state=state)
+        self._commit_radio.configure(state=state)
+        self._check_button.configure(
+            state="disabled" if busy or self._on_check_luker_update is None else "normal",
+            text="检查中..." if self._version_checking else "检查更新",
+        )
+
+        self._current_label.configure(text=self._current_text())
+        check = self._version_check
+        release = check.release if check is not None else None
+        commit = check.commit if check is not None else None
+        self._release_summary.configure(text=self._summary_text(release))
+        self._commit_summary.configure(text=self._summary_text(commit))
+        self._release_detail.configure(text=self._detail_text(release))
+        self._commit_detail.configure(text=self._detail_text(commit))
+
+        if self._update_channel_var.get() == "commit":
+            self._release_detail.pack_forget()
+            self._commit_detail.pack(fill="x")
+        else:
+            self._commit_detail.pack_forget()
+            self._release_detail.pack(fill="x")
+
+        target = self._selected_target()
+        can_update = bool(
+            target is not None
+            and target.actionable
+            and not busy
+            and self._on_apply_luker_update is not None
+        )
+        self._update_button.configure(
+            state="normal" if can_update else "disabled",
+            text=self._update_button_text(target),
+        )
+        self._version_status.configure(
+            text=self._status_text(target),
+            text_color=self._status_color(target),
+        )
+
+    def _selected_target(self) -> TargetInfo | None:
+        check = self._version_check
+        if check is None:
+            return None
+        if self._update_channel_var.get() == "commit":
+            return check.commit
+        return check.release
+
+    def _current_text(self) -> str:
+        check = self._version_check
+        if check is None:
+            return "当前版本：尚未检查"
+        local = check.local
+        if local.error:
+            return f"当前版本：无法读取（{local.error}）"
+
+        branch = local.branch if local.branch and local.branch != "HEAD" else "分离 HEAD"
+        tag = f" · Tag {local.current_tag}" if local.current_tag else ""
+        lines = [
+            f"当前版本：{local.describe or local.short_head}",
+            f"分支：{branch}{tag}",
+            f"提交：{local.short_head} · {local.date}",
+        ]
+        if local.subject:
+            lines.append(local.subject)
+        if local.dirty:
+            lines.append("存在未提交的跟踪文件修改，更新已禁用。")
+        if not local.path_matches:
+            lines.append("Luker 路径已更改，请先重启应用新路径。")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _summary_text(target: TargetInfo | None) -> str:
+        if target is None:
+            return "尚未检查"
+        if target.kind == "release":
+            parts = [target.label]
+            if target.published_at:
+                parts.append(target.published_at)
+            parts.append(f"标签签名：{target.tag_signature}")
+            parts.append(f"提交签名：{target.commit.verification}")
+            return " · ".join(parts)
+        parts = [
+            target.branch or "默认分支",
+            target.commit.short_sha,
+            f"提交签名：{target.commit.verification}",
+        ]
+        return " · ".join(parts)
+
+    @staticmethod
+    def _detail_text(target: TargetInfo | None) -> str:
+        if target is None:
+            return "点击“检查更新”获取远程版本和签名信息。"
+        commit = target.commit
+        if target.kind == "release":
+            lines = [
+                f"Tag {target.tag or target.label} · 发布于 {target.published_at or '未知'}",
+                f"提交 {commit.short_sha} · {commit.date}",
+                commit.subject,
+                f"标签签名：{target.tag_signature}",
+                f"提交签名：{commit.verification}",
+            ]
+        else:
+            lines = [
+                f"{target.branch or '默认分支'} 分支 · 提交 {commit.short_sha} · {commit.date}",
+                commit.subject,
+                f"提交签名：{commit.verification}",
+            ]
+        return "\n".join(line for line in lines if line)
+
+    def _update_button_text(self, target: TargetInfo | None) -> str:
+        if target is None:
+            return "更新"
+        if not target.actionable:
+            if target.relation == "up_to_date":
+                return "已是最新"
+            return "当前不可更新"
+        if target.downgrade:
+            return f"回退到 {target.label}"
+        if target.kind == "commit":
+            return "更新到最新提交"
+        return f"更新到 {target.label}"
+
+    def _status_text(self, target: TargetInfo | None) -> str:
+        if self._version_checking:
+            return "正在检查更新..."
+        if self._update_progress is not None:
+            return self._update_progress.message
+        check = self._version_check
+        if check is None:
+            return "点击“检查更新”获取最新发行版和最新提交。"
+        if check.error and target is None:
+            return check.error
+        if check.local.error:
+            return check.local.error
+        if target is None:
+            return check.error or "没有可用的版本信息。"
+        if self._on_check_luker_update is None:
+            return "版本管理未连接启动器。"
+        return target.status
+
+    def _status_color(self, target: TargetInfo | None) -> str:
+        if self._update_progress is not None:
+            return {
+                "info": self.COLORS['text_muted'],
+                "success": self.COLORS['success'],
+                "warning": self.COLORS['warning'],
+                "error": self.COLORS['error'],
+            }.get(self._update_progress.level, self.COLORS['text_muted'])
+        if self._version_checking:
+            return self.COLORS['text_muted']
+        check = self._version_check
+        if check is None:
+            return self.COLORS['text_muted']
+        if check.error and target is None:
+            return self.COLORS['error']
+        if check.local.error:
+            return self.COLORS['error']
+        if target is None:
+            return self.COLORS['text_muted']
+        if target.downgrade:
+            return self.COLORS['warning']
+        if target.actionable:
+            return self.COLORS['text_muted']
+        if target.relation == "up_to_date":
+            return self.COLORS['success']
+        if target.relation in ("ahead", "unknown"):
+            return self.COLORS['warning']
+        if target.relation == "diverged":
+            return self.COLORS['error']
+        if check.error:
+            return self.COLORS['warning']
+        return self.COLORS['error']
+
+    def _on_update_channel_change(self) -> None:
+        self._render_luker_state()
+
+    def _on_check_update(self) -> None:
+        if self._version_checking or self._update_busy:
+            return
+        if self._on_check_luker_update is None:
+            self._update_progress = UpdateProgress(
+                "error",
+                "版本管理未连接启动器。",
+                "warning",
+                False,
+            )
+            self._render_luker_state()
+            return
+
+        self._version_checking = True
+        self._update_progress = None
+        self._render_luker_state()
+        if not self._on_check_luker_update():
+            self._version_checking = False
+            self._update_progress = UpdateProgress(
+                "error",
+                "暂时无法检查版本，请稍后再试。",
+                "warning",
+                False,
+            )
+            self._render_luker_state()
+
+    def set_version_check(self, check: VersionCheck) -> None:
+        """接收后台检查结果；主题重建后仍按该结果渲染。"""
+        if self._destroyed:
+            return
+        self._version_checking = False
+        self._version_check = check
+        self._update_progress = None
+        self._render_luker_state()
+
+    def set_update_progress(self, progress: UpdateProgress) -> None:
+        """接收更新阶段和最终结果。"""
+        if self._destroyed:
+            return
+        self._update_progress = progress
+        self._update_busy = progress.busy
+        if not progress.busy and progress.stage in ("done", "error"):
+            # 更新后当前版本可能已变化，强制重新检查，避免继续显示旧目标
+            self._version_check = None
+        self._render_luker_state()
+
+    def _on_apply_update(self) -> None:
+        if self._update_busy or self._version_checking:
+            return
+        target = self._selected_target()
+        if target is None or not target.actionable:
+            return
+        if self._on_apply_luker_update is None:
+            return
+
+        if target.downgrade:
+            text = (
+                f"当前已包含 {target.label}，领先 {target.ahead} 个提交。\n"
+                f"更新会回退代码到 {target.label}，并重新安装依赖。\n"
+                "更新完成后，如果 Luker 原本在运行会自动重启。\n是否继续？"
+            )
+        else:
+            text = (
+                f"将停止 Luker，更新到 {target.label} 并安装依赖。\n"
+                "更新完成后，如果 Luker 原本在运行会自动重启。\n是否继续？"
+            )
+        if not messagebox.askyesno("更新 Luker", text, parent=self):
+            return
+
+        update_target = UpdateTarget(
+            kind=target.kind,
+            label=target.label,
+            sha=target.commit.sha,
+            tag=target.tag,
+            branch=target.branch,
+        )
+        self._update_busy = True
+        self._update_progress = UpdateProgress(
+            "preparing",
+            "正在准备更新...",
+            "info",
+            True,
+        )
+        self._render_luker_state()
+        if not self._on_apply_luker_update(update_target):
+            self._update_busy = False
+            self._update_progress = UpdateProgress(
+                "error",
+                "更新未启动，请稍后再试。",
+                "warning",
+                False,
+            )
+            self._render_luker_state()
+
     def _select_path(self) -> None:
         path = select_luker_path(self)
         if path:
             self.path_label.configure(text=path)
+            self._version_check = None
+            self._update_progress = None
+            self._version_checking = False
+            self._update_busy = False
+            self._render_luker_state()
 
     def _build_footer(self, parent: tk.Misc) -> None:
         footer = ctk.CTkFrame(parent, fg_color="transparent")

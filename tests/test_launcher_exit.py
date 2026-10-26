@@ -61,6 +61,7 @@ class ExitRequestTests(unittest.TestCase):
         launcher._exiting = False
         launcher._exit_dialog_open = False
         launcher._tray_ready = True
+        launcher._updating = False
         launcher._last_status = None
         launcher.log_window = FakeLogWindow()
         launcher.tray_menu = FakeTrayMenu()
@@ -234,6 +235,38 @@ class ExitRequestTests(unittest.TestCase):
             launcher._on_request_exit()
 
         show.assert_not_called()
+
+    def test_update_in_progress_blocks_close_request(self):
+        launcher, _, _, exits = self.make_launcher()
+        launcher._updating = True
+        logs: list[str] = []
+        launcher._on_log = logs.append
+
+        with (
+            patch.object(
+                launcher_app,
+                'config',
+                SimpleNamespace(close_behavior='ask'),
+            ),
+            patch.object(launcher_app, 'show_close_choice') as show,
+        ):
+            launcher._on_request_exit()
+
+        show.assert_not_called()
+        self.assertEqual(exits, [])
+        self.assertTrue(any('正在更新' in line for line in logs))
+
+    def test_update_in_progress_blocks_tray_exit(self):
+        launcher, _, _, exits = self.make_launcher()
+        launcher._updating = True
+        logs: list[str] = []
+        launcher._on_log = logs.append
+
+        LukerLauncher._on_exit(launcher)
+
+        self.assertEqual(exits, [])
+        self.assertFalse(launcher._exiting)
+        self.assertTrue(any('正在更新' in line for line in logs))
 
     def test_dialog_failure_falls_back_to_hide_or_exit_prompt(self):
         launcher, window, tray, exits = self.make_launcher()

@@ -1,10 +1,19 @@
 import unittest
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import patch
 
 import launcher_app
 import settings_window
+from core.version import (
+    CommitInfo,
+    LocalVersion,
+    TargetInfo,
+    UpdateProgress,
+    UpdateTarget,
+    VersionCheck,
+)
 from launcher_app import LukerLauncher
 from settings_window import (
     _SCROLL_BINDING_SEQUENCES,
@@ -47,10 +56,14 @@ class FakeSettingsWindow:
         parent: object,
         anchor_point: tuple[int, int] | None = None,
         on_close: object = None,
+        on_check_luker_update: object = None,
+        on_apply_luker_update: object = None,
     ) -> None:
         self.parent = parent
         self.anchor_point = anchor_point
         self.on_close = on_close
+        self.on_check_luker_update = on_check_luker_update
+        self.on_apply_luker_update = on_apply_luker_update
         self.focused = 0
         self.alive = True
         type(self).instances.append(self)
@@ -216,6 +229,354 @@ class CloseBehaviorTests(unittest.TestCase):
         window._on_close_behavior_config_change('ask')
 
 
+def make_local(**overrides) -> LocalVersion:
+    base = LocalVersion(
+        repo_path="C:/Luker",
+        git_available=True,
+        npm_available=True,
+        is_git_repo=True,
+        describe="v2.8.0-75-g755925947",
+        branch="release",
+        head="a" * 40,
+        short_head="aaaaaaa",
+        date="2026-10-26",
+        subject="local subject",
+        dirty=False,
+        path_matches=True,
+    )
+    return replace(base, **overrides)
+
+
+def make_commit() -> CommitInfo:
+    return CommitInfo(
+        sha="b" * 40,
+        short_sha="bbbbbbb",
+        date="2026-10-01",
+        subject="remote subject",
+        verification="未签名",
+        verification_ok=False,
+    )
+
+
+def make_target(
+    kind: str,
+    relation: str,
+    *,
+    actionable: bool,
+    downgrade: bool = False,
+    ahead: int = 0,
+    behind: int = 0,
+) -> TargetInfo:
+    if kind == "release":
+        return TargetInfo(
+            kind="release",
+            label="v2.8.0",
+            tag="v2.8.0",
+            branch=None,
+            published_at="2026-10-01",
+            commit=make_commit(),
+            tag_signature="未签名",
+            tag_signature_ok=False,
+            relation=relation,
+            ahead=ahead,
+            behind=behind,
+            actionable=actionable,
+            downgrade=downgrade,
+            status="发行版状态",
+        )
+    return TargetInfo(
+        kind="commit",
+        label="最新提交 bbbbbbb",
+        tag=None,
+        branch="release",
+        published_at="",
+        commit=make_commit(),
+        tag_signature="",
+        tag_signature_ok=None,
+        relation=relation,
+        ahead=ahead,
+        behind=behind,
+        actionable=actionable,
+        downgrade=False,
+        status="提交状态",
+    )
+
+
+def make_check(
+    *,
+    release: TargetInfo | None = None,
+    commit: TargetInfo | None = None,
+    local: LocalVersion | None = None,
+    error: str | None = None,
+) -> VersionCheck:
+    return VersionCheck(
+        repo_path="C:/Luker",
+        local=local or make_local(),
+        release=release,
+        commit=commit,
+        error=error,
+    )
+
+
+class UpdateUiTests(unittest.TestCase):
+    def test_selected_target_follows_channel(self):
+        window = object.__new__(SettingsWindow)
+        release = make_target("release", "behind", actionable=True)
+        commit = make_target("commit", "behind", actionable=True)
+        window._version_check = make_check(release=release, commit=commit)
+        window._update_channel_var = SimpleNamespace(get=lambda: "release")
+        self.assertIs(window._selected_target(), release)
+
+        window._update_channel_var = SimpleNamespace(get=lambda: "commit")
+        self.assertIs(window._selected_target(), commit)
+
+        window._version_check = None
+        self.assertIsNone(window._selected_target())
+
+    def test_update_button_text_for_states(self):
+        window = object.__new__(SettingsWindow)
+        self.assertEqual(window._update_button_text(None), "更新")
+        self.assertEqual(
+            window._update_button_text(make_target("release", "behind", actionable=True)),
+            "更新到 v2.8.0",
+        )
+        self.assertEqual(
+            window._update_button_text(
+                make_target(
+                    "release",
+                    "ahead",
+                    actionable=True,
+                    downgrade=True,
+                    ahead=75,
+                )
+            ),
+            "回退到 v2.8.0",
+        )
+        self.assertEqual(
+            window._update_button_text(make_target("release", "up_to_date", actionable=False)),
+            "已是最新",
+        )
+        self.assertEqual(
+            window._update_button_text(make_target("commit", "behind", actionable=True)),
+            "更新到最新提交",
+        )
+        self.assertEqual(
+            window._update_button_text(make_target("commit", "ahead", actionable=False)),
+            "当前不可更新",
+        )
+
+    def test_channel_change_only_rerenders(self):
+        window = object.__new__(SettingsWindow)
+        calls = []
+        window._render_luker_state = lambda: calls.append("render")
+
+        window._on_update_channel_change()
+
+        self.assertEqual(calls, ["render"])
+
+    def test_check_update_sets_loading_and_calls_callback(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._version_checking = False
+        window._update_busy = False
+        window._update_progress = UpdateProgress("old", "old", "info", False)
+        window._render_luker_state = lambda: None
+        called = []
+        window._on_check_luker_update = lambda: called.append(True) or True
+
+        window._on_check_update()
+
+        self.assertTrue(window._version_checking)
+        self.assertIsNone(window._update_progress)
+        self.assertEqual(called, [True])
+
+    def test_check_update_rejection_resets_state(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._version_checking = False
+        window._update_busy = False
+        window._update_progress = None
+        window._render_luker_state = lambda: None
+        window._on_check_luker_update = lambda: False
+
+        window._on_check_update()
+
+        self.assertFalse(window._version_checking)
+        self.assertIsNotNone(window._update_progress)
+        self.assertEqual(window._update_progress.level, "warning")
+
+    def test_apply_update_confirms_and_passes_target(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._version_checking = False
+        window._update_busy = False
+        window._update_progress = None
+        window._render_luker_state = lambda: None
+        release = make_target("release", "behind", actionable=True)
+        window._version_check = make_check(release=release)
+        window._update_channel_var = SimpleNamespace(get=lambda: "release")
+        targets: list[UpdateTarget] = []
+        window._on_apply_luker_update = lambda target: targets.append(target) or True
+
+        with patch.object(settings_window.messagebox, "askyesno", return_value=True):
+            window._on_apply_update()
+
+        self.assertEqual(len(targets), 1)
+        self.assertEqual(
+            targets[0],
+            UpdateTarget(
+                kind="release",
+                label="v2.8.0",
+                sha="b" * 40,
+                tag="v2.8.0",
+                branch=None,
+            ),
+        )
+        self.assertTrue(window._update_busy)
+        self.assertEqual(window._update_progress.stage, "preparing")
+
+    def test_apply_update_cancel_does_not_call_backend(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._version_checking = False
+        window._update_busy = False
+        window._update_progress = None
+        window._render_luker_state = lambda: None
+        window._version_check = make_check(
+            release=make_target("release", "behind", actionable=True)
+        )
+        window._update_channel_var = SimpleNamespace(get=lambda: "release")
+        called = []
+        window._on_apply_luker_update = lambda target: called.append(target) or True
+
+        with patch.object(settings_window.messagebox, "askyesno", return_value=False):
+            window._on_apply_update()
+
+        self.assertEqual(called, [])
+        self.assertFalse(window._update_busy)
+
+    def test_apply_update_rejection_resets_busy(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._version_checking = False
+        window._update_busy = False
+        window._update_progress = None
+        window._render_luker_state = lambda: None
+        window._version_check = make_check(
+            release=make_target("release", "behind", actionable=True)
+        )
+        window._update_channel_var = SimpleNamespace(get=lambda: "release")
+        window._on_apply_luker_update = lambda _target: False
+
+        with patch.object(settings_window.messagebox, "askyesno", return_value=True):
+            window._on_apply_update()
+
+        self.assertFalse(window._update_busy)
+        self.assertEqual(window._update_progress.level, "warning")
+
+    def test_set_version_check_clears_loading(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._version_checking = True
+        window._update_progress = UpdateProgress("old", "old", "info", True)
+        window._render_luker_state = lambda: None
+        check = make_check()
+
+        window.set_version_check(check)
+
+        self.assertIs(window._version_check, check)
+        self.assertFalse(window._version_checking)
+        self.assertIsNone(window._update_progress)
+
+    def test_final_progress_clears_stale_target(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._version_check = make_check(
+            release=make_target("release", "behind", actionable=True)
+        )
+        window._render_luker_state = lambda: None
+        progress = UpdateProgress("done", "更新完成", "success", False)
+
+        window.set_update_progress(progress)
+
+        self.assertIsNone(window._version_check)
+        self.assertFalse(window._update_busy)
+        self.assertIs(window._update_progress, progress)
+
+    def test_intermediate_progress_keeps_target(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        check = make_check(release=make_target("release", "behind", actionable=True))
+        window._version_check = check
+        window._render_luker_state = lambda: None
+
+        window.set_update_progress(UpdateProgress("stopping", "停止中", "info", True))
+
+        self.assertIs(window._version_check, check)
+        self.assertTrue(window._update_busy)
+
+    def test_select_path_clears_version_state(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._version_check = make_check()
+        window._update_progress = UpdateProgress("old", "old", "info", False)
+        window._version_checking = True
+        window._update_busy = True
+        window._render_luker_state = lambda: None
+        window.path_label = SimpleNamespace(
+            configure=lambda **kwargs: setattr(window, "configured_path", kwargs["text"])
+        )
+
+        with patch.object(settings_window, "select_luker_path", return_value="D:/New"):
+            window._select_path()
+
+        self.assertEqual(window.configured_path, "D:/New")
+        self.assertIsNone(window._version_check)
+        self.assertIsNone(window._update_progress)
+        self.assertFalse(window._version_checking)
+        self.assertFalse(window._update_busy)
+
+    def test_current_text_includes_local_version_and_warnings(self):
+        window = object.__new__(SettingsWindow)
+        window._version_check = make_check(local=make_local(dirty=True, path_matches=False))
+
+        text = window._current_text()
+
+        self.assertIn("当前版本：v2.8.0-75-g755925947", text)
+        self.assertIn("分支：release", text)
+        self.assertIn("未提交", text)
+        self.assertIn("路径已更改", text)
+
+    def test_summary_and_detail_include_signatures(self):
+        release = make_target("release", "behind", actionable=True)
+        commit = make_target("commit", "behind", actionable=True)
+
+        release_summary = SettingsWindow._summary_text(release)
+        commit_summary = SettingsWindow._summary_text(commit)
+        release_detail = SettingsWindow._detail_text(release)
+        commit_detail = SettingsWindow._detail_text(commit)
+
+        self.assertIn("标签签名：未签名", release_summary)
+        self.assertIn("提交签名：未签名", release_summary)
+        self.assertIn("release", commit_summary)
+        self.assertIn("Tag v2.8.0", release_detail)
+        self.assertIn("release 分支", commit_detail)
+
+    def test_status_text_and_color_use_progress(self):
+        window = object.__new__(SettingsWindow)
+        window.COLORS = {
+            "text_muted": "#111111",
+            "success": "#222222",
+            "warning": "#333333",
+            "error": "#444444",
+        }
+        window._version_checking = False
+        window._update_progress = UpdateProgress("done", "更新完成", "success", False)
+
+        self.assertEqual(window._status_text(None), "更新完成")
+        self.assertEqual(window._status_color(None), "#222222")
+
+
 class SettingsInteractionTests(unittest.TestCase):
     def test_selecting_current_theme_is_a_noop(self):
         window = object.__new__(SettingsWindow)
@@ -346,6 +707,11 @@ class SettingsWindowTests(unittest.TestCase):
         self.assertEqual(window.anchor_point, (100, 200))
         self.assertEqual(window.focused, 2)
         self.assertEqual(window.on_close, launcher._on_settings_closed)
+        self.assertEqual(
+            window.on_check_luker_update.__name__,
+            '_request_luker_version_check',
+        )
+        self.assertEqual(window.on_apply_luker_update.__name__, '_apply_luker_update')
 
     def test_closed_window_is_recreated(self):
         launcher = self._make_launcher()

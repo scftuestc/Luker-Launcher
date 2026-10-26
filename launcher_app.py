@@ -14,6 +14,14 @@ import logging_setup
 from config import config
 from core.browser import open_in_browser
 from core.readiness import LukerReadinessMonitor, LukerState
+from core.version import (
+    UpdateProgress,
+    UpdateTarget,
+    VersionCheck,
+    apply_luker_update,
+    check_luker_versions,
+    read_local_version,
+)
 from dialogs import ensure_luker_path_configured, show_close_choice
 from log_window import LogWindow
 from process.managers import GCLProcessManager, LukerProcessManager
@@ -53,6 +61,8 @@ class LukerLauncher:
         self._exiting = False  # 退出流程只执行一次
         self._exit_dialog_open = False
         self._tray_ready = False
+        self._version_checking = False
+        self._updating = False
         self._shutdown_done = False
         self._last_status: LukerState | None = None  # 上一次通知给界面的运行状态
         self._readiness: LukerReadinessMonitor | None = None
@@ -222,6 +232,9 @@ class LukerLauncher:
 
     def _on_request_exit(self) -> None:
         """日志窗口关闭按钮：按配置隐藏到托盘、退出或询问。"""
+        if getattr(self, '_updating', False):
+            self._on_log("[警告] 正在更新 Luker，请等待完成后再退出")
+            return
         if self._exiting or self._exit_dialog_open or not self.log_window:
             return
 
@@ -298,6 +311,9 @@ class LukerLauncher:
                 logger.exception("显示系统关闭窗口对话框失败")
 
     def _on_exit(self) -> None:
+        if getattr(self, '_updating', False):
+            self._on_log("[警告] 正在更新 Luker，请等待完成后再退出")
+            return
         if self._exiting:
             return
         self._exiting = True
@@ -509,12 +525,277 @@ class LukerLauncher:
             self.log_window,
             anchor_point=self._tray_anchor,
             on_close=self._on_settings_closed,
+            on_check_luker_update=self._request_luker_version_check,
+            on_apply_luker_update=self._apply_luker_update,
         )
         self.settings_window.focus_force()
 
     def _on_settings_closed(self) -> None:
         """设置窗口销毁后清理引用。"""
         self.settings_window = None
+
+    def _request_luker_version_check(self) -> bool:
+        """在后台检查本地版本、最新发行版和最新提交。"""
+        if self._version_checking or self._exiting:
+            return False
+        window = self.settings_window
+        if window is None:
+            return False
+
+        repo_path = config.luker_path
+        manager = self.process_manager
+        running_path = (
+            str(manager.luker_path) if manager is not None and manager.is_running else None
+        )
+        self._version_checking = True
+
+        def worker() -> None:
+            try:
+                result = check_luker_versions(repo_path, running_path=running_path)
+            except Exception as error:
+                logger.exception("检查 Luker 版本失败")
+                local = read_local_version(repo_path, running_path=running_path)
+                result = VersionCheck(
+                    repo_path=local.repo_path,
+                    local=local,
+                    release=None,
+                    commit=None,
+                    error=f"检查版本失败：{error}",
+                )
+            finally:
+                self._version_checking = False
+            self._post_ui(
+                lambda: self._deliver_version_check(window, result),
+                control=True,
+            )
+
+        try:
+            self._run_async(worker)
+        except Exception:
+            self._version_checking = False
+            logger.exception("启动 Luker 版本检查线程失败")
+            return False
+        return True
+
+    def _deliver_version_check(
+        self,
+        window: SettingsWindow,
+        result: VersionCheck,
+    ) -> None:
+        if self.settings_window is window and window.is_alive():
+            window.set_version_check(result)
+
+    def _post_update_progress(
+        self,
+        window: SettingsWindow,
+        progress: UpdateProgress,
+        *,
+        control: bool = False,
+    ) -> None:
+        # 更新阶段数量很少，统一走 control 队列：
+        # 普通合并队列会在最终结果之后才执行旧的阶段回调，覆盖完成状态。
+        self._post_ui(
+            lambda: self._deliver_update_progress(window, progress),
+            control=True,
+        )
+
+    def _deliver_update_progress(
+        self,
+        window: SettingsWindow,
+        progress: UpdateProgress,
+    ) -> None:
+        if self.settings_window is window and window.is_alive():
+            window.set_update_progress(progress)
+
+    def _apply_luker_update(self, target: UpdateTarget) -> bool:
+        """停止 Luker、切换版本、安装依赖并按原状态重启。"""
+        if self._updating or self._process_busy or self._exiting:
+            return False
+        window = self.settings_window
+        if window is None:
+            return False
+
+        manager = self._ensure_process_manager()
+        if manager is None:
+            self._post_update_progress(
+                window,
+                UpdateProgress("error", "未配置 Luker 路径", "error", False),
+                control=True,
+            )
+            return False
+
+        configured_path = config.luker_path
+        if (
+            manager.is_running
+            and configured_path
+            and str(manager.luker_path) != str(Path(configured_path))
+        ):
+            self._post_update_progress(
+                window,
+                UpdateProgress(
+                    "error",
+                    "Luker 路径已更改，请先重启应用新路径",
+                    "warning",
+                    False,
+                ),
+                control=True,
+            )
+            return False
+
+        local = read_local_version(str(manager.luker_path))
+        if local.error:
+            self._post_update_progress(
+                window,
+                UpdateProgress("error", local.error, "error", False),
+                control=True,
+            )
+            return False
+        if not local.npm_available:
+            self._post_update_progress(
+                window,
+                UpdateProgress("error", "未找到 npm，无法安装依赖", "error", False),
+                control=True,
+            )
+            return False
+        if local.dirty:
+            self._post_update_progress(
+                window,
+                UpdateProgress(
+                    "error",
+                    "检测到未提交的修改，已取消更新",
+                    "warning",
+                    False,
+                ),
+                control=True,
+            )
+            return False
+
+        active_manager = manager
+        was_running = manager.is_running
+        self._updating = True
+
+        def worker() -> None:
+            try:
+                if was_running:
+                    self._on_log("[启动器] 正在停止 Luker 以更新版本...")
+                    self._post_update_progress(
+                        window,
+                        UpdateProgress("stopping", "正在停止 Luker...", "info", True),
+                    )
+                    self._reset_luker_readiness()
+                    if not active_manager.stop():
+                        message = "Luker 未能完全停止，已取消更新"
+                        self._on_log(f"[错误] {message}")
+                        self._post_update_progress(
+                            window,
+                            UpdateProgress("error", message, "error", False),
+                            control=True,
+                        )
+                        return
+
+                def on_stage(stage: str, message: str) -> None:
+                    self._post_update_progress(
+                        window,
+                        UpdateProgress(stage, message, "info", True),
+                    )
+                    self._on_log(f"[启动器] {message}")
+
+                result = apply_luker_update(
+                    str(active_manager.luker_path),
+                    target,
+                    on_stage=on_stage,
+                )
+
+                if result.success:
+                    if not was_running:
+                        message = f"{result.message}；Luker 未运行，未自动启动"
+                        self._on_log(f"[启动器] {message}")
+                        self._post_update_progress(
+                            window,
+                            UpdateProgress("done", message, "success", False),
+                            control=True,
+                        )
+                        return
+
+                    self._post_update_progress(
+                        window,
+                        UpdateProgress("restarting", "正在重启 Luker...", "info", True),
+                    )
+                    if not active_manager.start():
+                        message = f"{result.message}，但 Luker 启动失败，请手动启动"
+                        self._on_log(f"[错误] {message}")
+                        self._post_update_progress(
+                            window,
+                            UpdateProgress("error", message, "error", False),
+                            control=True,
+                        )
+                        return
+                    message = f"{result.message}，Luker 已重启"
+                    self._on_log(f"[启动器] {message}")
+                    self._post_update_progress(
+                        window,
+                        UpdateProgress("done", message, "success", False),
+                        control=True,
+                    )
+                    return
+
+                if was_running:
+                    if result.code_changed and not result.rolled_back:
+                        message = f"{result.message}；自动回滚失败，未自动启动 Luker，请手动检查"
+                        self._on_log(f"[错误] {message}")
+                        self._post_update_progress(
+                            window,
+                            UpdateProgress("error", message, "error", False),
+                            control=True,
+                        )
+                        return
+
+                    self._post_update_progress(
+                        window,
+                        UpdateProgress("restarting", "正在恢复原版本...", "warning", True),
+                    )
+                    if not active_manager.start():
+                        message = f"{result.message}；原版本启动失败，请手动启动"
+                        self._on_log(f"[错误] {message}")
+                        self._post_update_progress(
+                            window,
+                            UpdateProgress("error", message, "error", False),
+                            control=True,
+                        )
+                        return
+
+                self._on_log(f"[错误] {result.message}")
+                self._post_update_progress(
+                    window,
+                    UpdateProgress("error", result.message, "error", False),
+                    control=True,
+                )
+            except Exception as error:
+                logger.exception("更新 Luker 失败")
+                message = f"更新 Luker 失败：{error}"
+                self._on_log(f"[错误] {message}")
+                self._post_update_progress(
+                    window,
+                    UpdateProgress("error", message, "error", False),
+                    control=True,
+                )
+            finally:
+                self._updating = False
+                if self._post_ui(self._finish_process_action, control=True) is False:
+                    self._process_busy = False
+
+        if not self._start_process_worker(
+            worker,
+            context="Luker 更新",
+            on_failure=lambda: self._post_update_progress(
+                window,
+                UpdateProgress("error", "无法启动更新线程", "error", False),
+                control=True,
+            ),
+        ):
+            self._updating = False
+            return False
+        return True
 
     def _on_gcl_start(self) -> None:
         self._do_gcl_action(lambda manager: manager.start())
