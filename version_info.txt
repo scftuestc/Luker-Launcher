@@ -1,8 +1,8 @@
 # 与 config.APP_VERSION 保持同步；tests/test_version.py 会校验一致性
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(3, 1, 0, 0),
-    prodvers=(3, 1, 0, 0),
+    filevers=(3, 2, 0, 0),
+    prodvers=(3, 2, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -18,12 +18,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'Yaoyao'),
             StringStruct('FileDescription', 'Luker Launcher'),
-            StringStruct('FileVersion', '3.1.0.0'),
+            StringStruct('FileVersion', '3.2.0.0'),
             StringStruct('InternalName', 'Luker-Launcher'),
             StringStruct('LegalCopyright', 'Copyright (c) 2026 Yaoyao'),
             StringStruct('OriginalFilename', 'Luker-Launcher.exe'),
             StringStruct('ProductName', 'Luker Launcher'),
-            StringStruct('ProductVersion', '3.1.0.0')
+            StringStruct('ProductVersion', '3.2.0.0')
           ]
         )
       ]
