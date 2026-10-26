@@ -138,7 +138,7 @@ pip install pyinstaller==6.22.2
 pyinstaller launcher.spec --noconfirm --distpath .
 ```
 
-也可以直接运行 `打包.bat`，两种方式生成的 exe 都会放在项目根目录。
+也可以直接运行 `build.bat`，两种方式生成的 exe 都会放在项目根目录。
 
 ### 测试与检查
 
