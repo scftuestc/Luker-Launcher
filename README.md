@@ -70,7 +70,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 - 检查结果在启动器本次运行期间保留：关闭设置窗口再打开会直接显示上次结果；更新版本、切换 Luker 路径或退出启动器后需要重新检查。
 - 点击“检查更新”才会访问 GitHub 和 `git fetch`，不会后台轮询。
 
-更新要求 Luker 目录是 Git clone，并已安装 Git 和 npm。点击更新后会停止 Luker、检出目标提交，并执行与 `Start.bat` 一致的 `npm install`；如果 Luker 原本在运行，完成后会自动重启，原本停止则保持停止。
+更新要求 Luker 目录是 Git clone，并已安装 Git 和 npm。点击更新后会停止 Luker、检出目标提交，并执行与 `Start.bat` 相同的 npm 安装参数（`--no-save --no-audit --no-fund --loglevel=error --no-progress --omit=dev --ignore-scripts`），同时设置 `NODE_ENV=production`；如果 Luker 原本在运行，完成后会自动重启，原本停止则保持停止。这里只对齐 npm 安装步骤，不改变启动器启动 Luker 时的环境变量。
 
 更新会固定检出到具体 Tag/提交，建议通过启动器管理 Luker 版本。工作区有已跟踪文件的未提交修改时会禁止更新；未跟踪的 `data/`、`node_modules/` 等用户数据不会被删除。当前版本已经领先最新发行版时，可以确认后回退；当前领先最新提交（存在本地提交）时会禁用更新。更新失败会尝试回滚并恢复原版本；自动回滚失败时不会贸然启动 Luker。
 

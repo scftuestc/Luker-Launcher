@@ -642,11 +642,16 @@ def _terminate_process_tree(pid: int) -> None:
         logger.debug("psutil 终止 npm 进程树失败", exc_info=True)
 
 
-def _run_npm_process(command: list[str], repo: Path) -> subprocess.CompletedProcess[str]:
+def _run_npm_process(
+    command: list[str],
+    repo: Path,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     try:
         process = subprocess.Popen(
             command,
             cwd=str(repo),
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -690,7 +695,10 @@ def _run_npm(repo: Path) -> None:
     if npm is None:
         raise VersionError("未找到 npm，无法安装依赖")
     command = [npm, *NPM_INSTALL_ARGS]
-    result = _run_npm_process(command, repo)
+    # Start.bat 在安装前设置 NODE_ENV=production；这里只对齐 npm 安装步骤。
+    env = os.environ.copy()
+    env["NODE_ENV"] = "production"
+    result = _run_npm_process(command, repo, env=env)
     if result.returncode != 0:
         detail = _cut(result.stderr or result.stdout)
         raise VersionError(f"npm install 失败：{detail}" if detail else "npm install 失败")

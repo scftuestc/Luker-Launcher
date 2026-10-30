@@ -738,6 +738,21 @@ class FakeNpmProcess:
 
 
 class RunNpmTests(unittest.TestCase):
+    def test_install_args_match_release_start_bat(self):
+        self.assertEqual(
+            version.NPM_INSTALL_ARGS,
+            (
+                "install",
+                "--no-save",
+                "--no-audit",
+                "--no-fund",
+                "--loglevel=error",
+                "--no-progress",
+                "--omit=dev",
+                "--ignore-scripts",
+            ),
+        )
+
     def test_uses_resolved_npm_path(self):
         process = FakeNpmProcess()
         npm = "C:/Program Files/nodejs/npm.CMD"
@@ -754,6 +769,19 @@ class RunNpmTests(unittest.TestCase):
         self.assertIn("--omit=dev", command)
         self.assertIn("--ignore-scripts", command)
         self.assertEqual(Path(popen.call_args.kwargs["cwd"]), Path("C:/Luker"))
+
+    def test_sets_production_node_env_for_npm_install(self):
+        process = FakeNpmProcess()
+        with (
+            patch.dict(version.os.environ, {"LUKER_TEST_SENTINEL": "1"}),
+            patch.object(version, "_npm_executable", return_value="npm.cmd"),
+            patch.object(version.subprocess, "Popen", return_value=process) as popen,
+        ):
+            version._run_npm(Path("C:/Luker"))
+
+        env = popen.call_args.kwargs["env"]
+        self.assertEqual(env["NODE_ENV"], "production")
+        self.assertEqual(env["LUKER_TEST_SENTINEL"], "1")
 
     def test_failure_raises(self):
         process = FakeNpmProcess(returncode=1, stderr="boom")
