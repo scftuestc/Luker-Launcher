@@ -11,6 +11,7 @@ from ui.dpi import (
     fit_logical_window_size,
     fit_window_with_minimum,
     format_geometry,
+    plan_window_placement,
 )
 
 
@@ -106,6 +107,62 @@ class WindowMinimumTests(unittest.TestCase):
         )
 
         self.assertEqual((min_width, min_height, width, height), (376, 276, 376, 276))
+
+
+class WindowPlacementTests(unittest.TestCase):
+    def test_settings_window_is_centered(self):
+        placement = plan_window_placement(
+            600,
+            720,
+            MonitorInfo(0, 0, 1920, 1040, 96),
+            1.0,
+            margin=16,
+        )
+
+        self.assertEqual((placement.logical_width, placement.logical_height), (600, 720))
+        self.assertIsNone(placement.minimum_width)
+        self.assertIsNone(placement.minimum_height)
+        self.assertEqual(placement.geometry, "600x720+660+160")
+
+    def test_settings_window_is_clamped_on_small_monitor(self):
+        placement = plan_window_placement(
+            600,
+            720,
+            MonitorInfo(0, 0, 1366, 728, 144),
+            1.5,
+            margin=16,
+            anchor="clamp",
+            current_position=(1800, 900),
+        )
+
+        self.assertEqual((placement.logical_width, placement.logical_height), (600, 464))
+        self.assertEqual(placement.geometry, "600x464+458+24")
+
+    def test_log_window_keeps_minimum_size(self):
+        placement = plan_window_placement(
+            960,
+            640,
+            MonitorInfo(0, 0, 1280, 672, 144),
+            1.5,
+            margin=24,
+            minimum=(700, 450),
+            anchor="clamp",
+            current_position=(0, 0),
+        )
+
+        self.assertEqual((placement.minimum_width, placement.minimum_height), (700, 416))
+        self.assertEqual((placement.logical_width, placement.logical_height), (821, 416))
+        self.assertEqual(placement.geometry, "821x416+8+8")
+
+    def test_clamp_requires_current_position(self):
+        with self.assertRaises(ValueError):
+            plan_window_placement(
+                600,
+                720,
+                MonitorInfo(0, 0, 1920, 1040, 96),
+                1.0,
+                anchor="clamp",
+            )
 
 
 class CenterPositionTests(unittest.TestCase):

@@ -5,11 +5,9 @@ import tkinter as tk
 import customtkinter as ctk
 
 from ui.dpi import (
-    centered_position,
-    clamp_window_position,
-    fit_window_with_minimum,
     format_geometry,
     get_monitor_info,
+    plan_window_placement,
     sync_window_scaling,
 )
 
@@ -75,24 +73,21 @@ class WindowResizer:
         """按主屏工作区设置初始尺寸并居中。"""
         monitor = get_monitor_info()
         scale = sync_window_scaling(self._window, monitor.scale)
-        (
-            self._min_logical_width,
-            self._min_logical_height,
-            self._logical_width,
-            self._logical_height,
-        ) = fit_window_with_minimum(
+        placement = plan_window_placement(
             self._width,
             self._height,
-            self._min_width,
-            self._min_height,
             monitor,
             scale,
             margin=self._margin,
+            minimum=(self._min_width, self._min_height),
         )
-        physical_width = round(self._logical_width * scale)
-        physical_height = round(self._logical_height * scale)
-        x, y = centered_position(physical_width, physical_height, monitor)
-        self._window.geometry(format_geometry(self._logical_width, self._logical_height, x, y))
+        assert placement.minimum_width is not None
+        assert placement.minimum_height is not None
+        self._min_logical_width = placement.minimum_width
+        self._min_logical_height = placement.minimum_height
+        self._logical_width = placement.logical_width
+        self._logical_height = placement.logical_height
+        self._window.geometry(placement.geometry)
         # 最小尺寸保存为逻辑值，拖拽时按当前缩放换算
         self._window.minsize(self._min_logical_width, self._min_logical_height)
         # 防止 CTk 在 DPI 变化后把最大尺寸锁死为当前尺寸
@@ -121,35 +116,26 @@ class WindowResizer:
         scale = sync_window_scaling(self._window, monitor.scale)
         # 使用保存的逻辑尺寸，避免 CTk 自动缩放后的物理尺寸被重复缩小。
         # 最小尺寸也按当前显示器重算，否则旧的 minsize 会阻止窗口缩进工作区。
-        (
-            self._min_logical_width,
-            self._min_logical_height,
-            logical_width,
-            logical_height,
-        ) = fit_window_with_minimum(
+        placement = plan_window_placement(
             self._logical_width,
             self._logical_height,
-            self._min_width,
-            self._min_height,
             monitor,
             scale,
             margin=self._margin,
+            minimum=(self._min_width, self._min_height),
+            anchor="clamp",
+            current_position=(self._window.winfo_x(), self._window.winfo_y()),
         )
-        physical_width = round(logical_width * scale)
-        physical_height = round(logical_height * scale)
-        x, y = clamp_window_position(
-            self._window.winfo_x(),
-            self._window.winfo_y(),
-            physical_width,
-            physical_height,
-            monitor,
-        )
+        assert placement.minimum_width is not None
+        assert placement.minimum_height is not None
+        self._min_logical_width = placement.minimum_width
+        self._min_logical_height = placement.minimum_height
 
         self._window.minsize(self._min_logical_width, self._min_logical_height)
         self._window.maxsize(10000, 10000)
-        self._window.geometry(format_geometry(logical_width, logical_height, x, y))
-        self._logical_width = logical_width
-        self._logical_height = logical_height
+        self._window.geometry(placement.geometry)
+        self._logical_width = placement.logical_width
+        self._logical_height = placement.logical_height
 
     def _on_configure(self, event: tk.Event) -> None:
         # 合并拖动过程中连续的 Configure 事件，空闲时只检查一次显示器

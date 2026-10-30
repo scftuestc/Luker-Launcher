@@ -12,12 +12,9 @@ from core.version import TargetInfo, UpdateProgress, UpdateTarget, VersionCheck
 from dialogs import select_gcl_bat_path, select_luker_path
 from ui.buttons import make_button
 from ui.dpi import (
-    centered_position,
-    clamp_window_position,
     discard_window_scaling,
-    fit_logical_window_size,
-    format_geometry,
     get_monitor_info,
+    plan_window_placement,
     sync_window_scaling,
 )
 from ui.icons import theme_icon
@@ -161,18 +158,15 @@ class SettingsWindow(ctk.CTkToplevel):
             else get_monitor_info(hwnd=parent.winfo_id())
         )
         scale = sync_window_scaling(self, monitor.scale)
-        logical_width, logical_height = fit_logical_window_size(
+        # 高度不足时由窗口内部的滚动区域承载
+        placement = plan_window_placement(
             SETTINGS_WIDTH,
             SETTINGS_HEIGHT,
             monitor,
             scale,
             margin=SETTINGS_MARGIN,
         )
-        # 高度不足时由窗口内部的滚动区域承载
-        physical_width = round(logical_width * scale)
-        physical_height = round(logical_height * scale)
-        x, y = centered_position(physical_width, physical_height, monitor)
-        self.geometry(format_geometry(logical_width, logical_height, x, y))
+        self.geometry(placement.geometry)
         self._monitor_signature = monitor.signature()
 
         self.overrideredirect(True)
@@ -220,23 +214,16 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._monitor_signature = signature
         scale = sync_window_scaling(self, monitor.scale)
-        logical_width, logical_height = fit_logical_window_size(
+        placement = plan_window_placement(
             SETTINGS_WIDTH,
             SETTINGS_HEIGHT,
             monitor,
             scale,
             margin=SETTINGS_MARGIN,
+            anchor="clamp",
+            current_position=(self.winfo_x(), self.winfo_y()),
         )
-        physical_width = round(logical_width * scale)
-        physical_height = round(logical_height * scale)
-        x, y = clamp_window_position(
-            self.winfo_x(),
-            self.winfo_y(),
-            physical_width,
-            physical_height,
-            monitor,
-        )
-        self.geometry(format_geometry(logical_width, logical_height, x, y))
+        self.geometry(placement.geometry)
 
     def _on_destroy(self, event: tk.Event) -> None:
         if event.widget == self:

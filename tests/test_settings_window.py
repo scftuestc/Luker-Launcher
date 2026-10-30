@@ -2,7 +2,7 @@ import unittest
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import ClassVar
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import launcher_app
 import settings_window
@@ -24,6 +24,7 @@ from settings_window import (
     theme_card_hover_colors,
     update_button_state_colors,
 )
+from ui.dpi import MonitorInfo
 
 
 class FakeTkInterpreter:
@@ -969,6 +970,49 @@ class SettingsWindowTests(unittest.TestCase):
 
         self.assertEqual(launcher._tray_anchor, (12, 34))
         self.assertEqual(launcher.tray_menu.point, (12, 34))
+
+
+class SettingsMonitorFitTests(unittest.TestCase):
+    def _make_window(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window._monitor_signature = (0, 0, 1920, 1040, 96)
+        window.winfo_exists = lambda: True
+        window.winfo_id = lambda: 1
+        window.winfo_x = lambda: 1800
+        window.winfo_y = lambda: 900
+        window.geometry = Mock()
+        window.minsize = Mock()
+        window.maxsize = Mock()
+        return window
+
+    def test_refits_only_when_monitor_signature_changes(self):
+        window = self._make_window()
+        monitor = MonitorInfo(0, 0, 1366, 728, 144)
+        with (
+            patch.object(settings_window, "get_monitor_info", return_value=monitor),
+            patch.object(settings_window, "sync_window_scaling", return_value=1.5) as sync,
+        ):
+            window._fit_to_current_monitor()
+
+        sync.assert_called_once()
+        window.geometry.assert_called_once_with("600x464+458+24")
+        window.minsize.assert_not_called()
+        window.maxsize.assert_not_called()
+        self.assertEqual(window._monitor_signature, monitor.signature())
+
+    def test_same_monitor_is_a_noop(self):
+        window = self._make_window()
+        monitor = MonitorInfo(0, 0, 1920, 1040, 96)
+        window._monitor_signature = monitor.signature()
+        with (
+            patch.object(settings_window, "get_monitor_info", return_value=monitor),
+            patch.object(settings_window, "sync_window_scaling") as sync,
+        ):
+            window._fit_to_current_monitor()
+
+        sync.assert_not_called()
+        window.geometry.assert_not_called()
 
 
 if __name__ == "__main__":

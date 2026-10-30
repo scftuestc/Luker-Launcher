@@ -10,6 +10,7 @@ import ctypes
 import logging
 from ctypes import wintypes
 from dataclasses import dataclass
+from typing import Literal
 
 import customtkinter as ctk
 
@@ -253,6 +254,83 @@ def format_geometry(
     x_part = f"+{x}" if x >= 0 else f"+-{abs(x)}"
     y_part = f"+{y}" if y >= 0 else f"+-{abs(y)}"
     return f"{size}{x_part}{y_part}"
+
+
+@dataclass(frozen=True)
+class WindowPlacement:
+    """窗口在目标显示器上的逻辑尺寸、可选最小尺寸和物理位置。"""
+
+    logical_width: int
+    logical_height: int
+    minimum_width: int | None
+    minimum_height: int | None
+    x: int
+    y: int
+    geometry: str
+
+
+def plan_window_placement(
+    desired_width: int,
+    desired_height: int,
+    monitor: MonitorInfo,
+    scale: float,
+    *,
+    margin: int = 0,
+    minimum: tuple[int, int] | None = None,
+    anchor: Literal["center", "clamp"] = "center",
+    current_position: tuple[int, int] | None = None,
+) -> WindowPlacement:
+    """按窗口策略计算尺寸和位置，不直接调用 Tk。
+
+    minimum=None 表示固定尺寸窗口（设置窗口）；提供 minimum 时使用
+    日志窗口的最小尺寸策略。anchor="center" 用于首次显示，
+    anchor="clamp" 用于跨屏后保留当前位置并限制在工作区内。
+    """
+    if minimum is None:
+        logical_width, logical_height = fit_logical_window_size(
+            desired_width,
+            desired_height,
+            monitor,
+            scale,
+            margin=margin,
+        )
+        minimum_width: int | None = None
+        minimum_height: int | None = None
+    else:
+        minimum_width, minimum_height, logical_width, logical_height = fit_window_with_minimum(
+            desired_width,
+            desired_height,
+            minimum[0],
+            minimum[1],
+            monitor,
+            scale,
+            margin=margin,
+        )
+
+    physical_width = round(logical_width * scale)
+    physical_height = round(logical_height * scale)
+    if anchor == "center":
+        x, y = centered_position(physical_width, physical_height, monitor)
+    else:
+        if current_position is None:
+            raise ValueError("anchor='clamp' 需要 current_position")
+        x, y = clamp_window_position(
+            current_position[0],
+            current_position[1],
+            physical_width,
+            physical_height,
+            monitor,
+        )
+
+    return WindowPlacement(
+        logical_width,
+        logical_height,
+        minimum_width,
+        minimum_height,
+        x,
+        y,
+        format_geometry(logical_width, logical_height, x, y),
+    )
 
 
 def sync_window_scaling(
