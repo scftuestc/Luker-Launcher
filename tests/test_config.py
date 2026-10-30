@@ -33,6 +33,22 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.theme_name, DEFAULT_THEME)
         self.assertIsNone(config.luker_path)
 
+    def test_invalid_utf8_config_uses_defaults(self):
+        self.config_path.write_bytes(b'{"theme": "\xff"}')
+
+        config = Config(self.config_path)
+
+        self.assertEqual(config.theme_name, DEFAULT_THEME)
+        self.assertIsNone(config.luker_path)
+
+    def test_non_object_json_uses_defaults(self):
+        self.config_path.write_text("[]", encoding="utf-8")
+
+        config = Config(self.config_path)
+
+        self.assertEqual(config.theme_name, DEFAULT_THEME)
+        self.assertIsNone(config.luker_path)
+
     def test_normalize_drops_wrong_types(self):
         self._write(
             {
@@ -199,6 +215,69 @@ class ConfigTests(unittest.TestCase):
         config = Config(self.config_path)
         config.luker_path = str(luker_dir)
         self.assertEqual(config.get_server_port(), DEFAULT_PORT)
+
+    def test_valid_luker_path_accepts_regular_files(self):
+        luker_dir = Path(self.temp_dir.name) / "Luker"
+        luker_dir.mkdir()
+        (luker_dir / "Start.bat").write_text("", encoding="utf-8")
+        (luker_dir / "server.js").write_text("", encoding="utf-8")
+
+        config = Config(self.config_path)
+        self.assertTrue(config.is_valid_luker_path(str(luker_dir)))
+
+    def test_luker_path_rejects_directories_named_like_files(self):
+        luker_dir = Path(self.temp_dir.name) / "Luker"
+        luker_dir.mkdir()
+        (luker_dir / "Start.bat").mkdir()
+        (luker_dir / "server.js").mkdir()
+
+        config = Config(self.config_path)
+        self.assertFalse(config.is_valid_luker_path(str(luker_dir)))
+
+    def test_luker_path_requires_both_files(self):
+        luker_dir = Path(self.temp_dir.name) / "Luker"
+        luker_dir.mkdir()
+        (luker_dir / "Start.bat").write_text("", encoding="utf-8")
+
+        config = Config(self.config_path)
+        self.assertFalse(config.is_valid_luker_path(str(luker_dir)))
+
+    def test_valid_gcl_path_accepts_bat_file(self):
+        bat_path = Path(self.temp_dir.name) / "start.bat"
+        bat_path.write_text("", encoding="utf-8")
+
+        config = Config(self.config_path)
+        self.assertTrue(config.is_valid_gcl_path(str(bat_path)))
+
+    def test_gcl_path_rejects_directory_with_bat_suffix(self):
+        bat_path = Path(self.temp_dir.name) / "start.bat"
+        bat_path.mkdir()
+
+        config = Config(self.config_path)
+        self.assertFalse(config.is_valid_gcl_path(str(bat_path)))
+
+    def test_invalid_utf8_luker_config_yaml_falls_back(self):
+        luker_dir = Path(self.temp_dir.name) / "Luker"
+        luker_dir.mkdir()
+        (luker_dir / "config.yaml").write_bytes(b"port: 8123\n\xff")
+        config = Config(self.config_path)
+        config.luker_path = str(luker_dir)
+
+        self.assertEqual(config.get_server_port(), DEFAULT_PORT)
+
+    def test_null_byte_luker_path_falls_back(self):
+        self._write({"luker_path": "C:/bad\u0000x"})
+        config = Config(self.config_path)
+
+        self.assertEqual(config.get_server_port(), DEFAULT_PORT)
+
+    def test_save_with_unencodable_value_cleans_temp_file(self):
+        config = Config(self.config_path)
+        temp_path = self.config_path.with_name(self.config_path.name + ".tmp")
+
+        config.pwa_app_id = "\ud800"
+
+        self.assertFalse(temp_path.exists())
 
 
 if __name__ == "__main__":

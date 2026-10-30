@@ -46,6 +46,14 @@ _STRING_KEYS = (
 _BOOL_KEYS = ("use_pwa_mode", "gcl_enabled", "blur_enabled")
 
 
+def _is_regular_file(path: Path) -> bool:
+    """判断路径是否为普通文件；不可访问或非法路径一律视为无效。"""
+    try:
+        return path.is_file()
+    except (OSError, ValueError):
+        return False
+
+
 class Config:
     """launcher_config.json 的读写与主题/GCL/毛玻璃/关闭行为变更通知。"""
 
@@ -68,7 +76,7 @@ class Config:
         try:
             with open(self.config_path, encoding='utf-8') as f:
                 data = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, UnicodeError, json.JSONDecodeError) as e:
             logger.warning("读取配置失败，使用默认配置: %s", e)
             return {}
 
@@ -116,7 +124,7 @@ class Config:
                 os.fsync(f.fileno())
             os.replace(temp_path, self.config_path)
             return True
-        except OSError as e:
+        except (OSError, UnicodeError) as e:
             logger.error("保存配置失败: %s", e)
             with contextlib.suppress(OSError):
                 temp_path.unlink(missing_ok=True)
@@ -303,7 +311,7 @@ class Config:
         if not path:
             return False
         p = Path(path)
-        return p.exists() and p.suffix.lower() == '.bat'
+        return p.suffix.lower() == '.bat' and _is_regular_file(p)
 
     @property
     def luker_path(self) -> str | None:
@@ -328,7 +336,8 @@ class Config:
         config_yaml = Path(self.luker_path) / "config.yaml"
         try:
             text = config_yaml.read_text(encoding='utf-8')
-        except OSError:
+        except (OSError, UnicodeError, ValueError) as e:
+            logger.warning("读取 Luker config.yaml 失败，使用默认端口: %s", e)
             return DEFAULT_PORT
 
         # 只匹配顶层的 port 配置（行首无缩进），
@@ -350,7 +359,7 @@ class Config:
         p = Path(path)
         start_bat = p / "Start.bat"
         server_js = p / "server.js"
-        return start_bat.exists() and server_js.exists()
+        return _is_regular_file(start_bat) and _is_regular_file(server_js)
 
 
 config = Config()
