@@ -18,6 +18,7 @@ from ui.dpi import (
     sync_window_scaling,
 )
 from ui.icons import theme_icon
+from ui.switch import AnimatedSwitch
 from ui.theme import PRESET_THEMES, mix_color, shade_color, theme_swatch_colors
 from ui.tooltip import Tooltip
 from ui.window_utils import (
@@ -32,8 +33,11 @@ SETTINGS_WIDTH = 600
 SETTINGS_HEIGHT = 720
 SETTINGS_MARGIN = 16
 
-PWA_HINT_TEXT = "用 Edge 独立窗口打开 Luker，更像桌面应用。"
+PWA_HINT_TEXT = "需要 Edge；未安装 PWA 时以应用窗口打开。"
 GCL_HINT_TEXT = "GCL 是可选配套服务，可在托盘菜单联动启停。"
+BLUR_HINT_TEXT = "半透明背景与系统模糊；关闭后窗口完全不透明。"
+PWA_DESCRIPTION = "用 Edge 独立窗口打开 Luker，隐藏地址栏和标签页。\n标题栏颜色跟随 Luker 主题色。"
+GCL_DESCRIPTION = "开启后，托盘菜单会提供 GCL 的启动和停止。\n首次开启需要选择 start.bat。"
 CLOSE_BEHAVIOR_OPTIONS = (
     ('ask', '每次询问'),
     ('tray', '隐藏到托盘'),
@@ -427,22 +431,16 @@ class SettingsWindow(ctk.CTkToplevel):
         command: Callable[[], None],
         selected: bool,
         font_size: int = 13,
-    ) -> ctk.CTkSwitch:
-        """创建统一配色的开关；文本为空时只作为右侧控件。"""
-        switch = ctk.CTkSwitch(
+    ) -> AnimatedSwitch:
+        """创建统一配色、带平滑切换动画的开关。"""
+        return AnimatedSwitch(
             parent,
+            colors=self.COLORS,
             text=text,
             font=ctk.CTkFont(family=self.UI_FONT, size=font_size),
-            text_color=self.COLORS['text_dim'] if text else self.COLORS['text'],
-            fg_color=self.COLORS['border'],
-            progress_color=self.COLORS['accent'],
-            button_color=self.COLORS['text'],
-            button_hover_color=self.COLORS['accent'],
             command=command,
+            selected=selected,
         )
-        if selected:
-            switch.select()
-        return switch
 
     def _create_switch_row(
         self,
@@ -452,7 +450,7 @@ class SettingsWindow(ctk.CTkToplevel):
         selected: bool,
         *,
         hint: str | None = None,
-    ) -> ctk.CTkSwitch:
+    ) -> AnimatedSwitch:
         """创建“标题 + 右侧开关”的 section 头部；hint 为标题后的悬停说明。"""
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 8))
@@ -554,12 +552,22 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self.blur_switch = self._make_switch(
             header,
-            text="毛玻璃",
+            text="",
             command=self._on_blur_toggle,
             selected=config.blur_enabled,
             font_size=12,
         )
         self.blur_switch.pack(side="right")
+        blur_label = ctk.CTkLabel(
+            header,
+            text="毛玻璃",
+            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            text_color=self.COLORS['text_dim'],
+        )
+        blur_label.pack(side="right", padx=(0, 8))
+        blur_label.bind('<Button-1>', lambda _event: self.blur_switch.toggle())
+        self._tooltip.attach(blur_label, BLUR_HINT_TEXT)
+        self._tooltip.attach(self.blur_switch, BLUR_HINT_TEXT)
 
         grid = ctk.CTkFrame(section, fg_color="transparent")
         grid.pack(fill="x", padx=12, pady=(0, 16))
@@ -758,7 +766,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             inner,
-            text="开启后，打开浏览器时将使用 PWA 模式\n标题栏颜色会自动跟随 Luker 主题色变化",
+            text=PWA_DESCRIPTION,
             font=ctk.CTkFont(family=self.UI_FONT, size=12),
             text_color=self.COLORS['text_muted'],
             justify="left",
@@ -780,7 +788,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             inner,
-            text="开启后，可在托盘菜单中控制 GCL 的启动和停止",
+            text=GCL_DESCRIPTION,
             font=ctk.CTkFont(family=self.UI_FONT, size=12),
             text_color=self.COLORS['text_muted'],
             justify="left",

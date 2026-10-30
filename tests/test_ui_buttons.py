@@ -26,6 +26,7 @@ class ButtonColorTests(unittest.TestCase):
                 'fg_color': self.colors['card'],
                 'hover_color': self.colors['card_hover'],
                 'text_color': self.colors['text'],
+                'text_color_disabled': self.colors['text_dim'],
                 'border_width': 1,
                 'border_color': self.colors['border'],
             },
@@ -44,6 +45,19 @@ class ButtonColorTests(unittest.TestCase):
             },
         )
 
+    def test_danger_outline_is_quiet_until_hover(self):
+        self.assertEqual(
+            button_colors('danger_outline', self.colors),
+            {
+                'fg_color': 'transparent',
+                'hover_color': mix_color(self.colors['card'], self.colors['error'], 0.14),
+                'text_color': self.colors['text'],
+                'text_color_disabled': self.colors['text_dim'],
+                'border_width': 1,
+                'border_color': self.colors['border'],
+            },
+        )
+
     def test_ghost_is_transparent(self):
         self.assertEqual(
             button_colors('ghost', self.colors),
@@ -51,6 +65,7 @@ class ButtonColorTests(unittest.TestCase):
                 'fg_color': 'transparent',
                 'hover_color': self.colors['card_hover'],
                 'text_color': self.colors['text_dim'],
+                'text_color_disabled': self.colors['text_muted'],
                 'border_width': 0,
             },
         )
@@ -62,6 +77,7 @@ class ButtonColorTests(unittest.TestCase):
                 'fg_color': 'transparent',
                 'hover_color': mix_color(self.colors['card'], self.colors['error'], 0.18),
                 'text_color': self.colors['text_dim'],
+                'text_color_disabled': self.colors['text_muted'],
                 'border_width': 0,
             },
         )

@@ -8,10 +8,45 @@ import customtkinter as ctk
 
 from ui.buttons import ButtonRole, button_colors, make_button
 from ui.icons import toolbar_icon
+from ui.theme import mix_color
 
 MAX_SEARCH_RESULTS = 5000
 SEARCH_DEBOUNCE_MS = 250
-SEARCH_HINT_TEXT = "搜索日志..."
+SEARCH_HINT_TEXT = "搜索日志（Ctrl+F）"
+# 与 log.display 写入的 "[HH:MM:SS] " 前缀保持一致
+TIMESTAMP_PREFIX_LENGTH = 11
+# log.display 用 40 个 ─ 作为时间分隔线
+SEPARATOR_LENGTH = 40
+COUNT_LABEL_WIDTH = 64
+
+
+def decorative_skip_target(textbox: tk.Text, pos: str) -> str | None:
+    """匹配落在时间戳或分隔线内时，返回应跳到的正文位置。"""
+    line, separator, column_text = pos.partition(".")
+    if not separator:
+        return None
+    column_text = column_text.partition("+")[0]
+    try:
+        column = int(column_text)
+    except ValueError:
+        return None
+
+    if column < TIMESTAMP_PREFIX_LENGTH:
+        prefix = textbox.get(f"{line}.0", f"{line}.{TIMESTAMP_PREFIX_LENGTH}")
+        if (
+            len(prefix) == TIMESTAMP_PREFIX_LENGTH
+            and prefix[0] == "["
+            and prefix[9] == "]"
+            and prefix[10] == " "
+        ):
+            return f"{line}.{TIMESTAMP_PREFIX_LENGTH}"
+
+    if column < SEPARATOR_LENGTH and textbox.get(f"{line}.0", f"{line}.1") == "─":
+        try:
+            return f"{int(line) + 1}.0"
+        except ValueError:
+            return None
+    return None
 
 
 class LogSearch:
@@ -23,14 +58,18 @@ class LogSearch:
         count_label: ctk.CTkLabel,
         nav_frame: ctk.CTkFrame,
         get_colors: Callable[[], dict[str, str]],
+        on_state_change: Callable[[bool], None] | None = None,
     ) -> None:
         self._get_textbox = get_textbox
         self._count_label = count_label
         self._nav_frame = nav_frame
         self._get_colors = get_colors
+        self._on_state_change = on_state_change
         self.results: list[tuple[str, str]] = []
         self.current_index = -1
         self.truncated = False
+        self._count_text = ""
+        self._count_warning = False
 
     def clear_state(self) -> None:
         """清除高亮、结果和导航状态。"""
@@ -39,15 +78,21 @@ class LogSearch:
         self.current_index = -1
         self.truncated = False
         self._nav_frame.pack_forget()
-        self._count_label.configure(text="")
+        self._update_count("")
+        self._notify_state()
 
     def refresh_colors(self) -> None:
         """主题切换后重配高亮标签，保留已有搜索结果。"""
         self._configure_highlight_tags()
+        self._update_count(self._count_text, self._count_warning)
 
-    def perform(self, search_text: str) -> None:
-        """执行搜索并高亮全部结果。"""
+    def perform(self, search_text: str, preserve_current: bool = False) -> None:
+        """执行搜索并高亮全部结果；实时刷新时可保留当前结果和视口。"""
         tb = self._get_textbox()
+        previous = None
+        if 0 <= self.current_index < len(self.results):
+            previous = self.results[self.current_index]
+
         self._clear_highlights()
         self._configure_highlight_tags()
 
@@ -56,7 +101,7 @@ class LogSearch:
         start_pos = "1.0"
 
         while len(self.results) < MAX_SEARCH_RESULTS:
-            pos = tb.search(search_text, start_pos, stopindex="end", nocase=True)
+            pos = self._next_match(tb, search_text, start_pos)
             if not pos:
                 break
 
@@ -67,14 +112,22 @@ class LogSearch:
 
         if len(self.results) >= MAX_SEARCH_RESULTS:
             # 达到上限后再看一眼是否还有匹配，用于显示截断标记
-            self.truncated = bool(tb.search(search_text, start_pos, stopindex="end", nocase=True))
+            self.truncated = bool(self._next_match(tb, search_text, start_pos))
 
         if self.results:
-            self.current_index = 0
-            self.highlight_current()
+            if preserve_current:
+                self.current_index = 0
+                if previous is not None:
+                    with contextlib.suppress(ValueError):
+                        self.current_index = self.results.index(previous)
+                self._show_current(scroll=False)
+            else:
+                self.current_index = 0
+                self.highlight_current()
         else:
             self.current_index = -1
-            self._count_label.configure(text="0/0")
+            self._update_count("0/0", warning=True)
+            self._notify_state()
 
     def adjust(self, removed_lines: int) -> None:
         """文本头部被裁剪后，同步平移已保存的搜索结果位置。"""
@@ -101,17 +154,12 @@ class LogSearch:
         if adjusted:
             new_index = self.current_index - removed_before_current
             self.current_index = max(0, min(new_index, len(adjusted) - 1))
-
             # 不滚动窗口，只把“当前结果”标记移到仍然有效的位置
-            tb = self._get_textbox()
-            tb.tag_remove('search_current', "1.0", "end")
-            start, end = adjusted[self.current_index]
-            tb.tag_add('search_current', start, end)
-            tb.tag_raise('search_current')
-            self._count_label.configure(text=self.count_text(self.current_index))
+            self._show_current(scroll=False)
         else:
             self.current_index = -1
-            self._count_label.configure(text="0/0")
+            self._update_count("0/0", warning=True)
+            self._notify_state()
 
     def count_text(self, index: int) -> str:
         """生成“当前/总数”文本，结果被截断时追加 +。"""
@@ -119,18 +167,8 @@ class LogSearch:
         return f"{index + 1}/{len(self.results)}{suffix}"
 
     def highlight_current(self) -> None:
-        """高亮当前选中的搜索结果。"""
-        if not self.results or self.current_index < 0:
-            return
-
-        tb = self._get_textbox()
-        tb.tag_remove('search_current', "1.0", "end")
-        pos, end_pos = self.results[self.current_index]
-        tb.tag_add('search_current', pos, end_pos)
-        # 确保当前高亮在所有高亮之上
-        tb.tag_raise('search_current')
-        tb.see(pos)
-        self._count_label.configure(text=self.count_text(self.current_index))
+        """高亮并滚动到当前选中的搜索结果。"""
+        self._show_current(scroll=True)
 
     def next(self) -> None:
         """跳转到下一个搜索结果。"""
@@ -146,10 +184,51 @@ class LogSearch:
         self.current_index = (self.current_index - 1) % len(self.results)
         self.highlight_current()
 
+    def _next_match(self, textbox: tk.Text, search_text: str, start_pos: str) -> str:
+        """跳过时间戳和分隔线，返回下一个正文匹配位置。"""
+        while True:
+            pos = textbox.search(search_text, start_pos, stopindex="end", nocase=True)
+            if not pos:
+                return ""
+            skip = decorative_skip_target(textbox, pos)
+            if skip is None:
+                return pos
+            start_pos = skip
+
+    def _show_current(self, *, scroll: bool) -> None:
+        if not self.results or self.current_index < 0:
+            return
+
+        tb = self._get_textbox()
+        tb.tag_remove('search_current', "1.0", "end")
+        pos, end_pos = self.results[self.current_index]
+        tb.tag_add('search_current', pos, end_pos)
+        # 确保当前高亮在所有高亮之上
+        tb.tag_raise('search_current')
+        if scroll:
+            tb.see(pos)
+        self._update_count(self.count_text(self.current_index))
+        self._notify_state()
+
+    def _update_count(self, text: str, warning: bool = False) -> None:
+        """更新计数文本和颜色；无结果时用警示色。"""
+        self._count_text = text
+        self._count_warning = warning
+        key = 'warning' if warning else 'text_muted'
+        self._count_label.configure(text=text, text_color=self._get_colors()[key])
+
+    def _notify_state(self) -> None:
+        if self._on_state_change is not None:
+            self._on_state_change(bool(self.results))
+
     def _configure_highlight_tags(self) -> None:
         colors = self._get_colors()
         tb = self._get_textbox()
-        tb.tag_configure('search_highlight', background=colors['warning'], foreground=colors['bg'])
+        tb.tag_configure(
+            'search_highlight',
+            background=mix_color(colors['card'], colors['warning'], 0.5),
+            foreground=colors['text'],
+        )
         tb.tag_configure(
             'search_current', background=colors['accent'], foreground=colors['on_accent']
         )
@@ -231,6 +310,10 @@ class SearchBar:
         self.hint.bind("<Button-1>", lambda _event: self.entry.focus_set())
         self.entry.bind("<FocusIn>", self._on_focus_in)
         self.entry.bind("<FocusOut>", self._on_focus_out)
+        self.entry.bind("<Return>", self._on_entry_next)
+        self.entry.bind("<KP_Enter>", self._on_entry_next)
+        self.entry.bind("<Shift-Return>", self._on_entry_prev)
+        self.entry.bind("<Escape>", self._on_entry_escape)
 
         self.nav = ctk.CTkFrame(inner, fg_color="transparent")
         self.nav.pack(side="left", padx=(4, 0))
@@ -240,20 +323,27 @@ class SearchBar:
             text="",
             font=ctk.CTkFont(family=ui_font, size=11),
             text_color=colors['text_muted'],
-            width=50,
+            width=COUNT_LABEL_WIDTH,
         )
         self.count_label.pack(side="left")
 
-        prev_btn = self._make_nav_button('▲', 'ghost', self.prev)
-        prev_btn.pack(side="left", padx=1)
-        next_btn = self._make_nav_button('▼', 'ghost', self.next)
-        next_btn.pack(side="left", padx=1)
-        clear_btn = self._make_nav_button('✕', 'danger_ghost', self.clear_and_focus)
-        clear_btn.pack(side="left", padx=1)
+        self._prev_btn = self._make_nav_button('▲', 'ghost', self.prev)
+        self._prev_btn.pack(side="left", padx=1)
+        self._next_btn = self._make_nav_button('▼', 'ghost', self.next)
+        self._next_btn.pack(side="left", padx=1)
+        self._clear_btn = self._make_nav_button('✕', 'danger_ghost', self.clear_and_focus)
+        self._clear_btn.pack(side="left", padx=1)
 
         self.nav.pack_forget()
 
-        self.search = LogSearch(get_textbox, self.count_label, self.nav, get_colors)
+        self.search = LogSearch(
+            get_textbox,
+            self.count_label,
+            self.nav,
+            get_colors,
+            on_state_change=self._set_nav_enabled,
+        )
+        self._set_nav_enabled(False)
         self.var.trace_add('write', self._on_change)
         self._update_hint()
 
@@ -284,14 +374,15 @@ class SearchBar:
     def refresh_colors(self) -> None:
         """主题切换后重配搜索框、图标、提示和导航按钮。"""
         colors = self._get_colors()
-        self.frame.configure(fg_color=colors['card'], border_color=colors['border'])
+        self.frame.configure(fg_color=colors['card'])
         self.entry.configure(text_color=colors['text'])
         self.hint.configure(text_color=colors['text_muted'])
         self.count_label.configure(text_color=colors['text_muted'])
-        self.icon.configure(image=toolbar_icon('search', colors['text_muted']))
         for button, role in self._buttons:
             button.configure(**button_colors(role, colors))
         self.search.refresh_colors()
+        self._apply_focus_style()
+        self._set_nav_enabled(bool(self.search.results))
 
     def adjust(self, removed_lines: int) -> None:
         self.search.adjust(removed_lines)
@@ -299,8 +390,11 @@ class SearchBar:
     def has_query(self) -> bool:
         return bool(self.var.get().strip())
 
-    def rerun(self) -> None:
-        """按当前输入重新搜索；由防抖任务和日志重放结束回调共用。"""
+    def rerun(self, preserve_current: bool = False) -> None:
+        """按当前输入重新搜索；防抖和实时刷新共用。"""
+        if preserve_current and self._job is not None:
+            # 输入防抖尚未完成时，不拿旧查询的结果去抢当前视口
+            return
         self._job = None
         search_text = self.var.get().strip()
         if not search_text:
@@ -308,7 +402,7 @@ class SearchBar:
             return
 
         self.nav.pack(side="left", padx=(4, 0))
-        self.search.perform(search_text)
+        self.search.perform(search_text, preserve_current=preserve_current)
 
     def reset(self) -> None:
         """取消防抖并清除高亮、结果和导航。"""
@@ -327,6 +421,12 @@ class SearchBar:
         self._update_hint()
         self.entry.focus_set()
 
+    def focus(self) -> None:
+        """聚焦搜索框；已有查询时全选，方便直接替换。"""
+        self.entry.focus_set()
+        if self.var.get():
+            self.entry.select_range(0, "end")
+
     def cancel_pending(self) -> None:
         if self._job is None:
             return
@@ -344,6 +444,34 @@ class SearchBar:
         """窗口显示后重新对齐 hint，此时 DPI 缩放已经注册。"""
         self._update_hint()
 
+    def _set_nav_enabled(self, has_results: bool) -> None:
+        """无结果时禁用上下跳转，清除按钮保持可用。"""
+        state = "normal" if has_results else "disabled"
+        self._prev_btn.configure(state=state)
+        self._next_btn.configure(state=state)
+
+    def _apply_focus_style(self) -> None:
+        """聚焦时用强调色描边和图标，失焦恢复中性色。"""
+        colors = self._get_colors()
+        if self._focused:
+            self.frame.configure(border_color=colors['accent'])
+            self.icon.configure(image=toolbar_icon('search', colors['accent']))
+        else:
+            self.frame.configure(border_color=colors['border'])
+            self.icon.configure(image=toolbar_icon('search', colors['text_muted']))
+
+    def _on_entry_next(self, _event: tk.Event | None = None) -> str:
+        self.next()
+        return "break"
+
+    def _on_entry_prev(self, _event: tk.Event | None = None) -> str:
+        self.prev()
+        return "break"
+
+    def _on_entry_escape(self, _event: tk.Event | None = None) -> str:
+        self.clear_and_focus()
+        return "break"
+
     def _on_change(self, *args: str) -> None:
         self.cancel_pending()
         if self._clearing:
@@ -359,10 +487,12 @@ class SearchBar:
 
     def _on_focus_in(self, _event: tk.Event | None = None) -> None:
         self._focused = True
+        self._apply_focus_style()
         self._update_hint()
 
     def _on_focus_out(self, _event: tk.Event | None = None) -> None:
         self._focused = False
+        self._apply_focus_style()
         self._update_hint()
 
     def _update_hint(self) -> None:

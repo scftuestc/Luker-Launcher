@@ -62,5 +62,32 @@ class LogWindowActionTests(unittest.TestCase):
         self.assertFalse(window._was_minimized)
 
 
+class SearchShortcutTests(unittest.TestCase):
+    def make_window(self) -> tuple[LogWindow, list[str]]:
+        window = object.__new__(LogWindow)
+        calls: list[str] = []
+        window.search = SimpleNamespace(
+            focus=lambda: calls.append('focus'),
+            next=lambda: calls.append('next'),
+            prev=lambda: calls.append('prev'),
+            clear_and_focus=lambda: calls.append('clear'),
+        )
+        return window, calls
+
+    def test_focus_search_delegates(self):
+        window, calls = self.make_window()
+
+        self.assertEqual(window._focus_search(), 'break')
+        self.assertEqual(calls, ['focus'])
+
+    def test_search_navigation_delegates(self):
+        window, calls = self.make_window()
+
+        self.assertEqual(window._search_next(), 'break')
+        self.assertEqual(window._search_prev(), 'break')
+        self.assertEqual(window._clear_search(), 'break')
+        self.assertEqual(calls, ['next', 'prev', 'clear'])
+
+
 if __name__ == '__main__':
     unittest.main()

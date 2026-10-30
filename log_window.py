@@ -26,6 +26,7 @@ from ui.theme import (
     LOGO_STOPPED_COLOR,
     ThemeColorKey,
     logo_bar_glow_color,
+    mix_color,
     shade_color,
 )
 from ui.window_utils import (
@@ -44,6 +45,18 @@ _STATUS_PRESENTATION: dict[LukerState, tuple[str, str, str, TransportIcon, str, 
     LukerState.STARTING: ('warning', '启动中', 'warning', 'stop', 'error', True),
     LukerState.STOPPED: ('error', '已停止', 'error', 'play', 'success', True),
 }
+
+
+def auto_scroll_button_colors(colors: dict[str, str], enabled: bool) -> dict[str, object]:
+    """返回自动滚动按钮在启用/暂停时的描边、文字和悬停颜色。"""
+    key = 'accent' if enabled else 'warning'
+    options = button_colors('outline', colors)
+    options.update(
+        hover_color=mix_color(colors['card'], colors[key], 0.12),
+        text_color=colors[key],
+        border_color=mix_color(colors['border'], colors[key], 0.55),
+    )
+    return options
 
 
 class LogWindow(ctk.CTk):
@@ -310,9 +323,10 @@ class LogWindow(ctk.CTk):
             add_entries=self._add_log_lines,
             adjust_search=self.search.adjust,
             has_query=self.search.has_query,
-            on_search_rerun=self.search.rerun,
+            on_search_rerun=lambda: self.search.rerun(preserve_current=True),
         )
         self._apply_log_source_ui()
+        self._bind_search_shortcuts()
 
     def _make_card(self, parent: tk.Misc, **kwargs: object) -> ctk.CTkFrame:
         """创建主题卡片并登记背景色，避免每个调用点重复绑定。"""
@@ -523,7 +537,7 @@ class LogWindow(ctk.CTk):
     def _build_toolbar_actions(self, parent: tk.Misc) -> None:
         self._clear_btn = make_button(
             parent,
-            'secondary',
+            'danger_outline',
             self.COLORS,
             text="清除",
             image=toolbar_icon('trash', self.COLORS['text']),
@@ -535,14 +549,14 @@ class LogWindow(ctk.CTk):
             command=self.clear_logs,
         )
         self._clear_btn.pack(side="left", padx=(0, 8))
-        self._register_button(self._clear_btn, 'secondary')
+        self._register_button(self._clear_btn, 'danger_outline')
 
         self.scroll_btn = make_button(
             parent,
-            'secondary',
+            'outline',
             self.COLORS,
             text="自动滚动",
-            image=toolbar_icon('scroll', self.COLORS['text']),
+            image=toolbar_icon('scroll', self.COLORS['accent']),
             compound='left',
             font_family=self.UI_FONT,
             font_size=14,
@@ -551,7 +565,7 @@ class LogWindow(ctk.CTk):
             command=self._toggle_scroll,
         )
         self.scroll_btn.pack(side="left", padx=(0, 8))
-        self._register_button(self.scroll_btn, 'secondary')
+        self._register_button(self.scroll_btn, 'outline')
 
     def _build_status_card(self, parent: tk.Misc) -> None:
         self._status_card = self._make_card(parent, corner_radius=10)
@@ -692,11 +706,12 @@ class LogWindow(ctk.CTk):
         self._apply_auto_scroll_ui()
 
     def _apply_auto_scroll_ui(self) -> None:
-        """按自动滚动状态同步文字、图标和警示色。"""
-        color = self.COLORS['text'] if self._auto_scroll else self.COLORS['warning']
+        """按自动滚动状态同步文字、图标、描边和悬停色。"""
+        key = 'accent' if self._auto_scroll else 'warning'
+        color = self.COLORS[key]
         self.scroll_btn.configure(
+            **auto_scroll_button_colors(self.COLORS, self._auto_scroll),
             text="自动滚动" if self._auto_scroll else "已暂停",
-            text_color=color,
             image=toolbar_icon(
                 'scroll' if self._auto_scroll else 'pause',
                 color,
@@ -752,14 +767,29 @@ class LogWindow(ctk.CTk):
 
     # ===== 搜索功能 =====
 
-    def _search_next(self) -> None:
+    def _bind_search_shortcuts(self) -> None:
+        """窗口级搜索快捷键：Ctrl+F、F3/Shift+F3。"""
+        self.bind('<Control-f>', lambda _event: self._focus_search())
+        self.bind('<Control-F>', lambda _event: self._focus_search())
+        self.bind('<F3>', lambda _event: self._search_next())
+        self.bind('<Shift-F3>', lambda _event: self._search_prev())
+
+    def _focus_search(self) -> str:
+        """聚焦搜索框；已有查询时全选。"""
+        self.search.focus()
+        return "break"
+
+    def _search_next(self) -> str:
         """跳转到下一个搜索结果。"""
         self.search.next()
+        return "break"
 
-    def _search_prev(self) -> None:
+    def _search_prev(self) -> str:
         """跳转到上一个搜索结果。"""
         self.search.prev()
+        return "break"
 
-    def _clear_search(self) -> None:
+    def _clear_search(self) -> str:
         """清除搜索；保留薄委托供窗口内部调用。"""
         self.search.clear_and_focus()
+        return "break"

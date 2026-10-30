@@ -7,6 +7,7 @@ import log.display
 import log.search
 from log.display import LogDisplay
 from log.search import LogSearch, SearchBar
+from ui.theme import mix_color
 
 
 class FakeText:
@@ -15,6 +16,7 @@ class FakeText:
         self.raised: list[tuple[str, ...]] = []
         self.deleted: list[tuple[str, str]] = []
         self.tag_configs: list[tuple[str, dict]] = []
+        self.seen: list[tuple[str, ...]] = []
 
     def tag_remove(self, *args) -> None:
         pass
@@ -29,7 +31,10 @@ class FakeText:
         self.tag_configs.append((tag, kwargs))
 
     def see(self, *args) -> None:
-        pass
+        self.seen.append(args)
+
+    def get(self, start: str, end: str) -> str:
+        return ""
 
     def configure(self, **kwargs) -> None:
         pass
@@ -39,14 +44,25 @@ class FakeText:
 
 
 class SearchText(FakeText):
-    def __init__(self, positions: list[str]) -> None:
+    def __init__(self, positions: list[str], lines: dict[int, str] | None = None) -> None:
         super().__init__()
         self._positions = iter(positions)
+        self._lines = lines or {}
         self.search_calls = 0
 
     def search(self, *args, **kwargs) -> str:
         self.search_calls += 1
         return next(self._positions, "")
+
+    def set_positions(self, positions: list[str]) -> None:
+        self._positions = iter(positions)
+
+    def get(self, start: str, end: str) -> str:
+        start_line, start_col = map(int, start.split("."))
+        end_line, end_col = map(int, end.split("."))
+        if start_line != end_line:
+            return ""
+        return self._lines.get(start_line, "")[start_col:end_col]
 
 
 class FakeLabel:
@@ -94,6 +110,9 @@ def make_search(text: FakeText, label: FakeLabel | None = None) -> LogSearch:
             "warning": "#ffffff",
             "accent": "#000000",
             "bg": "#111111",
+            "card": "#222222",
+            "text": "#333333",
+            "text_muted": "#444444",
             "on_accent": "#eeeeee",
         },
     )
@@ -109,7 +128,13 @@ class SearchColorTests(unittest.TestCase):
         self.assertEqual(
             text.tag_configs,
             [
-                ("search_highlight", {"background": "#ffffff", "foreground": "#111111"}),
+                (
+                    "search_highlight",
+                    {
+                        "background": mix_color("#222222", "#ffffff", 0.5),
+                        "foreground": "#333333",
+                    },
+                ),
                 ("search_current", {"background": "#000000", "foreground": "#eeeeee"}),
             ],
         )
@@ -199,6 +224,98 @@ class SearchLimitTests(unittest.TestCase):
         self.assertEqual(text.search_calls, 4)
 
 
+class SearchPreserveTests(unittest.TestCase):
+    def test_live_refresh_keeps_current_result_without_scrolling(self):
+        text = SearchText(["1.0", "1.10"])
+        label = FakeLabel()
+        search = make_search(text, label)
+        search.perform("x")
+        search.current_index = 1
+        text.seen.clear()
+        text.set_positions(["1.0", "1.10"])
+
+        search.perform("x", preserve_current=True)
+
+        self.assertEqual(search.current_index, 1)
+        self.assertEqual(text.seen, [])
+        self.assertEqual(label.text, "2/2")
+
+    def test_live_refresh_falls_back_to_first_without_scrolling(self):
+        text = SearchText(["1.0"])
+        search = make_search(text)
+        search.perform("x")
+        text.seen.clear()
+        text.set_positions(["1.5"])
+
+        search.perform("x", preserve_current=True)
+
+        self.assertEqual(search.current_index, 0)
+        self.assertEqual(text.seen, [])
+
+    def test_normal_search_scrolls_to_first_match(self):
+        text = SearchText(["1.0"])
+        search = make_search(text)
+
+        search.perform("x")
+
+        self.assertEqual(search.current_index, 0)
+        self.assertEqual(text.seen, [("1.0",)])
+
+
+class DecorativeSkipTests(unittest.TestCase):
+    def test_timestamp_matches_are_skipped(self):
+        text = SearchText(["1.3", "1.11"], {1: "[10:26:00] hello"})
+        search = make_search(text)
+
+        search.perform("10:26")
+
+        self.assertEqual(search.results, [("1.11", "1.11+5c")])
+        self.assertEqual(text.search_calls, 3)
+
+    def test_body_matches_after_timestamp_are_kept(self):
+        text = SearchText(["1.12"], {1: "[10:26:00] hello"})
+        search = make_search(text)
+
+        search.perform("hello")
+
+        self.assertEqual(search.results, [("1.12", "1.12+5c")])
+
+    def test_separator_matches_jump_to_next_line(self):
+        text = SearchText(["2.10", "3.0"], {2: "─" * 40})
+        search = make_search(text)
+
+        search.perform("──")
+
+        self.assertEqual(search.results, [("3.0", "3.0+2c")])
+        self.assertEqual(text.search_calls, 3)
+
+
+class SearchStateTests(unittest.TestCase):
+    def test_state_callback_tracks_results(self):
+        states: list[bool] = []
+        text = SearchText(["1.0"])
+        search = LogSearch(
+            lambda: text,
+            FakeLabel(),
+            FakeNav(),
+            lambda: {
+                "warning": "#ffffff",
+                "accent": "#000000",
+                "bg": "#111111",
+                "card": "#222222",
+                "text": "#333333",
+                "text_muted": "#444444",
+                "on_accent": "#eeeeee",
+            },
+            on_state_change=states.append,
+        )
+
+        search.perform("x")
+        search.clear_state()
+
+        self.assertEqual(states, [True, False])
+
+
 class SearchHintTests(unittest.TestCase):
     def make_bar(self, value: str = '', focused: bool = False) -> SearchBar:
         bar = object.__new__(SearchBar)
@@ -207,6 +324,7 @@ class SearchHintTests(unittest.TestCase):
         bar.entry = object()
         bar.hint = FakeHint()
         bar._get_scaling = lambda: 1.0
+        bar._apply_focus_style = lambda: None
         return bar
 
     def test_empty_and_unfocused_shows_hint_over_entry(self):
@@ -273,9 +391,14 @@ class SearchBehaviorTests(unittest.TestCase):
         bar.nav = SimpleNamespace(pack=lambda **options: calls.append('nav'))
         bar.search = SimpleNamespace(
             clear_state=lambda: calls.append('clear'),
-            perform=lambda text: calls.append(f'perform:{text}'),
+            perform=lambda text, preserve_current=False: calls.append(f'perform:{text}'),
+            next=lambda: calls.append('next'),
+            prev=lambda: calls.append('prev'),
         )
-        bar.entry = SimpleNamespace(focus_set=lambda: calls.append('focus'))
+        bar.entry = SimpleNamespace(
+            focus_set=lambda: calls.append('focus'),
+            select_range=lambda start, end: calls.append(f'select:{start}:{end}'),
+        )
         return bar, calls
 
     def test_clear_search_clears_state_once(self):
@@ -316,6 +439,30 @@ class SearchBehaviorTests(unittest.TestCase):
         bar.reset()
 
         self.assertEqual(calls, ['cancel:old', 'clear'])
+
+    def test_preserve_rerun_skips_while_debounce_pending(self):
+        bar, calls = self.make_bar('luker')
+        bar._job = 'old'
+
+        bar.rerun(preserve_current=True)
+
+        self.assertEqual(calls, [])
+
+    def test_focus_selects_existing_query(self):
+        bar, calls = self.make_bar('luker')
+
+        bar.focus()
+
+        self.assertEqual(calls, ['focus', 'select:0:end'])
+
+    def test_entry_shortcuts_navigate_and_clear(self):
+        bar, calls = self.make_bar('luker')
+
+        self.assertEqual(bar._on_entry_next(), 'break')
+        self.assertEqual(bar._on_entry_prev(), 'break')
+        self.assertEqual(bar._on_entry_escape(), 'break')
+
+        self.assertEqual(calls, ['next', 'prev', 'clear', 'focus'])
 
 
 if __name__ == "__main__":
