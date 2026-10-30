@@ -3,7 +3,7 @@
 import ctypes
 import logging
 from collections.abc import Callable, Sequence
-from ctypes import WINFUNCTYPE, Structure, byref, c_int, sizeof, windll, wintypes
+from ctypes import WINFUNCTYPE, Structure, WinDLL, byref, c_int, sizeof, wintypes
 from threading import Event, Lock, Thread, current_thread
 
 from PIL import Image, ImageDraw
@@ -16,11 +16,13 @@ WM_USER = 0x0400
 WM_TRAYICON = WM_USER + 1
 WM_TRAY_STATUS = WM_USER + 2
 WM_CLOSE = 0x0010
+WM_QUIT = 0x0012
 WM_LBUTTONUP = 0x0202
 WM_LBUTTONDBLCLK = 0x0203
 WM_RBUTTONUP = 0x0205
 WM_DESTROY = 0x0002
 CS_DBLCLKS = 0x0008
+TRAY_CLASS_NAME = "LukerTrayClass"
 
 NIM_ADD = 0x00
 NIM_MODIFY = 0x01
@@ -75,16 +77,78 @@ class MSG(Structure):
     ]
 
 
-# 显式声明 64 位参数/返回值类型，避免 ctypes 默认按 32 位 int 转换
-_user32 = windll.user32
+class BITMAPINFOHEADER(Structure):
+    _fields_ = [
+        ("biSize", wintypes.DWORD),
+        ("biWidth", wintypes.LONG),
+        ("biHeight", wintypes.LONG),
+        ("biPlanes", wintypes.WORD),
+        ("biBitCount", wintypes.WORD),
+        ("biCompression", wintypes.DWORD),
+        ("biSizeImage", wintypes.DWORD),
+        ("biXPelsPerMeter", wintypes.LONG),
+        ("biYPelsPerMeter", wintypes.LONG),
+        ("biClrUsed", wintypes.DWORD),
+        ("biClrImportant", wintypes.DWORD),
+    ]
+
+
+class BITMAPINFO(Structure):
+    _fields_ = [
+        ("bmiHeader", BITMAPINFOHEADER),
+        ("bmiColors", wintypes.DWORD * 3),
+    ]
+
+
+class ICONINFO(Structure):
+    _fields_ = [
+        ("fIcon", wintypes.BOOL),
+        ("xHotspot", wintypes.DWORD),
+        ("yHotspot", wintypes.DWORD),
+        ("hbmMask", wintypes.HBITMAP),
+        ("hbmColor", wintypes.HBITMAP),
+    ]
+
+
+# 显式声明 64 位参数/返回值类型，避免 ctypes 默认按 32 位 int 转换。
+# use_last_error=True 让 ctypes.get_last_error() 能读到这些调用失败的原因。
+_user32 = WinDLL('user32', use_last_error=True)
+_gdi32 = WinDLL('gdi32', use_last_error=True)
+_shell32 = WinDLL('shell32', use_last_error=True)
+_kernel32 = WinDLL('kernel32', use_last_error=True)
+
 _user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
 _user32.DefWindowProcW.restype = wintypes.LPARAM
+_user32.CreateWindowExW.argtypes = [
+    wintypes.DWORD,
+    wintypes.LPCWSTR,
+    wintypes.LPCWSTR,
+    wintypes.DWORD,
+    c_int,
+    c_int,
+    c_int,
+    c_int,
+    wintypes.HWND,
+    wintypes.HANDLE,
+    wintypes.HINSTANCE,
+    wintypes.LPVOID,
+]
 _user32.CreateWindowExW.restype = wintypes.HWND
 _user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
 _user32.RegisterClassW.restype = wintypes.WORD
+_user32.UnregisterClassW.argtypes = [wintypes.LPCWSTR, wintypes.HINSTANCE]
+_user32.UnregisterClassW.restype = wintypes.BOOL
+_user32.PostThreadMessageW.argtypes = [
+    wintypes.DWORD,
+    wintypes.UINT,
+    wintypes.WPARAM,
+    wintypes.LPARAM,
+]
+_user32.PostThreadMessageW.restype = wintypes.BOOL
 _user32.GetMessageW.argtypes = [ctypes.POINTER(MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
 _user32.GetMessageW.restype = c_int
 _user32.TranslateMessage.argtypes = [ctypes.POINTER(MSG)]
+_user32.TranslateMessage.restype = wintypes.BOOL
 _user32.DispatchMessageW.argtypes = [ctypes.POINTER(MSG)]
 _user32.DispatchMessageW.restype = wintypes.LPARAM
 _user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
@@ -92,8 +156,54 @@ _user32.PostMessageW.restype = wintypes.BOOL
 _user32.DestroyWindow.argtypes = [wintypes.HWND]
 _user32.DestroyWindow.restype = wintypes.BOOL
 _user32.PostQuitMessage.argtypes = [c_int]
+_user32.PostQuitMessage.restype = None
 _user32.RegisterWindowMessageW.argtypes = [wintypes.LPCWSTR]
 _user32.RegisterWindowMessageW.restype = wintypes.UINT
+_user32.GetDC.argtypes = [wintypes.HWND]
+_user32.GetDC.restype = wintypes.HDC
+_user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+_user32.ReleaseDC.restype = c_int
+_user32.CreateIconIndirect.argtypes = [ctypes.POINTER(ICONINFO)]
+_user32.CreateIconIndirect.restype = wintypes.HICON
+_user32.DestroyIcon.argtypes = [wintypes.HICON]
+_user32.DestroyIcon.restype = wintypes.BOOL
+_user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+_user32.GetCursorPos.restype = wintypes.BOOL
+_user32.GetDpiForSystem.argtypes = []
+_user32.GetDpiForSystem.restype = wintypes.UINT
+_user32.GetSystemMetricsForDpi.argtypes = [c_int, wintypes.UINT]
+_user32.GetSystemMetricsForDpi.restype = c_int
+
+_gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, c_int, c_int]
+_gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+_gdi32.SetDIBits.argtypes = [
+    wintypes.HDC,
+    wintypes.HBITMAP,
+    wintypes.UINT,
+    wintypes.UINT,
+    ctypes.c_void_p,
+    ctypes.POINTER(BITMAPINFO),
+    wintypes.UINT,
+]
+_gdi32.SetDIBits.restype = c_int
+_gdi32.CreateBitmap.argtypes = [
+    c_int,
+    c_int,
+    wintypes.UINT,
+    wintypes.UINT,
+    ctypes.c_void_p,
+]
+_gdi32.CreateBitmap.restype = wintypes.HBITMAP
+_gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+_gdi32.DeleteObject.restype = wintypes.BOOL
+
+_shell32.Shell_NotifyIconW.argtypes = [wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATA)]
+_shell32.Shell_NotifyIconW.restype = wintypes.BOOL
+
+_kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+_kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+_kernel32.GetCurrentThreadId.argtypes = []
+_kernel32.GetCurrentThreadId.restype = wintypes.DWORD
 
 
 class TrayIcon:
@@ -113,6 +223,7 @@ class TrayIcon:
         self._is_running = False
         self._state_lock = Lock()
         self._thread: Thread | None = None
+        self._thread_id: int | None = None
         self._hwnd: int | None = None
         self._running = False
         self._hicon: wintypes.HICON | None = None
@@ -198,9 +309,9 @@ class TrayIcon:
     def _get_icon_size(self) -> int:
         """按系统 DPI 返回托盘图标源尺寸，失败时回退到 32px。"""
         try:
-            dpi = windll.user32.GetDpiForSystem()
+            dpi = _user32.GetDpiForSystem()
             # 用大图标作为源，通知区域在高缩放下缩小时更清晰
-            size = windll.user32.GetSystemMetricsForDpi(SM_CXICON, dpi)
+            size = _user32.GetSystemMetricsForDpi(SM_CXICON, dpi)
             if size:
                 # 源图按 64px 绘制，再大只会被缩小
                 return max(32, min(64, int(size)))
@@ -208,7 +319,7 @@ class TrayIcon:
             pass
         return 32
 
-    def _image_to_hicon(self, image: Image.Image, size: int = 32) -> wintypes.HICON:
+    def _image_to_hicon(self, image: Image.Image, size: int = 32) -> wintypes.HICON | None:
         if image.mode != 'RGBA':
             image = image.convert('RGBA')
 
@@ -217,78 +328,68 @@ class TrayIcon:
         width, height = image.size
         pixels = image.tobytes()
 
-        class BITMAPINFOHEADER(Structure):
-            _fields_ = [
-                ("biSize", wintypes.DWORD),
-                ("biWidth", wintypes.LONG),
-                ("biHeight", wintypes.LONG),
-                ("biPlanes", wintypes.WORD),
-                ("biBitCount", wintypes.WORD),
-                ("biCompression", wintypes.DWORD),
-                ("biSizeImage", wintypes.DWORD),
-                ("biXPelsPerMeter", wintypes.LONG),
-                ("biYPelsPerMeter", wintypes.LONG),
-                ("biClrUsed", wintypes.DWORD),
-                ("biClrImportant", wintypes.DWORD),
-            ]
+        hdc = _user32.GetDC(None)
+        if not hdc:
+            logger.warning("获取屏幕 DC 失败: %s", ctypes.get_last_error())
+            return None
 
-        class BITMAPINFO(Structure):
-            _fields_ = [
-                ("bmiHeader", BITMAPINFOHEADER),
-                ("bmiColors", wintypes.DWORD * 3),
-            ]
+        hbm_color: wintypes.HBITMAP | None = None
+        hbm_mask: wintypes.HBITMAP | None = None
+        try:
+            bmi = BITMAPINFO()
+            bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER)
+            bmi.bmiHeader.biWidth = width
+            bmi.bmiHeader.biHeight = -height
+            bmi.bmiHeader.biPlanes = 1
+            bmi.bmiHeader.biBitCount = 32
+            bmi.bmiHeader.biCompression = 0
 
-        hdc = windll.user32.GetDC(0)
+            hbm_color = _gdi32.CreateCompatibleBitmap(hdc, width, height)
+            if not hbm_color:
+                logger.warning("创建彩色位图失败: %s", ctypes.get_last_error())
+                return None
 
-        bmi = BITMAPINFO()
-        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER)
-        bmi.bmiHeader.biWidth = width
-        bmi.bmiHeader.biHeight = -height
-        bmi.bmiHeader.biPlanes = 1
-        bmi.bmiHeader.biBitCount = 32
-        bmi.bmiHeader.biCompression = 0
+            bgra_pixels = bytearray(len(pixels))
+            for i in range(0, len(pixels), 4):
+                bgra_pixels[i] = pixels[i + 2]
+                bgra_pixels[i + 1] = pixels[i + 1]
+                bgra_pixels[i + 2] = pixels[i]
+                bgra_pixels[i + 3] = pixels[i + 3]
 
-        hbmColor = windll.gdi32.CreateCompatibleBitmap(hdc, width, height)
+            if not _gdi32.SetDIBits(hdc, hbm_color, 0, height, bytes(bgra_pixels), byref(bmi), 0):
+                logger.warning("写入位图像素失败: %s", ctypes.get_last_error())
+                return None
 
-        bgra_pixels = bytearray(len(pixels))
-        for i in range(0, len(pixels), 4):
-            bgra_pixels[i] = pixels[i + 2]
-            bgra_pixels[i + 1] = pixels[i + 1]
-            bgra_pixels[i + 2] = pixels[i]
-            bgra_pixels[i + 3] = pixels[i + 3]
+            # 32bpp 图标使用 alpha 通道，掩码必须明确清零，不能依赖未初始化内存。
+            mask_stride = ((width + 31) // 32) * 4
+            hbm_mask = _gdi32.CreateBitmap(width, height, 1, 1, bytes(mask_stride * height))
+            if not hbm_mask:
+                logger.warning("创建掩码位图失败: %s", ctypes.get_last_error())
+                return None
 
-        windll.gdi32.SetDIBits(hdc, hbmColor, 0, height, bytes(bgra_pixels), byref(bmi), 0)
+            iconinfo = ICONINFO()
+            iconinfo.fIcon = True
+            iconinfo.xHotspot = 0
+            iconinfo.yHotspot = 0
+            iconinfo.hbmMask = hbm_mask
+            iconinfo.hbmColor = hbm_color
 
-        hbmMask = windll.gdi32.CreateBitmap(width, height, 1, 1, None)
-
-        class ICONINFO(Structure):
-            _fields_ = [
-                ("fIcon", wintypes.BOOL),
-                ("xHotspot", wintypes.DWORD),
-                ("yHotspot", wintypes.DWORD),
-                ("hbmMask", wintypes.HBITMAP),
-                ("hbmColor", wintypes.HBITMAP),
-            ]
-
-        iconinfo = ICONINFO()
-        iconinfo.fIcon = True
-        iconinfo.xHotspot = 0
-        iconinfo.yHotspot = 0
-        iconinfo.hbmMask = hbmMask
-        iconinfo.hbmColor = hbmColor
-
-        hicon = windll.user32.CreateIconIndirect(byref(iconinfo))
-
-        windll.gdi32.DeleteObject(hbmColor)
-        windll.gdi32.DeleteObject(hbmMask)
-        windll.user32.ReleaseDC(0, hdc)
-
-        return hicon
+            hicon = _user32.CreateIconIndirect(byref(iconinfo))
+            if not hicon:
+                logger.warning("创建托盘图标句柄失败: %s", ctypes.get_last_error())
+                return None
+            return hicon
+        finally:
+            if hbm_mask:
+                _gdi32.DeleteObject(hbm_mask)
+            if hbm_color:
+                _gdi32.DeleteObject(hbm_color)
+            _user32.ReleaseDC(None, hdc)
 
     def _get_cursor_pos(self) -> tuple[int, int]:
         """返回光标的物理屏幕坐标；Tk 的窗口位置也使用物理像素。"""
         pt = wintypes.POINT()
-        windll.user32.GetCursorPos(byref(pt))
+        _user32.GetCursorPos(byref(pt))
         return pt.x, pt.y
 
     def _wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
@@ -313,16 +414,16 @@ class TrayIcon:
                 self._update_icon()
             elif msg == WM_CLOSE:
                 self._remove_icon()
-                windll.user32.DestroyWindow(hwnd)
+                _user32.DestroyWindow(hwnd)
                 return 0
             elif msg == WM_DESTROY:
                 self._hwnd = None
-                windll.user32.PostQuitMessage(0)
+                _user32.PostQuitMessage(0)
                 return 0
         except Exception:
             logger.exception("托盘消息处理失败")
 
-        return windll.user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+        return _user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def _show_window(self) -> None:
         self.on_show_window()
@@ -340,7 +441,7 @@ class TrayIcon:
         if self._nid is None:
             return False
 
-        if windll.shell32.Shell_NotifyIconW(NIM_ADD, byref(self._nid)):
+        if _shell32.Shell_NotifyIconW(NIM_ADD, byref(self._nid)):
             self._icon_added = True
             return True
 
@@ -354,24 +455,39 @@ class TrayIcon:
             return
 
         new_icon = self._image_to_hicon(self._create_icon_image(), self._get_icon_size())
+        if not new_icon:
+            logger.error("创建新托盘图标失败，保留当前图标")
+            return
+
         old_icon = self._hicon
-        self._hicon = new_icon
         self._nid.hIcon = new_icon
+        try:
+            if not _shell32.Shell_NotifyIconW(NIM_MODIFY, byref(self._nid)):
+                logger.error("更新托盘图标失败: %s", ctypes.get_last_error())
+                self._nid.hIcon = old_icon
+                _user32.DestroyIcon(new_icon)
+                return
+        except Exception:
+            self._nid.hIcon = old_icon
+            _user32.DestroyIcon(new_icon)
+            logger.exception("更新托盘图标失败")
+            return
 
-        windll.shell32.Shell_NotifyIconW(NIM_MODIFY, byref(self._nid))
-
-        if old_icon:
-            windll.user32.DestroyIcon(old_icon)
+        self._hicon = new_icon
+        if old_icon and not _user32.DestroyIcon(old_icon):
+            logger.warning("释放旧托盘图标失败: %s", ctypes.get_last_error())
 
     def _remove_icon(self) -> None:
         """从通知区域移除图标并释放 GDI 句柄（只能由托盘线程调用）。"""
         self._icon_added = False
         if self._nid:
-            windll.shell32.Shell_NotifyIconW(NIM_DELETE, byref(self._nid))
+            if not _shell32.Shell_NotifyIconW(NIM_DELETE, byref(self._nid)):
+                logger.warning("移除托盘图标失败: %s", ctypes.get_last_error())
             self._nid = None
 
         if self._hicon:
-            windll.user32.DestroyIcon(self._hicon)
+            if not _user32.DestroyIcon(self._hicon):
+                logger.warning("释放托盘图标句柄失败: %s", ctypes.get_last_error())
             self._hicon = None
 
     def update_status(self, is_running: bool) -> None:
@@ -383,7 +499,7 @@ class TrayIcon:
 
         hwnd = self._hwnd
         if hwnd and self._running:
-            windll.user32.PostMessageW(hwnd, WM_TRAY_STATUS, 0, 0)
+            _user32.PostMessageW(hwnd, WM_TRAY_STATUS, 0, 0)
 
     def set_window_visible(self, visible: bool) -> None:
         self._window_visible = visible
@@ -391,12 +507,17 @@ class TrayIcon:
     def run(self) -> None:
         """注册窗口类、创建托盘图标并运行 Win32 消息循环。"""
         self._running = True
+        self._thread_id = _kernel32.GetCurrentThreadId()
+        hinstance: wintypes.HMODULE | None = None
+        registered_class = False
         try:
-            hinstance = windll.kernel32.GetModuleHandleW(None)
+            hinstance = _kernel32.GetModuleHandleW(None)
+            if not hinstance:
+                logger.error("获取模块句柄失败: %s", ctypes.get_last_error())
+                return
 
             self._wndproc_ref = WNDPROC(self._wnd_proc)
 
-            class_name = "LukerTrayClass"
             wc = WNDCLASSW()
             wc.style = CS_DBLCLKS
             wc.lpfnWndProc = self._wndproc_ref
@@ -407,15 +528,16 @@ class TrayIcon:
             wc.hCursor = None
             wc.hbrBackground = None
             wc.lpszMenuName = None
-            wc.lpszClassName = class_name
+            wc.lpszClassName = TRAY_CLASS_NAME
 
-            atom = windll.user32.RegisterClassW(byref(wc))
+            atom = _user32.RegisterClassW(byref(wc))
             if not atom:
                 logger.error("注册窗口类失败: %s", ctypes.get_last_error())
                 return
+            registered_class = True
 
-            self._hwnd = windll.user32.CreateWindowExW(
-                0, class_name, "Luker Tray", 0, 0, 0, 0, 0, None, None, hinstance, None
+            self._hwnd = _user32.CreateWindowExW(
+                0, TRAY_CLASS_NAME, "Luker Tray", 0, 0, 0, 0, 0, None, None, hinstance, None
             )
 
             if not self._hwnd:
@@ -423,6 +545,9 @@ class TrayIcon:
                 return
 
             self._hicon = self._image_to_hicon(self._create_icon_image(), self._get_icon_size())
+            if not self._hicon:
+                logger.error("创建初始托盘图标失败")
+                return
 
             self._nid = NOTIFYICONDATA()
             self._nid.cbSize = sizeof(NOTIFYICONDATA)
@@ -438,21 +563,33 @@ class TrayIcon:
 
             msg = MSG()
             while self._running:
-                ret = windll.user32.GetMessageW(byref(msg), None, 0, 0)
+                ret = _user32.GetMessageW(byref(msg), None, 0, 0)
                 if ret == 0 or ret == -1:
                     break
-                windll.user32.TranslateMessage(byref(msg))
-                windll.user32.DispatchMessageW(byref(msg))
+                _user32.TranslateMessage(byref(msg))
+                _user32.DispatchMessageW(byref(msg))
         finally:
             self._ready.set()
             self._running = False
-            self._remove_icon()
-            if self._hwnd:
-                windll.user32.DestroyWindow(self._hwnd)
-                self._hwnd = None
+            try:
+                self._remove_icon()
+            finally:
+                if self._hwnd:
+                    _user32.DestroyWindow(self._hwnd)
+                    self._hwnd = None
+                if (
+                    registered_class
+                    and hinstance
+                    and not _user32.UnregisterClassW(TRAY_CLASS_NAME, hinstance)
+                ):
+                    logger.warning("注销托盘窗口类失败: %s", ctypes.get_last_error())
+                self._thread_id = None
 
     def run_detached(self) -> bool:
         """在后台启动托盘；返回图标是否成功加入通知区域。"""
+        self._ready.clear()
+        self._icon_added = False
+        self._thread_id = None
         self._thread = Thread(target=self.run, daemon=True, name="TrayMessageLoop")
         self._thread.start()
         # 等窗口和图标创建完成，避免首次右键菜单时 hwnd 还不存在
@@ -461,13 +598,22 @@ class TrayIcon:
 
     def stop(self) -> None:
         """请求托盘线程清理图标并退出消息循环（可从任意线程调用）。"""
+        thread = self._thread
         hwnd = self._hwnd
         if hwnd:
-            windll.user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+            if not _user32.PostMessageW(hwnd, WM_CLOSE, 0, 0):
+                logger.warning("请求托盘线程退出失败: %s", ctypes.get_last_error())
+                self._running = False
+                thread_id = self._thread_id
+                if thread_id and not _user32.PostThreadMessageW(thread_id, WM_QUIT, 0, 0):
+                    logger.warning("向托盘线程发送退出消息失败: %s", ctypes.get_last_error())
         else:
             self._running = False
 
-        thread = self._thread
         if thread and thread.is_alive() and thread is not current_thread():
             thread.join(timeout=2)
+        if thread and thread.is_alive():
+            logger.warning("托盘线程未在超时内退出")
+            return
         self._thread = None
+        self._thread_id = None
