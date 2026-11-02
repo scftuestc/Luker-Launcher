@@ -7,15 +7,24 @@ from collections.abc import Callable
 import customtkinter as ctk
 
 from ui.theme import mix_color
-
-SWITCH_WIDTH = 44
-SWITCH_HEIGHT = 22
-SWITCH_CORNER_RADIUS = 10
-SWITCH_BORDER_WIDTH = 2
-SWITCH_ANIMATION_STEPS = 6
-SWITCH_ANIMATION_INTERVAL_MS = 16
-SWITCH_TRACK_HOVER_MIX = 0.10
-SWITCH_THUMB_HOVER_MIX = 0.25
+from ui.tokens import (
+    MOTION_SWITCH_INTERVAL_MS as SWITCH_ANIMATION_INTERVAL_MS,
+)
+from ui.tokens import (
+    MOTION_SWITCH_STEPS as SWITCH_ANIMATION_STEPS,
+)
+from ui.tokens import (
+    MOTION_SWITCH_THUMB_HOVER_MIX as SWITCH_THUMB_HOVER_MIX,
+)
+from ui.tokens import (
+    MOTION_SWITCH_TRACK_HOVER_MIX as SWITCH_TRACK_HOVER_MIX,
+)
+from ui.tokens import (
+    SWITCH_BORDER_WIDTH,
+    SWITCH_CORNER_RADIUS,
+    SWITCH_HEIGHT,
+    SWITCH_WIDTH,
+)
 
 
 def _clamp_progress(progress: float) -> float:

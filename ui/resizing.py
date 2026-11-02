@@ -10,16 +10,22 @@ from ui.dpi import (
     plan_window_placement,
     sync_window_scaling,
 )
+from ui.tokens import (
+    EDGE_GRAB_PIXELS,
+    SCREEN_MARGIN_MAIN,
+    WINDOW_MAIN_HEIGHT,
+    WINDOW_MAIN_MIN_HEIGHT,
+    WINDOW_MAIN_MIN_WIDTH,
+    WINDOW_MAIN_WIDTH,
+)
 
 # 窗口的初始尺寸和最小尺寸（CTk 逻辑像素）
-DEFAULT_WIDTH = 960
-DEFAULT_HEIGHT = 640
-MIN_WIDTH = 700
-MIN_HEIGHT = 450
+DEFAULT_WIDTH = WINDOW_MAIN_WIDTH
+DEFAULT_HEIGHT = WINDOW_MAIN_HEIGHT
+MIN_WIDTH = WINDOW_MAIN_MIN_WIDTH
+MIN_HEIGHT = WINDOW_MAIN_MIN_HEIGHT
 # 距离工作区边缘的留白（物理像素）
-SCREEN_MARGIN = 24
-# 边缘拖拽的命中宽度（按缩放换算，至少 4 物理像素）
-EDGE_GRAB_PIXELS = 8
+SCREEN_MARGIN = SCREEN_MARGIN_MAIN
 
 _EDGE_CURSORS = {
     'nw': 'size_nw_se',

@@ -14,6 +14,8 @@ from typing import Literal
 
 import customtkinter as ctk
 
+from ui.tokens import SCREEN_MARGIN_POPUP, SCREEN_MARGIN_WINDOW
+
 logger = logging.getLogger(__name__)
 
 BASE_DPI = 96
@@ -209,7 +211,7 @@ def clamp_popup_position(
     width: int,
     height: int,
     monitor: MonitorInfo,
-    margin: int = 10,
+    margin: int = SCREEN_MARGIN_POPUP,
     gap: int = 10,
 ) -> tuple[int, int]:
     """把弹出窗口限制在工作区内；空间不足时先向上/向左翻转。"""
@@ -231,7 +233,7 @@ def clamp_window_position(
     width: int,
     height: int,
     monitor: MonitorInfo,
-    margin: int = 8,
+    margin: int = SCREEN_MARGIN_WINDOW,
 ) -> tuple[int, int]:
     """把普通窗口的位置限制在工作区内，不改变窗口尺寸。"""
     x = max(monitor.left + margin, min(x, monitor.right - width - margin))

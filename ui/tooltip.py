@@ -7,11 +7,21 @@ import tkinter as tk
 import customtkinter as ctk
 
 from ui.dpi import MonitorInfo, get_monitor_info
+from ui.tokens import (
+    FONT_SMALL,
+    PAD_ROW_X,
+    PAD_ROW_Y,
+    RADIUS_CONTROL,
+    SCREEN_MARGIN_TOOLTIP,
+    TOOLTIP_GAP,
+    TOOLTIP_WRAP_PADDING,
+    WRAP_TOOLTIP,
+)
 
 logger = logging.getLogger(__name__)
 
-TOOLTIP_MARGIN = 8
-TOOLTIP_PADDING = 20
+TOOLTIP_MARGIN = SCREEN_MARGIN_TOOLTIP
+TOOLTIP_PADDING = TOOLTIP_WRAP_PADDING
 
 
 def tooltip_wraplength(
@@ -32,8 +42,8 @@ def tooltip_position(
     size: tuple[int, int],
     monitor: MonitorInfo,
     *,
-    gap: int = 6,
-    margin: int = 8,
+    gap: int = TOOLTIP_GAP,
+    margin: int = SCREEN_MARGIN_TOOLTIP,
 ) -> tuple[int, int]:
     """优先放在锚点下方并水平居中；下方不够时翻到上方，再限制在工作区内。"""
     anchor_x, anchor_y, anchor_width, anchor_height = anchor
@@ -56,7 +66,7 @@ class Tooltip:
         colors: dict[str, str],
         font_family: str,
         *,
-        wraplength: int = 280,
+        wraplength: int = WRAP_TOOLTIP,
     ) -> None:
         self._master = master
         self._colors = colors
@@ -147,20 +157,20 @@ class Tooltip:
                 fg_color=self._colors['card_hover'],
                 border_width=1,
                 border_color=self._colors['border'],
-                corner_radius=8,
+                corner_radius=RADIUS_CONTROL,
             )
             frame.pack(fill='both', expand=True)
 
             label = ctk.CTkLabel(
                 frame,
                 text='',
-                font=ctk.CTkFont(family=self._font_family, size=12),
+                font=ctk.CTkFont(family=self._font_family, size=FONT_SMALL),
                 text_color=self._colors['text'],
                 justify='left',
                 anchor='w',
                 wraplength=self._wraplength,
             )
-            label.pack(padx=10, pady=8)
+            label.pack(padx=PAD_ROW_X, pady=PAD_ROW_Y)
         except tk.TclError:
             logger.warning("创建悬停提示失败", exc_info=True)
             return False

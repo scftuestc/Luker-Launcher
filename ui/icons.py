@@ -7,6 +7,8 @@ from typing import Literal
 import customtkinter as ctk
 from PIL import Image, ImageDraw
 
+from ui.tokens import ICON_MENU, ICON_RENDER, ICON_THEME, ICON_TOOLBAR
+
 TransportIcon = Literal['play', 'stop']
 MenuIcon = Literal['window', 'play', 'stop', 'refresh', 'globe', 'gcl', 'settings', 'power']
 ThemeIcon = Literal['sun', 'moon', 'tree', 'cloud', 'wave', 'rose']
@@ -39,7 +41,7 @@ def _finish_icon(canvas: Image.Image, size: int) -> Image.Image:
 
 
 @lru_cache(maxsize=16)
-def render_transport_icon(kind: TransportIcon, color: str, size: int = 64) -> Image.Image:
+def render_transport_icon(kind: TransportIcon, color: str, size: int = ICON_RENDER) -> Image.Image:
     """绘制播放/停止图标，返回透明背景的 RGBA 图像。"""
     canvas, draw, point, _stroke, scale = _icon_context(size)
 
@@ -55,7 +57,7 @@ def render_transport_icon(kind: TransportIcon, color: str, size: int = 64) -> Im
     return _finish_icon(canvas, size)
 
 
-def transport_icon(kind: TransportIcon, color: str, size: int = 16) -> ctk.CTkImage:
+def transport_icon(kind: TransportIcon, color: str, size: int = ICON_TOOLBAR) -> ctk.CTkImage:
     """返回可直接用于 CTkButton 的图标，size 为逻辑像素。"""
     image = render_transport_icon(kind, color)
     return ctk.CTkImage(light_image=image, size=(size, size))
@@ -135,12 +137,12 @@ def _render_menu_icon_cached(kind: MenuIcon, color: str, size: int) -> Image.Ima
     return _finish_icon(canvas, size)
 
 
-def render_menu_icon(kind: MenuIcon, color: str, size: int = 64) -> Image.Image:
+def render_menu_icon(kind: MenuIcon, color: str, size: int = ICON_RENDER) -> Image.Image:
     """绘制托盘菜单使用的单色图标，返回透明背景的 RGBA 图像。"""
     return _render_menu_icon_cached(kind, color, size)
 
 
-def menu_icon(kind: MenuIcon, color: str, size: int = 18) -> ctk.CTkImage:
+def menu_icon(kind: MenuIcon, color: str, size: int = ICON_MENU) -> ctk.CTkImage:
     """返回可直接用于 CTkButton 的单色图标，size 为逻辑像素。"""
     image = render_menu_icon(kind, color)
     return ctk.CTkImage(light_image=image, size=(size, size))
@@ -219,12 +221,12 @@ def _render_theme_icon_cached(kind: str, color: str, size: int) -> Image.Image:
     return _finish_icon(canvas, size)
 
 
-def render_theme_icon(kind: str, color: str, size: int = 64) -> Image.Image:
+def render_theme_icon(kind: str, color: str, size: int = ICON_RENDER) -> Image.Image:
     """绘制主题卡片使用的单色图标，返回透明背景的 RGBA 图像。"""
     return _render_theme_icon_cached(kind, color, size)
 
 
-def theme_icon(kind: str, color: str, size: int = 18) -> ctk.CTkImage:
+def theme_icon(kind: str, color: str, size: int = ICON_THEME) -> ctk.CTkImage:
     """返回可直接用于 CTkLabel 的主题图标，size 为逻辑像素。"""
     image = render_theme_icon(kind, color)
     return ctk.CTkImage(light_image=image, size=(size, size))
@@ -270,12 +272,12 @@ def _render_toolbar_icon_cached(kind: str, color: str, size: int) -> Image.Image
     return _finish_icon(canvas, size)
 
 
-def render_toolbar_icon(kind: str, color: str, size: int = 64) -> Image.Image:
+def render_toolbar_icon(kind: str, color: str, size: int = ICON_RENDER) -> Image.Image:
     """绘制日志工具栏使用的单色图标，返回透明背景的 RGBA 图像。"""
     return _render_toolbar_icon_cached(kind, color, size)
 
 
-def toolbar_icon(kind: str, color: str, size: int = 16) -> ctk.CTkImage:
+def toolbar_icon(kind: str, color: str, size: int = ICON_TOOLBAR) -> ctk.CTkImage:
     """返回可直接用于 CTkButton/CTkLabel 的工具栏图标。"""
     image = render_toolbar_icon(kind, color)
     return ctk.CTkImage(light_image=image, size=(size, size))

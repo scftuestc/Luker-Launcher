@@ -13,12 +13,28 @@ from core.readiness import LukerState
 from ui.buttons import make_button
 from ui.dpi import format_geometry
 from ui.theme import shade_color
+from ui.tokens import (
+    CHECK_SIZE,
+    CONTROL_HEIGHT_LG,
+    FONT_BODY,
+    FONT_SMALL,
+    FONT_TITLE,
+    GAP_DESCRIPTION,
+    GAP_INLINE,
+    GAP_SECTION,
+    PAD_CARD,
+    PAD_DIALOG_X,
+    PAD_DIALOG_Y,
+    RADIUS_CHECK,
+    WINDOW_DIALOG_HEIGHT,
+    WINDOW_DIALOG_WIDTH,
+)
 from ui.window_utils import apply_window_rounding, get_ui_font
 
 logger = logging.getLogger(__name__)
 
-DIALOG_WIDTH = 480
-DIALOG_HEIGHT = 300
+DIALOG_WIDTH = WINDOW_DIALOG_WIDTH
+DIALOG_HEIGHT = WINDOW_DIALOG_HEIGHT
 
 
 def dialog_position(
@@ -104,12 +120,12 @@ class CloseChoiceDialog(ctk.CTkToplevel):
 
     def _build_ui(self, state: LukerState) -> None:
         content = ctk.CTkFrame(self, fg_color="transparent")
-        content.pack(fill="both", expand=True, padx=24, pady=20)
+        content.pack(fill="both", expand=True, padx=PAD_DIALOG_X, pady=PAD_DIALOG_Y)
 
         ctk.CTkLabel(
             content,
             text="关闭 Luker Launcher",
-            font=ctk.CTkFont(family=self.UI_FONT, size=17, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_TITLE, weight="bold"),
             text_color=self.COLORS['text'],
             anchor="w",
         ).pack(fill="x")
@@ -117,12 +133,12 @@ class CloseChoiceDialog(ctk.CTkToplevel):
         ctk.CTkLabel(
             content,
             text=close_dialog_message(state, allow_hide=self._allow_hide),
-            font=ctk.CTkFont(family=self.UI_FONT, size=13),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_BODY),
             text_color=self.COLORS['text_dim'],
             justify="left",
             anchor="w",
             wraplength=420,
-        ).pack(fill="x", pady=(10, 12))
+        ).pack(fill="x", pady=(GAP_DESCRIPTION, GAP_SECTION))
 
         ctk.CTkCheckBox(
             content,
@@ -130,17 +146,17 @@ class CloseChoiceDialog(ctk.CTkToplevel):
             variable=self._remember_var,
             onvalue=1,
             offvalue=0,
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text_dim'],
             fg_color=self.COLORS['accent'],
             hover_color=shade_color(self.COLORS['accent'], 0.85),
             border_color=self.COLORS['border'],
             checkmark_color=self.COLORS['on_accent'],
-            checkbox_width=18,
-            checkbox_height=18,
-            corner_radius=4,
+            checkbox_width=CHECK_SIZE,
+            checkbox_height=CHECK_SIZE,
+            corner_radius=RADIUS_CHECK,
             border_width=2,
-        ).pack(anchor="w", pady=(0, 16))
+        ).pack(anchor="w", pady=(0, PAD_CARD))
 
         buttons = ctk.CTkFrame(content, fg_color="transparent")
         buttons.pack(side="bottom", fill="x")
@@ -151,7 +167,7 @@ class CloseChoiceDialog(ctk.CTkToplevel):
             self.COLORS,
             text="取消",
             width=96,
-            height=36,
+            height=CONTROL_HEIGHT_LG,
             font_family=self.UI_FONT,
             command=self._cancel,
         )
@@ -163,11 +179,11 @@ class CloseChoiceDialog(ctk.CTkToplevel):
             self.COLORS,
             text="退出程序",
             width=112,
-            height=36,
+            height=CONTROL_HEIGHT_LG,
             font_family=self.UI_FONT,
             command=self._exit,
         )
-        self._exit_btn.pack(side="right", padx=(0, 8))
+        self._exit_btn.pack(side="right", padx=(0, GAP_INLINE))
 
         if self._allow_hide:
             self._hide_btn = make_button(
@@ -176,11 +192,11 @@ class CloseChoiceDialog(ctk.CTkToplevel):
                 self.COLORS,
                 text="隐藏到托盘",
                 width=124,
-                height=36,
+                height=CONTROL_HEIGHT_LG,
                 font_family=self.UI_FONT,
                 command=self._hide,
             )
-            self._hide_btn.pack(side="right", padx=(0, 8))
+            self._hide_btn.pack(side="right", padx=(0, GAP_INLINE))
 
     def _present(self) -> None:
         if self._closed or not self.winfo_exists():

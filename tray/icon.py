@@ -8,7 +8,7 @@ from threading import Event, Lock, Thread, current_thread
 
 from PIL import Image, ImageDraw
 
-from ui.theme import LOGO_BAR_COLORS
+from ui.theme import LOGO_BAR_COLORS, LOGO_STOPPED_COLOR, TRAY_ACTIVE_COLOR, TRAY_ICON_BG
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +262,7 @@ class TrayIcon:
             draw.ellipse([x1, y2 - radius * 2, x1 + radius * 2, y2], fill=fill)
             draw.ellipse([x2 - radius * 2, y2 - radius * 2, x2, y2], fill=fill)
 
-        border_color = '#3fb950' if self._is_running else '#6e7681'
+        border_color = TRAY_ACTIVE_COLOR if self._is_running else LOGO_STOPPED_COLOR
 
         draw_rounded_rect(
             [margin, margin, size - margin, size - margin], corner_radius, border_color
@@ -273,7 +273,7 @@ class TrayIcon:
         draw_rounded_rect(
             [inner_margin, inner_margin, size - inner_margin, size - inner_margin],
             inner_radius,
-            '#161b22',
+            TRAY_ICON_BG,
         )
 
         bar_width = max(2, int(16 * scale))
@@ -286,7 +286,7 @@ class TrayIcon:
         if self._is_running:
             colors: Sequence[str] = LOGO_BAR_COLORS
         else:
-            colors = ['#6e7681', '#6e7681', '#6e7681', '#6e7681']
+            colors = [LOGO_STOPPED_COLOR] * 4
 
         for i, color in enumerate(colors):
             x = start_x + i * (bar_width + bar_gap)

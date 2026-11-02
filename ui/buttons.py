@@ -7,6 +7,17 @@ from typing import Literal
 import customtkinter as ctk
 
 from ui.theme import mix_color, shade_color
+from ui.tokens import (
+    BUTTON_SECONDARY_HEIGHT,
+    CONTROL_HEIGHT_MD,
+    CONTROL_HEIGHT_XL,
+    FONT_BODY,
+    FONT_BUTTON_PRIMARY,
+    FONT_SMALL,
+    RADIUS_BUTTON,
+    RADIUS_CARD,
+    RADIUS_CONTROL,
+)
 
 ButtonRole = Literal[
     'primary',
@@ -21,34 +32,34 @@ ButtonRole = Literal[
 FontWeight = Literal['normal', 'bold']
 
 BUTTON_RADIUS: dict[ButtonRole, int] = {
-    'primary': 12,
-    'secondary': 10,
-    'outline': 10,
-    'danger_outline': 10,
-    'ghost': 8,
-    'danger_ghost': 8,
-    'danger': 12,
-    'menu': 10,
+    'primary': RADIUS_BUTTON,
+    'secondary': RADIUS_CARD,
+    'outline': RADIUS_CARD,
+    'danger_outline': RADIUS_CARD,
+    'ghost': RADIUS_CONTROL,
+    'danger_ghost': RADIUS_CONTROL,
+    'danger': RADIUS_BUTTON,
+    'menu': RADIUS_CARD,
 }
 BUTTON_HEIGHT: dict[ButtonRole, int] = {
-    'primary': 40,
-    'secondary': 38,
-    'outline': 32,
-    'danger_outline': 40,
-    'ghost': 32,
-    'danger_ghost': 32,
-    'danger': 40,
-    'menu': 38,
+    'primary': CONTROL_HEIGHT_XL,
+    'secondary': BUTTON_SECONDARY_HEIGHT,
+    'outline': CONTROL_HEIGHT_MD,
+    'danger_outline': CONTROL_HEIGHT_XL,
+    'ghost': CONTROL_HEIGHT_MD,
+    'danger_ghost': CONTROL_HEIGHT_MD,
+    'danger': CONTROL_HEIGHT_XL,
+    'menu': BUTTON_SECONDARY_HEIGHT,
 }
 BUTTON_FONT_SIZE: dict[ButtonRole, int] = {
-    'primary': 14,
-    'secondary': 13,
-    'outline': 12,
-    'danger_outline': 13,
-    'ghost': 13,
-    'danger_ghost': 13,
-    'danger': 14,
-    'menu': 13,
+    'primary': FONT_BUTTON_PRIMARY,
+    'secondary': FONT_BODY,
+    'outline': FONT_SMALL,
+    'danger_outline': FONT_BODY,
+    'ghost': FONT_BODY,
+    'danger_ghost': FONT_BODY,
+    'danger': FONT_BUTTON_PRIMARY,
+    'menu': FONT_BODY,
 }
 BUTTON_FONT_WEIGHT: dict[ButtonRole, FontWeight] = {
     'primary': 'bold',

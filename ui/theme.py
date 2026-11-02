@@ -164,6 +164,9 @@ LOGO_BAR_RGB = (
 LOGO_BAR_COLORS = tuple(f'#{r:02x}{g:02x}{b:02x}' for r, g, b in LOGO_BAR_RGB)
 # Luker 未就绪/停止时 logo 的统一灰色，与系统托盘图标一致
 LOGO_STOPPED_COLOR = '#6e7681'
+# 系统托盘图标专用：运行中的外圈绿色和内层深色底
+TRAY_ACTIVE_COLOR = '#3fb950'
+TRAY_ICON_BG = '#161b22'
 # 日志窗口与托盘菜单共用同一套呼吸节奏：约 1.67 秒一个完整周期
 LOGO_GLOW_STEP = 0.03
 LOGO_GLOW_INTERVAL_MS = 50
