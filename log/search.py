@@ -9,6 +9,22 @@ import customtkinter as ctk
 from ui.buttons import ButtonRole, button_colors, make_button
 from ui.icons import toolbar_icon
 from ui.theme import mix_color
+from ui.tokens import (
+    CONTROL_HEIGHT_MD,
+    CONTROL_HEIGHT_XS,
+    COUNT_LABEL_WIDTH,
+    FONT_BODY,
+    FONT_CAPTION,
+    FONT_NAV,
+    GAP_GRID,
+    GAP_HAIRLINE,
+    GAP_INLINE,
+    GAP_INLINE_SM,
+    HINT_SIZE,
+    ICON_BOX,
+    RADIUS_CARD,
+    RADIUS_NAV,
+)
 
 MAX_SEARCH_RESULTS = 5000
 SEARCH_DEBOUNCE_MS = 250
@@ -17,7 +33,6 @@ SEARCH_HINT_TEXT = "搜索日志（Ctrl+F）"
 TIMESTAMP_PREFIX_LENGTH = 11
 # log.display 用 40 个 ─ 作为时间分隔线
 SEPARATOR_LENGTH = 40
-COUNT_LABEL_WIDTH = 64
 
 
 def decorative_skip_target(textbox: tk.Text, pos: str) -> str | None:
@@ -268,32 +283,32 @@ class SearchBar:
         self.frame = ctk.CTkFrame(
             parent,
             fg_color=colors['card'],
-            corner_radius=10,
+            corner_radius=RADIUS_CARD,
             border_width=1,
             border_color=colors['border'],
         )
 
         inner = ctk.CTkFrame(self.frame, fg_color="transparent")
-        inner.pack(fill="x", expand=True, padx=8, pady=4)
+        inner.pack(fill="x", expand=True, padx=GAP_INLINE, pady=GAP_INLINE_SM)
 
         self.icon = ctk.CTkLabel(
             inner,
             image=toolbar_icon('search', colors['text_muted']),
             text="",
-            width=18,
-            height=18,
+            width=ICON_BOX,
+            height=ICON_BOX,
         )
-        self.icon.pack(side="left", padx=(4, 6))
+        self.icon.pack(side="left", padx=(GAP_INLINE_SM, GAP_GRID))
 
         self.var = ctk.StringVar()
         self.entry = ctk.CTkEntry(
             inner,
-            font=ctk.CTkFont(family=ui_font, size=13),
+            font=ctk.CTkFont(family=ui_font, size=FONT_BODY),
             fg_color="transparent",
             border_width=0,
             text_color=colors['text'],
             width=150,
-            height=32,
+            height=CONTROL_HEIGHT_MD,
             textvariable=self.var,
         )
         self.entry.pack(side="left", fill="x", expand=True)
@@ -302,10 +317,10 @@ class SearchBar:
         self.hint = ctk.CTkLabel(
             inner,
             text=SEARCH_HINT_TEXT,
-            font=ctk.CTkFont(family=ui_font, size=13),
+            font=ctk.CTkFont(family=ui_font, size=FONT_BODY),
             text_color=colors['text_muted'],
             fg_color="transparent",
-            height=18,
+            height=HINT_SIZE,
         )
         self.hint.bind("<Button-1>", lambda _event: self.entry.focus_set())
         self.entry.bind("<FocusIn>", self._on_focus_in)
@@ -316,23 +331,23 @@ class SearchBar:
         self.entry.bind("<Escape>", self._on_entry_escape)
 
         self.nav = ctk.CTkFrame(inner, fg_color="transparent")
-        self.nav.pack(side="left", padx=(4, 0))
+        self.nav.pack(side="left", padx=(GAP_INLINE_SM, 0))
 
         self.count_label = ctk.CTkLabel(
             self.nav,
             text="",
-            font=ctk.CTkFont(family=ui_font, size=11),
+            font=ctk.CTkFont(family=ui_font, size=FONT_CAPTION),
             text_color=colors['text_muted'],
             width=COUNT_LABEL_WIDTH,
         )
         self.count_label.pack(side="left")
 
         self._prev_btn = self._make_nav_button('▲', 'ghost', self.prev)
-        self._prev_btn.pack(side="left", padx=1)
+        self._prev_btn.pack(side="left", padx=GAP_HAIRLINE)
         self._next_btn = self._make_nav_button('▼', 'ghost', self.next)
-        self._next_btn.pack(side="left", padx=1)
+        self._next_btn.pack(side="left", padx=GAP_HAIRLINE)
         self._clear_btn = self._make_nav_button('✕', 'danger_ghost', self.clear_and_focus)
-        self._clear_btn.pack(side="left", padx=1)
+        self._clear_btn.pack(side="left", padx=GAP_HAIRLINE)
 
         self.nav.pack_forget()
 
@@ -362,17 +377,21 @@ class SearchBar:
             role,
             self._get_colors(),
             text=text,
-            width=26,
-            height=26,
-            corner_radius=6,
-            font_size=10,
+            width=CONTROL_HEIGHT_XS,
+            height=CONTROL_HEIGHT_XS,
+            corner_radius=RADIUS_NAV,
+            font_family=self._ui_font,
+            font_size=FONT_NAV,
             command=command,
         )
         self._buttons.append((button, role))
         return button
 
-    def refresh_colors(self) -> None:
-        """主题切换后重配搜索框、图标、提示和导航按钮。"""
+    def refresh_colors(self, *, update_icon: bool = True) -> None:
+        """主题切换后重配搜索框、图标、提示和导航按钮。
+
+        update_icon=False 用于主题渐变的中间帧，避免每帧重建放大镜图标。
+        """
         colors = self._get_colors()
         self.frame.configure(fg_color=colors['card'])
         self.entry.configure(text_color=colors['text'])
@@ -381,7 +400,7 @@ class SearchBar:
         for button, role in self._buttons:
             button.configure(**button_colors(role, colors))
         self.search.refresh_colors()
-        self._apply_focus_style()
+        self._apply_focus_style(update_icon=update_icon)
         self._set_nav_enabled(bool(self.search.results))
 
     def adjust(self, removed_lines: int) -> None:
@@ -401,7 +420,7 @@ class SearchBar:
             self.search.clear_state()
             return
 
-        self.nav.pack(side="left", padx=(4, 0))
+        self.nav.pack(side="left", padx=(GAP_INLINE_SM, 0))
         self.search.perform(search_text, preserve_current=preserve_current)
 
     def reset(self) -> None:
@@ -450,15 +469,17 @@ class SearchBar:
         self._prev_btn.configure(state=state)
         self._next_btn.configure(state=state)
 
-    def _apply_focus_style(self) -> None:
+    def _apply_focus_style(self, *, update_icon: bool = True) -> None:
         """聚焦时用强调色描边和图标，失焦恢复中性色。"""
         colors = self._get_colors()
         if self._focused:
             self.frame.configure(border_color=colors['accent'])
-            self.icon.configure(image=toolbar_icon('search', colors['accent']))
+            if update_icon:
+                self.icon.configure(image=toolbar_icon('search', colors['accent']))
         else:
             self.frame.configure(border_color=colors['border'])
-            self.icon.configure(image=toolbar_icon('search', colors['text_muted']))
+            if update_icon:
+                self.icon.configure(image=toolbar_icon('search', colors['text_muted']))
 
     def _on_entry_next(self, _event: tk.Event | None = None) -> str:
         self.next()

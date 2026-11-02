@@ -19,6 +19,7 @@ from log.search import SearchBar
 from log.store import LogEntry
 from ui.buttons import ButtonRole, button_colors, make_button
 from ui.icons import TransportIcon, toolbar_icon, transport_icon
+from ui.motion import StepTicker, WindowFade, ease_in_out_cubic, fade_palette
 from ui.resizing import WindowResizer
 from ui.theme import (
     LOGO_GLOW_INTERVAL_MS,
@@ -28,6 +29,46 @@ from ui.theme import (
     logo_bar_glow_color,
     mix_color,
     shade_color,
+)
+from ui.tokens import (
+    CONTROL_HEIGHT_LG,
+    CONTROL_HEIGHT_MD,
+    CONTROL_HEIGHT_XL,
+    CONTROL_HEIGHT_XS,
+    DELAY_BLUR_LOG_MS,
+    FONT_BODY,
+    FONT_DISPLAY,
+    FONT_HEADING,
+    FONT_SMALL,
+    FONT_TITLE,
+    GAP_BRAND,
+    GAP_GRID,
+    GAP_INLINE,
+    GAP_SECTION,
+    GAP_WINDOW,
+    GAP_XS,
+    LOGO_BAR_GAP,
+    LOGO_BAR_HEIGHT_MAIN,
+    LOGO_BAR_WIDTH,
+    MOTION_ERROR_REVEAL_MS,
+    MOTION_FADE_DURATION_MS,
+    MOTION_FADE_INTERVAL_MS,
+    MOTION_LOADING_DELAY_MS,
+    MOTION_WINDOW_ALPHA,
+    MOTION_WINDOW_FADE_START,
+    PAD_CARD,
+    PAD_CARD_COMPACT,
+    PAD_ROW_X,
+    PAD_ROW_Y,
+    PAD_WINDOW,
+    RADIUS_CARD,
+    RADIUS_CARD_LG,
+    RADIUS_CIRCLE,
+    RADIUS_CONTROL,
+    RADIUS_LOGO,
+    STATUSBAR_HEIGHT,
+    TITLEBAR_MAIN_HEIGHT,
+    TOOLBAR_HEIGHT,
 )
 from ui.window_utils import (
     apply_window_rounding,
@@ -57,6 +98,39 @@ def auto_scroll_button_colors(colors: dict[str, str], enabled: bool) -> dict[str
         border_color=mix_color(colors['border'], colors[key], 0.55),
     )
     return options
+
+
+def empty_log_text(
+    state: LukerState,
+    source: str,
+    gcl_enabled: bool,
+) -> tuple[str, str]:
+    """返回日志区空状态的主标题和说明。"""
+    if source == 'gcl':
+        if not gcl_enabled:
+            return "GCL 未启用", "在设置中开启 GCL 后，日志会显示在这里。"
+        return "暂无 GCL 日志", "从托盘菜单启动 GCL 后，日志会显示在这里。"
+    if state is LukerState.STARTING:
+        return "正在启动 Luker…", "等待服务就绪，日志马上出现。"
+    if state is LukerState.READY:
+        return "暂无日志输出", "Luker 正在运行，新日志会显示在这里。"
+    return "还没有日志", "点击「开始」运行 Luker，日志会显示在这里。"
+
+
+def truncate_log_text(text: str, limit: int = 56) -> str:
+    """把错误行压成单行并截断，避免横幅把窗口撑宽。"""
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: max(1, limit - 1)].rstrip() + "…"
+
+
+def error_banner_colors(colors: dict[str, str]) -> dict[str, str]:
+    """错误横幅的混合底色和描边；文字色由绑定单独处理。"""
+    return {
+        'fg_color': mix_color(colors['card'], colors['error'], 0.10),
+        'border_color': mix_color(colors['border'], colors['error'], 0.45),
+    }
 
 
 class LogWindow(ctk.CTk):
@@ -136,7 +210,7 @@ class LogWindow(ctk.CTk):
         self.configure(fg_color=self.COLORS['bg'])
         self.attributes('-alpha', 0.95 if config.blur_enabled else 1.0)
 
-        self.after(150, self._setup_blur)
+        self.after(DELAY_BLUR_LOG_MS, self._ensure_blur)
 
         self.bind('<Map>', self._on_map)
 
@@ -151,6 +225,17 @@ class LogWindow(ctk.CTk):
         self._is_running = False
         self._luker_state = LukerState.STOPPED
         self._logo_is_gray = True
+
+        self._fade = WindowFade(self, interval_ms=MOTION_FADE_INTERVAL_MS)
+        self._blur_ready = False
+        self._theme_ticker: StepTicker | None = None
+        self._theme_from: dict[str, str] | None = None
+        self._theme_to: dict[str, str] | None = None
+
+        self._gcl_enabled = False
+        self._replaying = False
+        self._overlay_job: str | None = None
+        self._error_reveal_job: str | None = None
 
     def _report_callback_exception(
         self,
@@ -177,22 +262,68 @@ class LogWindow(ctk.CTk):
         except Exception:
             logger.warning("设置窗口图标失败", exc_info=True)
 
+    def _ensure_blur(self) -> None:
+        """首次显示前确保毛玻璃已就绪；后续显示不再重复设置。"""
+        if self.__dict__.get('_blur_ready', True):
+            return
+        self._setup_blur()
+
     def _setup_blur(self) -> None:
+        fade = self.__dict__.get('_fade')
+        if fade is not None:
+            fade.cancel()
         sync_window_blur(
             self,
             self.COLORS['bg'],
             enabled=config.blur_enabled,
-            window_alpha=0.95,
+            window_alpha=MOTION_WINDOW_ALPHA,
             tint_alpha=0xDD,
             context="日志窗口",
         )
+        self._blur_ready = True
         self.update()
 
     def _on_blur_change(self, _enabled: bool) -> None:
         self._setup_blur()
 
     def _on_theme_change(self, new_colors: dict[str, str]) -> None:
-        self.COLORS = new_colors
+        if not self._ui_ready:
+            self.COLORS = new_colors
+            self._apply_theme()
+            return
+        self._start_theme_fade(new_colors)
+
+    def _start_theme_fade(self, new_colors: dict[str, str]) -> None:
+        """从一个主题平滑过渡到另一个；再次切换时从当前中间色继续。"""
+        if self._theme_ticker is not None:
+            self._theme_ticker.cancel()
+            self._theme_ticker = None
+        self._theme_from = dict(self.COLORS)
+        self._theme_to = dict(new_colors)
+        steps = max(1, round(MOTION_FADE_DURATION_MS / MOTION_FADE_INTERVAL_MS))
+        self._theme_ticker = StepTicker(
+            self,
+            steps=steps,
+            interval_ms=MOTION_FADE_INTERVAL_MS,
+            on_step=self._theme_step,
+            on_done=self._finish_theme_fade,
+        )
+        self._theme_ticker.start()
+
+    def _theme_step(self, progress: float) -> None:
+        if self._theme_from is None or self._theme_to is None:
+            return
+        palette = fade_palette(self._theme_from, self._theme_to, ease_in_out_cubic(progress))
+        self.COLORS = palette
+        self._apply_theme_colors(palette)
+
+    def _finish_theme_fade(self) -> None:
+        self._theme_ticker = None
+        if self._theme_to is None:
+            return
+        self.COLORS = self._theme_to
+        self._theme_from = None
+        self._theme_to = None
         self._apply_theme()
 
     def _bind_theme(self, widget: tk.Misc, **options: ThemeColorKey) -> None:
@@ -204,6 +335,26 @@ class LogWindow(ctk.CTk):
         self._styled_buttons.append((button, role))
         return button
 
+    def _apply_theme_bindings(self, palette: dict[str, str]) -> None:
+        for widget, options in self._theme_bindings:
+            with contextlib.suppress(tk.TclError):
+                widget.configure(**{option: palette[key] for option, key in options.items()})
+        for button, role in self._styled_buttons:
+            with contextlib.suppress(tk.TclError):
+                button.configure(**button_colors(role, palette))
+
+    def _apply_theme_colors(self, palette: dict[str, str]) -> None:
+        """渐变期间只改颜色，不触发 DWM、图标重建或状态图标注。"""
+        if not self._ui_ready:
+            return
+        with contextlib.suppress(tk.TclError):
+            self.configure(fg_color=palette['bg'])
+        self._apply_theme_bindings(palette)
+        self._apply_log_source_ui()
+        configure_log_tags(self._get_textbox(), palette)
+        self.search.refresh_colors(update_icon=False)
+        self._apply_error_banner_colors()
+
     def _apply_theme(self) -> None:
         if not self._ui_ready:
             return
@@ -212,12 +363,7 @@ class LogWindow(ctk.CTk):
 
             self._setup_blur()
 
-            for widget, options in self._theme_bindings:
-                widget.configure(**{option: self.COLORS[key] for option, key in options.items()})
-
-            for button, role in self._styled_buttons:
-                button.configure(**button_colors(role, self.COLORS))
-
+            self._apply_theme_bindings(self.COLORS)
             self._refresh_toolbar_icons()
 
             # 动态状态依赖静态颜色，必须放在绑定之后
@@ -225,6 +371,7 @@ class LogWindow(ctk.CTk):
             configure_log_tags(self._get_textbox(), self.COLORS)
             self.search.refresh_colors()
             self.update_status(self._luker_state)
+            self._apply_error_banner_colors()
 
         except Exception:
             logger.exception("应用主题时出错")
@@ -293,6 +440,18 @@ class LogWindow(ctk.CTk):
         if self._pulse_job is not None:
             self._cancel_after_job(self._pulse_job)
             self._pulse_job = None
+        theme_ticker = self.__dict__.get('_theme_ticker')
+        if theme_ticker is not None:
+            theme_ticker.cancel()
+            self._theme_ticker = None
+        fade = self.__dict__.get('_fade')
+        if fade is not None:
+            fade.cancel()
+        self._cancel_overlay_job()
+        reveal_job = self.__dict__.get('_error_reveal_job')
+        if reveal_job is not None:
+            self._cancel_after_job(reveal_job)
+            self._error_reveal_job = None
         self.search.cancel_pending()
 
     def destroy(self) -> None:
@@ -306,7 +465,7 @@ class LogWindow(ctk.CTk):
 
     def _build_ui(self) -> None:
         main = ctk.CTkFrame(self, fg_color="transparent")
-        main.pack(fill="both", expand=True, padx=12, pady=12)
+        main.pack(fill="both", expand=True, padx=PAD_WINDOW, pady=PAD_WINDOW)
 
         self._build_titlebar(main)
         self._build_toolbar(main)
@@ -324,9 +483,11 @@ class LogWindow(ctk.CTk):
             adjust_search=self.search.adjust,
             has_query=self.search.has_query,
             on_search_rerun=lambda: self.search.rerun(preserve_current=True),
+            on_replay_state_change=self._on_replay_state_change,
         )
         self._apply_log_source_ui()
         self._bind_search_shortcuts()
+        self._update_log_state()
 
     def _make_card(self, parent: tk.Misc, **kwargs: object) -> ctk.CTkFrame:
         """创建主题卡片并登记背景色，避免每个调用点重复绑定。"""
@@ -339,7 +500,7 @@ class LogWindow(ctk.CTk):
         parent: tk.Misc,
         text: str,
         *,
-        size: int = 13,
+        size: int = FONT_BODY,
         **kwargs: object,
     ) -> ctk.CTkLabel:
         label = ctk.CTkLabel(
@@ -353,8 +514,10 @@ class LogWindow(ctk.CTk):
         return label
 
     def _build_titlebar(self, parent: tk.Misc) -> None:
-        self._titlebar = self._make_card(parent, height=52, corner_radius=14)
-        self._titlebar.pack(fill="x", pady=(0, 10))
+        self._titlebar = self._make_card(
+            parent, height=TITLEBAR_MAIN_HEIGHT, corner_radius=RADIUS_CARD_LG
+        )
+        self._titlebar.pack(fill="x", pady=(0, GAP_WINDOW))
         self._titlebar.pack_propagate(False)
 
         self._build_brand_area(self._titlebar)
@@ -362,7 +525,7 @@ class LogWindow(ctk.CTk):
 
     def _build_brand_area(self, parent: tk.Misc) -> None:
         left = ctk.CTkFrame(parent, fg_color="transparent")
-        left.pack(side="left", padx=16, pady=12)
+        left.pack(side="left", padx=PAD_CARD, pady=GAP_SECTION)
 
         logo = ctk.CTkFrame(left, fg_color="transparent")
         logo.pack(side="left")
@@ -371,21 +534,21 @@ class LogWindow(ctk.CTk):
         for _ in range(4):
             bar_item = ctk.CTkFrame(
                 logo,
-                width=4,
-                height=22,
+                width=LOGO_BAR_WIDTH,
+                height=LOGO_BAR_HEIGHT_MAIN,
                 fg_color=LOGO_STOPPED_COLOR,
-                corner_radius=2,
+                corner_radius=RADIUS_LOGO,
             )
-            bar_item.pack(side="left", padx=1)
+            bar_item.pack(side="left", padx=LOGO_BAR_GAP)
             self._logo_bars.append(bar_item)
 
         self._title_label = ctk.CTkLabel(
             left,
             text="Luker 日志",
-            font=ctk.CTkFont(family=self.UI_FONT, size=16, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_TITLE, weight="bold"),
             text_color=self.COLORS['text'],
         )
-        self._title_label.pack(side="left", padx=(14, 0))
+        self._title_label.pack(side="left", padx=(GAP_BRAND, 0))
         self._bind_theme(self._title_label, text_color='text')
 
         # Tk 鼠标事件只发给指针下的控件，不会冒泡到父控件，标题栏内可拖拽区域要各自绑定
@@ -393,7 +556,7 @@ class LogWindow(ctk.CTk):
 
     def _build_window_buttons(self, parent: tk.Misc) -> None:
         right = ctk.CTkFrame(parent, fg_color="transparent")
-        right.pack(side="right", padx=10)
+        right.pack(side="right", padx=PAD_ROW_X)
 
         # 日志源切换按钮（仅在 GCL 启用时显示）
         self._log_source_btn = make_button(
@@ -402,10 +565,10 @@ class LogWindow(ctk.CTk):
             self.COLORS,
             text="📊 Luker 日志",
             width=110,
-            height=32,
-            corner_radius=10,
+            height=CONTROL_HEIGHT_MD,
+            corner_radius=RADIUS_CARD,
             font_family=self.UI_FONT,
-            font_size=12,
+            font_size=FONT_SMALL,
             font_weight='bold',
             command=self._toggle_log_source,
         )
@@ -417,13 +580,13 @@ class LogWindow(ctk.CTk):
             self.COLORS,
             text="─",
             width=40,
-            height=32,
-            corner_radius=8,
-            font_size=16,
+            height=CONTROL_HEIGHT_MD,
+            corner_radius=RADIUS_CONTROL,
+            font_size=FONT_TITLE,
             font_weight='bold',
             command=self._on_minimize,
         )
-        self._min_btn.pack(side="left", padx=2)
+        self._min_btn.pack(side="left", padx=GAP_XS)
         self._register_button(self._min_btn, 'ghost')
 
         self._close_btn = make_button(
@@ -432,13 +595,13 @@ class LogWindow(ctk.CTk):
             self.COLORS,
             text="✕",
             width=40,
-            height=32,
-            corner_radius=8,
-            font_size=15,
+            height=CONTROL_HEIGHT_MD,
+            corner_radius=RADIUS_CONTROL,
+            font_size=FONT_TITLE,
             font_weight='bold',
             command=self._on_close,
         )
-        self._close_btn.pack(side="left", padx=2)
+        self._close_btn.pack(side="left", padx=GAP_XS)
         self._register_button(self._close_btn, 'danger_ghost')
 
     def _hide_to_tray(self) -> None:
@@ -512,8 +675,8 @@ class LogWindow(ctk.CTk):
             self._min_btn.configure(state="disabled")
 
     def _build_toolbar(self, parent: tk.Misc) -> None:
-        self._toolbar = ctk.CTkFrame(parent, fg_color="transparent", height=48)
-        self._toolbar.pack(fill="x", pady=(0, 10))
+        self._toolbar = ctk.CTkFrame(parent, fg_color="transparent", height=TOOLBAR_HEIGHT)
+        self._toolbar.pack(fill="x", pady=(0, GAP_WINDOW))
 
         left = ctk.CTkFrame(self._toolbar, fg_color="transparent")
         self._build_toolbar_actions(left)
@@ -525,7 +688,7 @@ class LogWindow(ctk.CTk):
             get_textbox=self._get_textbox,
             get_scaling=self._get_widget_scaling,
         )
-        self.search.frame.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.search.frame.pack(side="left", fill="x", expand=True, padx=(0, GAP_INLINE))
 
         right = ctk.CTkFrame(self._toolbar, fg_color="transparent")
         right.pack(side="right")
@@ -543,12 +706,12 @@ class LogWindow(ctk.CTk):
             image=toolbar_icon('trash', self.COLORS['text']),
             compound='left',
             font_family=self.UI_FONT,
-            font_size=14,
+            font_size=FONT_HEADING,
             width=100,
-            height=40,
+            height=CONTROL_HEIGHT_XL,
             command=self.clear_logs,
         )
-        self._clear_btn.pack(side="left", padx=(0, 8))
+        self._clear_btn.pack(side="left", padx=(0, GAP_INLINE))
         self._register_button(self._clear_btn, 'danger_outline')
 
         self.scroll_btn = make_button(
@@ -559,85 +722,259 @@ class LogWindow(ctk.CTk):
             image=toolbar_icon('scroll', self.COLORS['accent']),
             compound='left',
             font_family=self.UI_FONT,
-            font_size=14,
+            font_size=FONT_HEADING,
             width=130,
-            height=40,
+            height=CONTROL_HEIGHT_XL,
             command=self._toggle_scroll,
         )
-        self.scroll_btn.pack(side="left", padx=(0, 8))
+        self.scroll_btn.pack(side="left", padx=(0, GAP_INLINE))
         self._register_button(self.scroll_btn, 'outline')
 
     def _build_status_card(self, parent: tk.Misc) -> None:
-        self._status_card = self._make_card(parent, corner_radius=10)
+        self._status_card = self._make_card(parent, corner_radius=RADIUS_CARD)
         self._status_card.pack()
 
         inner = ctk.CTkFrame(self._status_card, fg_color="transparent")
-        inner.pack(padx=16, pady=10)
+        inner.pack(padx=PAD_CARD, pady=GAP_WINDOW)
 
         self._play_icon = transport_icon('play', self.COLORS['bg'])
         self.play_btn = ctk.CTkButton(
             inner,
             text="",
             image=self._play_icon,
-            width=36,
-            height=36,
+            width=CONTROL_HEIGHT_LG,
+            height=CONTROL_HEIGHT_LG,
             fg_color=self.COLORS['success'],
             hover_color=shade_color(self.COLORS['success'], 0.85),
-            corner_radius=18,
+            corner_radius=RADIUS_CIRCLE,
             command=self._toggle_running,
         )
-        self.play_btn.pack(side="left", padx=(0, 12))
+        self.play_btn.pack(side="left", padx=(0, GAP_SECTION))
 
         self.status_dot = ctk.CTkLabel(
-            inner, text="●", font=ctk.CTkFont(size=18), text_color=self.COLORS['error']
+            inner,
+            text="●",
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_DISPLAY),
+            text_color=self.COLORS['error'],
         )
-        self.status_dot.pack(side="left", padx=(0, 8))
+        self.status_dot.pack(side="left", padx=(0, GAP_INLINE))
 
         self.status_text = ctk.CTkLabel(
             inner,
             text="已停止",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_HEADING, weight="bold"),
             text_color=self.COLORS['error'],
         )
         self.status_text.pack(side="left")
 
     def _build_log_area(self, parent: tk.Misc) -> None:
-        self._log_card = self._make_card(parent, corner_radius=14)
-        self._log_card.pack(fill="both", expand=True, pady=(0, 10))
+        self._log_card = self._make_card(parent, corner_radius=RADIUS_CARD_LG)
+        self._log_card.pack(fill="both", expand=True, pady=(0, GAP_WINDOW))
+
+        # 错误横幅默认不占位，出现错误时才 pack 到文本区上方
+        self._error_banner = ctk.CTkFrame(
+            self._log_card,
+            fg_color=self.COLORS['card'],
+            corner_radius=RADIUS_CONTROL,
+            border_width=1,
+            border_color=self.COLORS['border'],
+        )
+        self._error_icon = ctk.CTkLabel(
+            self._error_banner,
+            text="⚠",
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_BODY),
+            text_color=self.COLORS['error'],
+        )
+        self._error_icon.pack(side="left", padx=(PAD_ROW_X, GAP_GRID))
+        self._error_label = ctk.CTkLabel(
+            self._error_banner,
+            text="",
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
+            text_color=self.COLORS['text_dim'],
+            anchor="w",
+            justify="left",
+        )
+        self._error_label.pack(side="left", fill="x", expand=True)
+        self._error_locate = make_button(
+            self._error_banner,
+            'danger_ghost',
+            self.COLORS,
+            text="定位",
+            width=52,
+            height=CONTROL_HEIGHT_XS,
+            font_family=self.UI_FONT,
+            font_size=FONT_SMALL,
+            command=self._reveal_last_error,
+        )
+        self._error_locate.pack(side="right", padx=(GAP_INLINE, PAD_ROW_Y))
+        self._register_button(self._error_locate, 'danger_ghost')
+        self._bind_theme(self._error_icon, text_color='error')
+        self._bind_theme(self._error_label, text_color='text_dim')
+        self._apply_error_banner_colors()
 
         self.log_text = ctk.CTkTextbox(
             self._log_card,
             fg_color="transparent",
             text_color=self.COLORS['text'],
-            font=ctk.CTkFont(family=self.MONO_FONT, size=13),
-            corner_radius=10,
+            font=ctk.CTkFont(family=self.MONO_FONT, size=FONT_BODY),
+            corner_radius=RADIUS_CARD,
             scrollbar_button_color=self.COLORS['border'],
             scrollbar_button_hover_color=self.COLORS['accent'],
         )
-        self.log_text.pack(fill="both", expand=True, padx=12, pady=12)
+        self.log_text.pack(fill="both", expand=True, padx=PAD_CARD_COMPACT, pady=PAD_CARD_COMPACT)
         self._bind_theme(
             self.log_text,
             text_color='text',
             scrollbar_button_color='border',
             scrollbar_button_hover_color='accent',
         )
+        self._get_textbox().configure(state="disabled")
+
+        # 空/加载遮罩：覆盖在文本区中央，不写入 Text，避免污染搜索和计数
+        self._overlay = ctk.CTkFrame(self._log_card, fg_color="transparent")
+        self._overlay_title = ctk.CTkLabel(
+            self._overlay,
+            text="",
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_HEADING, weight="bold"),
+            text_color=self.COLORS['text_dim'],
+            justify="center",
+        )
+        self._overlay_title.pack()
+        self._overlay_detail = ctk.CTkLabel(
+            self._overlay,
+            text="",
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_BODY),
+            text_color=self.COLORS['text_muted'],
+            justify="center",
+            wraplength=360,
+        )
+        self._overlay_detail.pack(pady=(GAP_GRID, 0))
+        self._bind_theme(self._overlay_title, text_color='text_dim')
+        self._bind_theme(self._overlay_detail, text_color='text_muted')
+        self._overlay.place(relx=0.5, rely=0.5, anchor="center")
+        self._overlay.lift()
+        self._overlay.place_forget()
 
         configure_log_tags(self._get_textbox(), self.COLORS)
+
+    def _on_replay_state_change(self, active: bool) -> None:
+        self._replaying = active
+        self._update_log_state()
+
+    def _update_log_state(self) -> None:
+        """根据重放状态、日志条数和 Luker 状态刷新遮罩/错误横幅。"""
+        display = self.__dict__.get('_display')
+        logs = self.__dict__.get('_logs')
+        if display is None or logs is None:
+            return
+
+        if self.__dict__.get('_replaying', False):
+            self._schedule_loading_overlay()
+        else:
+            self._cancel_overlay_job()
+            if display.count == 0:
+                self._show_empty_overlay()
+            else:
+                self._hide_overlay()
+        self._update_error_banner()
+
+    def _schedule_loading_overlay(self) -> None:
+        # 重放通常几十毫秒就结束；延迟出现，避免小日志时闪一下
+        if self._display.count > 0:
+            self._hide_overlay()
+            return
+        if self.__dict__.get('_overlay_job') is None:
+            self._overlay_job = self.after(MOTION_LOADING_DELAY_MS, self._show_loading_overlay)
+
+    def _show_loading_overlay(self) -> None:
+        self._overlay_job = None
+        if not self.__dict__.get('_replaying', False) or self._display.count > 0:
+            return
+        self._show_overlay("正在加载日志…", "正在恢复历史日志，请稍候。")
+
+    def _show_empty_overlay(self) -> None:
+        title, detail = empty_log_text(
+            self._luker_state, self._logs.source, self.__dict__.get('_gcl_enabled', False)
+        )
+        self._show_overlay(title, detail)
+
+    def _show_overlay(self, title: str, detail: str) -> None:
+        self._overlay_title.configure(text=title)
+        self._overlay_detail.configure(text=detail)
+        self._overlay.place(relx=0.5, rely=0.5, anchor="center")
+        self._overlay.lift()
+
+    def _hide_overlay(self) -> None:
+        self._cancel_overlay_job()
+        self._overlay.place_forget()
+
+    def _cancel_overlay_job(self) -> None:
+        job = self.__dict__.get('_overlay_job')
+        if job is not None:
+            self._cancel_after_job(job)
+            self._overlay_job = None
+
+    def _update_error_banner(self) -> None:
+        logs = self.__dict__.get('_logs')
+        display = self.__dict__.get('_display')
+        if logs is None or display is None:
+            return
+        error = logs.last_error
+        index = display.last_error_index
+        if error is None or index is None or display.count == 0:
+            self._error_banner.pack_forget()
+            return
+
+        self._error_label.configure(text=f"最近错误 · {truncate_log_text(error.text)}")
+        self._apply_error_banner_colors()
+        if self._error_banner.winfo_manager() != "pack":
+            self._error_banner.pack(
+                fill="x",
+                padx=PAD_CARD_COMPACT,
+                pady=(PAD_CARD_COMPACT, 0),
+                before=self.log_text,
+            )
+
+    def _apply_error_banner_colors(self) -> None:
+        banner = self.__dict__.get('_error_banner')
+        if banner is None:
+            return
+        banner.configure(**error_banner_colors(self.COLORS))
+
+    def _reveal_last_error(self) -> None:
+        index = self._display.last_error_index
+        if not index:
+            return
+        textbox = self._get_textbox()
+        with contextlib.suppress(tk.TclError):
+            textbox.see(index)
+            textbox.tag_add("error_reveal", index, f"{index} lineend")
+            textbox.tag_raise("error_reveal")
+        if self._error_reveal_job is not None:
+            self._cancel_after_job(self._error_reveal_job)
+        self._error_reveal_job = self.after(MOTION_ERROR_REVEAL_MS, self._clear_error_reveal)
+
+    def _clear_error_reveal(self) -> None:
+        self._error_reveal_job = None
+        with contextlib.suppress(tk.TclError):
+            self._get_textbox().tag_remove("error_reveal", "1.0", "end")
 
     def _get_textbox(self) -> tk.Text:
         """返回 CTkTextbox 内部的 Text 控件；私有属性只在这里访问。"""
         return self.log_text._textbox
 
     def _build_statusbar(self, parent: tk.Misc) -> None:
-        self._statusbar = self._make_card(parent, height=42, corner_radius=10)
+        self._statusbar = self._make_card(
+            parent, height=STATUSBAR_HEIGHT, corner_radius=RADIUS_CARD
+        )
         self._statusbar.pack(fill="x")
         self._statusbar.pack_propagate(False)
 
         self.count_label = self._make_muted_label(self._statusbar, "📝 0 条日志")
-        self.count_label.pack(side="left", padx=16, pady=10)
+        self.count_label.pack(side="left", padx=PAD_CARD, pady=GAP_WINDOW)
 
         self._version_label = self._make_muted_label(self._statusbar, f"v{APP_VERSION}")
-        self._version_label.pack(side="right", padx=16, pady=10)
+        self._version_label.pack(side="right", padx=PAD_CARD, pady=GAP_WINDOW)
 
     def add_log(self, line: str) -> None:
         """添加 Luker 日志。"""
@@ -683,19 +1020,24 @@ class LogWindow(ctk.CTk):
         tb.delete("1.0", "end")
         tb.configure(state="disabled")
         self._display.reset()
+        self._update_log_state()
 
     def set_gcl_enabled(self, enabled: bool) -> None:
         """设置 GCL 功能是否启用，控制切换按钮的显示"""
+        self._gcl_enabled = enabled
         if enabled:
-            self._log_source_btn.pack(side="left", padx=2, before=self._min_btn)
+            self._log_source_btn.pack(side="left", padx=GAP_XS, before=self._min_btn)
         else:
             self._log_source_btn.pack_forget()
             self._logs.set_gcl_enabled(False)
             self._apply_log_source_ui()
+        self._update_log_state()
 
     def _add_log_lines(self, entries: Sequence[LogEntry]) -> int:
         """批量插入日志，返回被裁剪的文本行数。"""
-        return self._display.add_entries(entries, auto_scroll=self._auto_scroll)
+        removed = self._display.add_entries(entries, auto_scroll=self._auto_scroll)
+        self._update_log_state()
+        return removed
 
     def clear_logs(self) -> None:
         self._logs.clear()
@@ -749,16 +1091,35 @@ class LogWindow(ctk.CTk):
         self._set_play_icon(icon, self.COLORS[icon_key])
         if gray_logo:
             self._set_logo_stopped()
+        self._update_log_state()
 
     def show(self) -> None:
         # 从托盘恢复后不再按“系统最小化”处理，避免下一次轮询重复抢焦点
         self._was_minimized = False
+        self._ensure_blur()
+        fade = self.__dict__.get('_fade')
+        if fade is not None:
+            if config.blur_enabled:
+                fade.start(
+                    MOTION_WINDOW_FADE_START,
+                    MOTION_WINDOW_ALPHA,
+                    duration_ms=MOTION_FADE_DURATION_MS,
+                )
+            else:
+                fade.cancel(reset=1.0)
         self.deiconify()
         self.lift()
         self.focus_force()
         self._logs.on_show()
+        if self.__dict__.get('_display') is not None:
+            self._update_log_state()
 
     def hide(self) -> None:
+        self._cancel_overlay_job()
+        fade = self.__dict__.get('_fade')
+        if fade is not None:
+            base = MOTION_WINDOW_ALPHA if config.blur_enabled else 1.0
+            fade.cancel(reset=base)
         self._logs.on_hide()
         self.withdraw()
 
