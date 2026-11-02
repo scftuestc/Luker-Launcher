@@ -1,7 +1,7 @@
 """把子进程放入启用 KILL_ON_JOB_CLOSE 的 Windows Job Object。
 
 启动器被任务管理器结束或异常退出时，Windows 会随 Job 句柄关闭终止其中的
-所有进程，避免 node/GCL 继续占用端口变成孤儿进程。
+所有进程，避免 node 继续占用端口变成孤儿进程。
 """
 
 import ctypes

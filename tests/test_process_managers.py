@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from process.managers import GCLProcessManager, LukerProcessManager
+from process.managers import LukerProcessManager
 
 
 class ProcessManagerTests(unittest.TestCase):
@@ -46,15 +46,6 @@ class ProcessManagerTests(unittest.TestCase):
 
         self.assertTrue(any("端口" in line for line in logs))
         self.assertFalse(manager.is_running)
-
-    def test_gcl_command_and_working_directory(self):
-        bat_path = self.luker_dir / "start.bat"
-        bat_path.write_text("", encoding="utf-8")
-
-        manager = GCLProcessManager(str(bat_path))
-        self.assertEqual(manager._build_command(), ["cmd", "/c", str(bat_path)])
-        self.assertEqual(manager._startup_cwd(), str(self.luker_dir))
-        self.assertEqual(manager._encoding, "mbcs")
 
     def test_kill_process_tree_terminates_process(self):
         manager = LukerProcessManager(str(self.luker_dir))

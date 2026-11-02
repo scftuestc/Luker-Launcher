@@ -4,7 +4,6 @@ import contextlib
 import logging
 import math
 import tkinter as tk
-import webbrowser
 from collections.abc import Callable, Sequence
 from ctypes import windll
 from typing import TypedDict
@@ -93,8 +92,6 @@ class TrayMenu(ctk.CTkToplevel):
         self._is_running = False
         self._luker_state = LukerState.STOPPED
         self._window_visible = False
-        self._gcl_enabled = False
-        self._gcl_running = False
 
         self.COLORS = config.get_theme_colors()
 
@@ -143,13 +140,10 @@ class TrayMenu(ctk.CTkToplevel):
         for child in self.winfo_children():
             child.destroy()
 
-        gcl_running = self._gcl_running
         self._build_menu()
         self.update_state(
             self._is_running,
             self._window_visible,
-            self._gcl_enabled,
-            gcl_running,
             self._luker_state,
         )
         self._setup_blur()
@@ -463,27 +457,6 @@ class TrayMenu(ctk.CTkToplevel):
             parent, 'globe', "Luker 页面", self._on_open_browser, color=self.COLORS['info']
         )
 
-        # GCL 菜单项按配置动态显示
-        self._gcl_separator = ctk.CTkFrame(
-            parent, height=SEPARATOR_HEIGHT, fg_color=self.COLORS['border']
-        )
-        self.menu_items['gcl_toggle'] = self._create_menu_item(
-            parent,
-            'play',
-            "启动 GCL",
-            self._on_gcl_toggle,
-            color=self.COLORS['success'],
-            visible=False,
-        )
-        self.menu_items['gcl_browser'] = self._create_menu_item(
-            parent,
-            'gcl',
-            "GCL 页面",
-            self._on_gcl_browser,
-            color=self.COLORS['info'],
-            visible=False,
-        )
-
     def _build_menu_footer(self, parent: tk.Misc) -> None:
         self._bottom_separator = ctk.CTkFrame(
             parent, height=SEPARATOR_HEIGHT, fg_color=self.COLORS['border']
@@ -553,17 +526,6 @@ class TrayMenu(ctk.CTkToplevel):
         self.hide()
         self.callbacks['open_browser']()
 
-    def _on_gcl_toggle(self) -> None:
-        self.hide()
-        if self._gcl_running:
-            self.callbacks['gcl_stop']()
-        else:
-            self.callbacks['gcl_start']()
-
-    def _on_gcl_browser(self) -> None:
-        self.hide()
-        webbrowser.open(config.gcl_url)
-
     def _on_exit(self) -> None:
         self.hide()
         self.callbacks['exit']()
@@ -613,14 +575,6 @@ class TrayMenu(ctk.CTkToplevel):
                     image=menu_icon('refresh', self.COLORS['text_muted'], size=MENU_ICON_SIZE),
                 )
 
-    def _apply_gcl_toggle(self) -> None:
-        self._apply_toggle_item(
-            'gcl_toggle',
-            self._gcl_running,
-            running_text="停止 GCL",
-            stopped_text="启动 GCL",
-        )
-
     def set_luker_state(self, state: LukerState) -> None:
         """主程序推送就绪状态，菜单未打开时也记住以便下次直接生效。"""
         self._luker_state = state
@@ -632,8 +586,6 @@ class TrayMenu(ctk.CTkToplevel):
         self,
         is_running: bool,
         window_visible: bool,
-        gcl_enabled: bool = False,
-        gcl_running: bool = False,
         luker_state: LukerState | None = None,
     ) -> None:
         self._is_running = is_running
@@ -643,8 +595,6 @@ class TrayMenu(ctk.CTkToplevel):
             else (LukerState.STARTING if is_running else LukerState.STOPPED)
         )
         self._window_visible = window_visible
-        self._gcl_enabled = gcl_enabled
-        self._gcl_running = gcl_running
 
         window_text = "隐藏日志窗口" if window_visible else "显示日志窗口"
         window_item = self.menu_items.get('window')
@@ -652,29 +602,8 @@ class TrayMenu(ctk.CTkToplevel):
             window_item['btn'].configure(text=window_text)
 
         self._apply_luker_toggle()
-        self._apply_gcl_toggle()
-
-        self._set_gcl_items_visible(gcl_enabled)
         self._apply_menu_logo_state()
         self._clamp_selection()
-
-    def _set_gcl_items_visible(self, visible: bool) -> None:
-        """按 GCL 是否启用显示或隐藏分隔线和两个 GCL 菜单项。"""
-        self._gcl_separator.pack_forget()
-        self.menu_items['gcl_toggle']['frame'].pack_forget()
-        self.menu_items['gcl_browser']['frame'].pack_forget()
-        if not visible:
-            return
-
-        self._gcl_separator.pack(
-            fill="x", padx=PAD_MENU, pady=GAP_MENU_SEPARATOR, before=self._bottom_separator
-        )
-        self.menu_items['gcl_toggle']['frame'].pack(
-            fill="x", pady=GAP_MENU_ITEM, before=self._bottom_separator
-        )
-        self.menu_items['gcl_browser']['frame'].pack(
-            fill="x", pady=GAP_MENU_ITEM, before=self._bottom_separator
-        )
 
     def show_at(self, x: int, y: int, previous_foreground: int = 0) -> None:
         """在物理坐标 (x, y) 附近显示，并限制在光标所在显示器。"""

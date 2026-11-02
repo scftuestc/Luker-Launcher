@@ -66,8 +66,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 
 - 🎨 主题切换
 - 🪟 毛玻璃效果开关
-- 🌐 PWA 模式
-- 🚀 GCL 联动
+- 🌐 沉浸应用模式
 - 🚪 关闭日志窗口时的行为
 - 📁 Luker 管理（安装路径与版本）
 
@@ -93,13 +92,10 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 | 键 | 说明 |
 | :--- | :--- |
 | `luker_path` | Luker 安装根目录 |
-| `use_pwa_mode` | 是否使用 PWA 模式 |
+| `use_pwa_mode` | 是否使用沉浸应用模式（PWA） |
 | `blur_enabled` | 是否启用毛玻璃效果 |
 | `close_behavior` | 关闭日志窗口时的行为：`ask` 每次询问 / `tray` 隐藏到托盘 / `exit` 退出程序 |
 | `theme` | 主题 ID |
-| `gcl_enabled` | 是否启用 GCL |
-| `gcl_bat_path` | GCL 的 `start.bat` 路径 |
-| `gcl_url` | GCL 访问地址 |
 | `pwa_app_id` | Edge PWA App ID（可选） |
 | `pwa_appx_family_name` | 已安装 PWA 的 APPX PackageFamilyName（可选） |
 
@@ -107,13 +103,9 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 
 ## ❓ 常见问题
 
-### PWA 模式是什么？
+### 沉浸应用模式（PWA）是什么？
 
-用 Edge 的独立应用窗口打开 Luker，更像桌面客户端，标题栏颜色跟随主题。需要 Edge；如果 Luker 没有安装为 PWA，会回退到 Edge 应用窗口或默认浏览器。
-
-### GCL 是什么？
-
-可选的配套服务，通过它自己的 `start.bat` 启动。开启并选中该 bat 后，托盘菜单可以联动启停 GCL，日志窗口也能切换到 GCL 日志。不使用 GCL 就保持关闭。
+用 Edge 的 PWA 独立窗口打开 Luker，隐藏地址栏和标签页，更像桌面客户端，标题栏颜色跟随主题。需要 Edge；如果 Luker 没有安装为 PWA，会回退到 Edge 应用窗口或默认浏览器。
 
 ### 托盘图标不见了？
 

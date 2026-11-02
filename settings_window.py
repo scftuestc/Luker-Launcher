@@ -9,7 +9,7 @@ import customtkinter as ctk
 
 from config import config
 from core.version import TargetInfo, UpdateProgress, UpdateTarget, VersionCheck
-from dialogs import select_gcl_bat_path, select_luker_path
+from dialogs import select_luker_path
 from ui.buttons import make_button
 from ui.dpi import (
     discard_window_scaling,
@@ -81,11 +81,11 @@ SETTINGS_WIDTH = WINDOW_SETTINGS_WIDTH
 SETTINGS_HEIGHT = WINDOW_SETTINGS_HEIGHT
 SETTINGS_MARGIN = WINDOW_SETTINGS_MARGIN
 
-PWA_HINT_TEXT = "需要 Edge；未安装 PWA 时以应用窗口打开。"
-GCL_HINT_TEXT = "GCL 是可选配套服务，可在托盘菜单联动启停。"
 BLUR_HINT_TEXT = "半透明背景与系统模糊；关闭后窗口完全不透明。"
-PWA_DESCRIPTION = "用 Edge 独立窗口打开 Luker，隐藏地址栏和标签页。\n标题栏颜色跟随 Luker 主题色。"
-GCL_DESCRIPTION = "开启后，托盘菜单会提供 GCL 的启动和停止。\n首次开启需要选择 start.bat。"
+PWA_DESCRIPTION = (
+    "用 Edge 的 PWA 独立窗口打开 Luker，隐藏地址栏和标签页。\n"
+    "未安装 PWA 时回退到 Edge 应用窗口；标题栏颜色跟随 Luker 主题色。"
+)
 CLOSE_BEHAVIOR_OPTIONS = (
     ('ask', '每次询问'),
     ('tray', '隐藏到托盘'),
@@ -162,7 +162,7 @@ def update_button_state_colors(
 
 
 class SettingsWindow(ctk.CTkToplevel):
-    """设置窗口：主题、PWA、GCL、关闭行为和 Luker 管理。"""
+    """设置窗口：主题、沉浸应用模式、关闭行为和 Luker 管理。"""
 
     def __init__(
         self,
@@ -449,8 +449,6 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._build_pwa_section(scroll_frame)
 
-        self._build_gcl_section(scroll_frame)
-
         self._build_close_behavior_section(scroll_frame)
 
         self._build_luker_section(scroll_frame)
@@ -515,10 +513,8 @@ class SettingsWindow(ctk.CTkToplevel):
         title: str,
         command: Callable[[], None],
         selected: bool,
-        *,
-        hint: str | None = None,
     ) -> AnimatedSwitch:
-        """创建“标题 + 右侧开关”的 section 头部；hint 为标题后的悬停说明。"""
+        """创建“标题 + 右侧开关”的 section 头部。"""
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, GAP_SECTION_HEADER))
         ctk.CTkLabel(
@@ -527,37 +523,9 @@ class SettingsWindow(ctk.CTkToplevel):
             font=ctk.CTkFont(family=self.UI_FONT, size=FONT_HEADING, weight="bold"),
             text_color=self.COLORS['text'],
         ).pack(side="left")
-        if hint is not None:
-            self._create_hint(header, hint)
         switch = self._make_switch(header, text="", command=command, selected=selected)
         switch.pack(side="right")
         return switch
-
-    def _create_hint(self, parent: tk.Misc, text: str) -> None:
-        """在标题后创建圆形问号，悬停时高亮并显示说明。"""
-        hint = ctk.CTkLabel(
-            parent,
-            text="?",
-            width=HINT_SIZE,
-            height=HINT_SIZE,
-            corner_radius=RADIUS_PILL,
-            fg_color=self.COLORS['card_hover'],
-            text_color=self.COLORS['text_muted'],
-            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_CAPTION, weight="bold"),
-        )
-        hint.pack(side="left", padx=(GAP_GRID, 0))
-        self._tooltip.attach(hint, text)
-        hint.bind('<Enter>', lambda _event: self._on_hint_enter(hint), add='+')
-        hint.bind('<Leave>', lambda _event: self._on_hint_leave(hint), add='+')
-
-    def _on_hint_enter(self, hint: ctk.CTkLabel) -> None:
-        hint.configure(fg_color=self.COLORS['accent'], text_color=self.COLORS['on_accent'])
-
-    def _on_hint_leave(self, hint: ctk.CTkLabel) -> None:
-        hint.configure(
-            fg_color=self.COLORS['card_hover'],
-            text_color=self.COLORS['text_muted'],
-        )
 
     def _create_section(self, parent: tk.Misc) -> tuple[ctk.CTkFrame, ctk.CTkFrame]:
         """创建 section 外壳和内容区，统一边距。"""
@@ -823,14 +791,13 @@ class SettingsWindow(ctk.CTkToplevel):
         self._setup_blur()
 
     def _build_pwa_section(self, parent: tk.Misc) -> None:
-        """构建 PWA 模式开关区域"""
+        """构建沉浸应用模式开关区域。"""
         _section, inner = self._create_section(parent)
         self.pwa_switch = self._create_switch_row(
             inner,
-            "🌐  PWA 浏览器模式",
+            "🌐  沉浸应用模式",
             self._on_pwa_toggle,
             config.use_pwa_mode,
-            hint=PWA_HINT_TEXT,
         )
 
         ctk.CTkLabel(
@@ -843,70 +810,6 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _on_pwa_toggle(self) -> None:
         config.use_pwa_mode = self.pwa_switch.get() == 1
-
-    def _build_gcl_section(self, parent: tk.Misc) -> None:
-        """构建 GCL 设置区域"""
-        _section, inner = self._create_section(parent)
-        self.gcl_switch = self._create_switch_row(
-            inner,
-            "🚀  GCL 功能",
-            self._on_gcl_toggle,
-            config.gcl_enabled,
-            hint=GCL_HINT_TEXT,
-        )
-
-        ctk.CTkLabel(
-            inner,
-            text=GCL_DESCRIPTION,
-            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
-            text_color=self.COLORS['text_muted'],
-            justify="left",
-        ).pack(anchor="w", pady=(0, GAP_DESCRIPTION))
-
-        # GCL 路径选择区域（仅在开启时显示）
-        self._gcl_path_frame = ctk.CTkFrame(inner, fg_color="transparent")
-
-        ctk.CTkLabel(
-            self._gcl_path_frame,
-            text="GCL start.bat 路径:",
-            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
-            text_color=self.COLORS['text_dim'],
-        ).pack(anchor="w", pady=(0, GAP_GRID))
-
-        self.gcl_path_label, _ = self._create_path_row(
-            self._gcl_path_frame,
-            config.gcl_bat_path or "未设置",
-            self._select_gcl_path,
-        )
-
-        if config.gcl_enabled:
-            self._gcl_path_frame.pack(fill="x")
-
-    def _on_gcl_toggle(self) -> None:
-        enabled = self.gcl_switch.get() == 1
-
-        if enabled:
-            bat_path = config.gcl_bat_path
-            if not bat_path or not config.is_valid_gcl_path(bat_path):
-                selected = select_gcl_bat_path(self)
-                if not selected:
-                    # 用户取消选择，回退开关，避免出现“已启用但没有路径”的状态
-                    self.gcl_switch.deselect()
-                    self._gcl_path_frame.pack_forget()
-                    return
-                self.gcl_path_label.configure(text=selected)
-
-        config.gcl_enabled = enabled
-
-        if enabled:
-            self._gcl_path_frame.pack(fill="x")
-        else:
-            self._gcl_path_frame.pack_forget()
-
-    def _select_gcl_path(self) -> None:
-        path = select_gcl_bat_path(self)
-        if path:
-            self.gcl_path_label.configure(text=path)
 
     def _build_close_behavior_section(self, parent: tk.Misc) -> None:
         """构建关闭窗口行为选择区域。"""

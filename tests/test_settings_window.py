@@ -737,23 +737,17 @@ class UpdateUiTests(unittest.TestCase):
         self.assertNotIn("签名", release_summary)
         self.assertNotIn("签名", commit_summary)
 
-    def test_hints_are_short_single_sentences(self):
-        for text in (
-            settings_window.PWA_HINT_TEXT,
-            settings_window.GCL_HINT_TEXT,
-            settings_window.BLUR_HINT_TEXT,
-        ):
-            self.assertNotIn("\n", text)
-            self.assertEqual(text.count("。"), 1)
-            self.assertLessEqual(len(text), 30)
+    def test_blur_hint_is_short_single_sentence(self):
+        text = settings_window.BLUR_HINT_TEXT
+        self.assertNotIn("\n", text)
+        self.assertEqual(text.count("。"), 1)
+        self.assertLessEqual(len(text), 30)
 
     def test_pwa_description_is_useful(self):
         self.assertNotIn("打开浏览器时将使用 PWA 模式", settings_window.PWA_DESCRIPTION)
+        self.assertIn("PWA", settings_window.PWA_DESCRIPTION)
         self.assertIn("Edge", settings_window.PWA_DESCRIPTION)
         self.assertIn("\n", settings_window.PWA_DESCRIPTION)
-
-    def test_gcl_description_mentions_path_setup(self):
-        self.assertIn("start.bat", settings_window.GCL_DESCRIPTION)
 
     def test_status_text_and_color_use_progress(self):
         window = object.__new__(SettingsWindow)
@@ -976,7 +970,6 @@ class SettingsWindowTests(unittest.TestCase):
         launcher.tray_menu = FakeTrayMenu()
         launcher.log_window = FakeLogWindow()
         launcher.process_manager = None
-        launcher.gcl_process_manager = None
 
         launcher._show_tray_menu(12, 34)
 

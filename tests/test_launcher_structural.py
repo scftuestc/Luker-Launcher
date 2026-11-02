@@ -1,8 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
 
-import launcher_app
 from core.readiness import LukerState
 from launcher_app import LukerLauncher
 
@@ -15,14 +13,6 @@ class FakeManager:
     def stop(self) -> bool:
         self.stop_calls += 1
         return True
-
-
-class FakeWindow:
-    def __init__(self) -> None:
-        self.gcl_states: list[bool] = []
-
-    def set_gcl_enabled(self, enabled: bool) -> None:
-        self.gcl_states.append(enabled)
 
 
 class ReadinessRefreshTests(unittest.TestCase):
@@ -47,7 +37,6 @@ class ExitRaceTests(unittest.TestCase):
         first = FakeManager()
         second = FakeManager()
         launcher.process_manager = first
-        launcher.gcl_process_manager = None
         original_stop = first.stop
 
         def stop_first() -> bool:
@@ -117,43 +106,14 @@ class ShutdownTests(unittest.TestCase):
         launcher._readiness = readiness
         launcher._ui = dispatcher
         launcher.tray_icon = tray
-        launcher._on_gcl_config_change = lambda enabled, path: None
 
-        with patch.object(launcher_app.config, "remove_gcl_change_callback") as remove:
-            launcher._shutdown()
-            launcher._shutdown()
+        launcher._shutdown()
+        launcher._shutdown()
 
         self.assertEqual(readiness.stop_calls, 1)
         self.assertEqual(dispatcher.stop_calls, 1)
         self.assertEqual(tray.stop_calls, 1)
-        remove.assert_called_once_with(launcher._on_gcl_config_change)
         self.assertFalse(launcher._running)
-
-
-class GclUiSyncTests(unittest.TestCase):
-    def test_sync_uses_manager_presence_as_single_source(self):
-        launcher = object.__new__(LukerLauncher)
-        window = FakeWindow()
-        launcher.log_window = window
-        posted: list[object] = []
-        launcher._post_ui = lambda callback, key=None: posted.append(callback) or True
-
-        launcher.gcl_process_manager = None
-        launcher._sync_gcl_ui()
-        posted.pop()()
-
-        launcher.gcl_process_manager = object()
-        launcher._sync_gcl_ui()
-        posted.pop()()
-
-        self.assertEqual(window.gcl_states, [False, True])
-
-    def test_sync_without_window_does_not_post(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher.log_window = None
-        launcher._post_ui = lambda callback, key=None: self.fail("不应投递")
-
-        launcher._sync_gcl_ui()
 
 
 class BusyResetTests(unittest.TestCase):

@@ -322,33 +322,6 @@ def select_luker_path(parent: tk.Tk | tk.Toplevel | None = None) -> str | None:
             temp_root.destroy()
 
 
-def select_gcl_bat_path(parent: tk.Tk | tk.Toplevel | None = None) -> str | None:
-    """选择 GCL 的 start.bat 文件并校验，返回有效路径或 None。"""
-    owner, temp_root = _dialog_owner(parent)
-    try:
-        path = filedialog.askopenfilename(
-            title="选择 GCL 的 start.bat 文件",
-            filetypes=[("批处理文件", "*.bat"), ("所有文件", "*.*")],
-            parent=owner,
-        )
-        if not path:
-            return None
-
-        if config.is_valid_gcl_path(path):
-            config.gcl_bat_path = path
-            return path
-
-        messagebox.showerror(
-            "错误",
-            f"所选文件不是有效的批处理文件！\n\n选择的路径: {path}",
-            parent=owner,
-        )
-        return None
-    finally:
-        if temp_root is not None:
-            temp_root.destroy()
-
-
 def ensure_luker_path_configured() -> bool:
     """确保已配置有效的 Luker 路径，否则引导用户选择。"""
     if config.luker_path and config.is_valid_luker_path(config.luker_path):

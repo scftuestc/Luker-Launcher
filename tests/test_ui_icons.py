@@ -55,7 +55,7 @@ class TransportIconTests(unittest.TestCase):
 
 
 class MenuIconTests(unittest.TestCase):
-    KINDS = ('window', 'play', 'stop', 'refresh', 'globe', 'gcl', 'settings', 'power')
+    KINDS = ('window', 'play', 'stop', 'refresh', 'globe', 'settings', 'power')
 
     def test_all_icons_are_transparent_rgba(self):
         for kind in self.KINDS:

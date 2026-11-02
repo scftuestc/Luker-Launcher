@@ -28,8 +28,6 @@ APP_VERSION = "3.3"
 
 # Luker 默认端口（与 server.js 的默认配置一致，实际端口以 Luker config.yaml 为准）
 DEFAULT_PORT = 8000
-# GCL 默认访问地址
-DEFAULT_GCL_URL = "http://127.0.0.1:7861/"
 # 点击日志窗口关闭按钮时的行为：每次询问 / 隐藏到托盘 / 退出程序
 CLOSE_BEHAVIORS = ('ask', 'tray', 'exit')
 DEFAULT_CLOSE_BEHAVIOR = 'ask'
@@ -38,12 +36,10 @@ DEFAULT_CLOSE_BEHAVIOR = 'ask'
 _STRING_KEYS = (
     "luker_path",
     "sillytavern_path",
-    "gcl_bat_path",
-    "gcl_url",
     "pwa_app_id",
     "pwa_appx_family_name",
 )
-_BOOL_KEYS = ("use_pwa_mode", "gcl_enabled", "blur_enabled")
+_BOOL_KEYS = ("use_pwa_mode", "blur_enabled")
 
 
 def _is_regular_file(path: Path) -> bool:
@@ -55,7 +51,7 @@ def _is_regular_file(path: Path) -> bool:
 
 
 class Config:
-    """launcher_config.json 的读写与主题/GCL/毛玻璃/关闭行为变更通知。"""
+    """launcher_config.json 的读写与主题/毛玻璃/关闭行为变更通知。"""
 
     CONFIG_FILE = "launcher_config.json"
 
@@ -65,7 +61,6 @@ class Config:
         )
         self._config: dict[str, Any] = self._load_config()
         self._theme_change_callbacks: list[Callable[[dict[str, str]], None]] = []
-        self._gcl_change_callbacks: list[Callable[[bool, str | None], None]] = []
         self._blur_change_callbacks: list[Callable[[bool], None]] = []
         self._close_behavior_callbacks: list[Callable[[str], None]] = []
 
@@ -145,25 +140,6 @@ class Config:
             except Exception:
                 logger.exception("主题回调执行失败")
 
-    def add_gcl_change_callback(self, callback: Callable[[bool, str | None], None]) -> None:
-        """添加 GCL 配置变更回调"""
-        self._gcl_change_callbacks.append(callback)
-
-    def remove_gcl_change_callback(self, callback: Callable[[bool, str | None], None]) -> None:
-        """移除 GCL 配置变更回调；未注册时忽略。"""
-        if callback in self._gcl_change_callbacks:
-            self._gcl_change_callbacks.remove(callback)
-
-    def _notify_gcl_change(self) -> None:
-        """通知 GCL 配置变更"""
-        enabled = self.gcl_enabled
-        path = self.gcl_bat_path
-        for callback in self._gcl_change_callbacks:
-            try:
-                callback(enabled, path)
-            except Exception:
-                logger.exception("GCL 配置回调执行失败")
-
     def add_blur_change_callback(self, callback: Callable[[bool], None]) -> None:
         """添加毛玻璃开关变更回调。"""
         self._blur_change_callbacks.append(callback)
@@ -216,7 +192,7 @@ class Config:
 
     @property
     def use_pwa_mode(self) -> bool:
-        """是否使用 PWA 模式打开浏览器（标题栏颜色跟随 Luker 主题）"""
+        """是否使用沉浸应用模式（PWA）打开浏览器（标题栏颜色跟随 Luker 主题）"""
         return bool(self._config.get('use_pwa_mode', False))
 
     @use_pwa_mode.setter
@@ -278,40 +254,6 @@ class Config:
     def pwa_appx_family_name(self, value: str) -> None:
         self._config['pwa_appx_family_name'] = value
         self._save_config()
-
-    @property
-    def gcl_enabled(self) -> bool:
-        """是否启用 GCL 功能"""
-        return bool(self._config.get('gcl_enabled', False))
-
-    @gcl_enabled.setter
-    def gcl_enabled(self, value: bool) -> None:
-        self._config['gcl_enabled'] = bool(value)
-        self._save_config()
-        self._notify_gcl_change()
-
-    @property
-    def gcl_bat_path(self) -> str | None:
-        """GCL 的 start.bat 路径"""
-        return self._config.get('gcl_bat_path')
-
-    @gcl_bat_path.setter
-    def gcl_bat_path(self, path: str | None) -> None:
-        self._config['gcl_bat_path'] = path
-        self._save_config()
-        self._notify_gcl_change()
-
-    @property
-    def gcl_url(self) -> str:
-        """GCL 的本地访问地址"""
-        return self._config.get('gcl_url', DEFAULT_GCL_URL)
-
-    def is_valid_gcl_path(self, path: str | None) -> bool:
-        """验证 GCL bat 路径是否有效"""
-        if not path:
-            return False
-        p = Path(path)
-        return p.suffix.lower() == '.bat' and _is_regular_file(p)
 
     @property
     def luker_path(self) -> str | None:

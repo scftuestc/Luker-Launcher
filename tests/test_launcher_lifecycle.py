@@ -1,8 +1,6 @@
 import tkinter as tk
 import unittest
-from unittest.mock import patch
 
-import launcher_app
 from launcher_app import LukerLauncher
 
 
@@ -77,7 +75,7 @@ class UiScheduleTests(unittest.TestCase):
 
 
 class ExitTests(unittest.TestCase):
-    def test_finish_exit_stops_dispatcher_and_unregisters_callback(self):
+    def test_finish_exit_stops_dispatcher(self):
         launcher = object.__new__(LukerLauncher)
         launcher._ui = FakeDispatcher()
         launcher.log_window = FakeWindow()
@@ -86,15 +84,8 @@ class ExitTests(unittest.TestCase):
         launcher._shutdown_done = False
         launcher._running = True
 
-        def callback(enabled: bool, path: str | None) -> None:
-            pass
+        launcher._finish_exit()
 
-        launcher._on_gcl_config_change = callback
-
-        with patch.object(launcher_app.config, "remove_gcl_change_callback") as remove:
-            launcher._finish_exit()
-
-        remove.assert_called_once_with(callback)
         self.assertTrue(launcher._ui.stopped)
         self.assertTrue(launcher.log_window.quit_called)
 

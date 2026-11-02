@@ -64,9 +64,6 @@ class ThemeBindingTests(unittest.TestCase):
         def setup_blur() -> None:
             calls.append('blur')
 
-        def apply_log_source_ui() -> None:
-            calls.append('source')
-
         def update_status(state: LukerState) -> None:
             calls.append(f'status:{state.value}')
 
@@ -78,7 +75,6 @@ class ThemeBindingTests(unittest.TestCase):
 
         window.configure = configure
         window._setup_blur = setup_blur
-        window._apply_log_source_ui = apply_log_source_ui
         window.update_status = update_status
         window._refresh_toolbar_icons = refresh_toolbar_icons
         window._get_textbox = get_textbox
@@ -158,7 +154,7 @@ class ThemeBindingTests(unittest.TestCase):
 
         window._apply_theme()
 
-        self.assertEqual(calls, ['blur', 'icons', 'source', 'status:ready'])
+        self.assertEqual(calls, ['blur', 'icons', 'status:ready'])
         self.assertEqual(search.refresh_count, 1)
         self.assertEqual(textbox.tags['error']['foreground'], COLORS['error'])
         self.assertEqual(textbox.tags['separator']['foreground'], COLORS['accent'])

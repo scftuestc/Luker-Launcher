@@ -66,12 +66,6 @@ class LastErrorTests(unittest.TestCase):
 
         self.assertIsNone(store.last_error())
 
-    def test_gcl_prefixed_error_is_detected(self):
-        store = LogStore(max_entries=10, max_bytes=10_000)
-        entry = store.append("[GCL 错误] 连接失败")
-
-        self.assertIs(store.last_error(), entry)
-
     def test_evicting_error_clears_cache(self):
         store = LogStore(max_entries=2, max_bytes=10_000)
         store.append("[错误] 旧问题")

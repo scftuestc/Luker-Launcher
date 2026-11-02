@@ -1,4 +1,4 @@
-"""Luker 与 GCL 子进程的启动、停止和日志读取。"""
+"""Luker 子进程的启动、停止和日志读取。"""
 
 import contextlib
 import socket
@@ -20,8 +20,6 @@ class _ProcessManagerBase:
     """子进程生命周期的公共实现；子类只负责校验目标并构建启动命令。"""
 
     name = "进程"
-    # GCL 的日志标签形如 [GCL 信息]，Luker 保持 [信息]
-    log_scope = ""
 
     def __init__(self, target: Path, encoding: str = "utf-8") -> None:
         self.target = target
@@ -33,9 +31,8 @@ class _ProcessManagerBase:
         self._log_callbacks: list[Callable[[str], None]] = []
 
     def _tag(self, level: str) -> str:
-        """生成 [信息] 或 [GCL 错误] 形式的日志前缀。"""
-        scope = f"{self.log_scope} " if self.log_scope else ""
-        return f"[{scope}{level}]"
+        """生成 [信息]、[错误] 等日志前缀。"""
+        return f"[{level}]"
 
     def _startup_error(self) -> str | None:
         """启动前校验，返回错误信息；返回 None 表示可以启动。"""
@@ -329,27 +326,3 @@ class LukerProcessManager(_ProcessManagerBase):
         if not self.let_luker_open_browser:
             cmd.extend(["--browserLaunchEnabled", "false"])
         return cmd
-
-
-class GCLProcessManager(_ProcessManagerBase):
-    """管理 GCL 的 start.bat 子进程。"""
-
-    name = "GCL"
-    log_scope = "GCL"
-
-    def __init__(self, bat_path: str) -> None:
-        # bat 的输出由 cmd 按系统 ANSI 代码页编码（中文系统为 CP936），
-        # 不能用 utf-8 解码，否则中文日志会变成乱码
-        super().__init__(Path(bat_path), encoding="mbcs")
-        self.bat_path = self.target
-
-    def _startup_error(self) -> str | None:
-        if not self.bat_path.exists():
-            return f"未找到 bat 文件: {self.bat_path}"
-        return None
-
-    def _build_command(self) -> Sequence[str]:
-        return ["cmd", "/c", str(self.bat_path)]
-
-    def _startup_cwd(self) -> str:
-        return str(self.bat_path.parent)

@@ -1,9 +1,8 @@
-"""日志管线：线程安全队列、分批重放与双源控制器。"""
+"""日志管线：线程安全队列、分批重放与日志控制器。"""
 
 from collections import deque
 from collections.abc import Callable, Sequence
 from threading import Lock
-from typing import Literal
 
 from log.store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry, LogStore
 
@@ -146,11 +145,8 @@ class LogReplay:
         self._on_finished()
 
 
-LogSource = Literal['luker', 'gcl']
-
-
 class LogController:
-    """维护日志存储、队列、当前源和重放状态，不直接操作 Tk 控件。"""
+    """维护日志存储、队列和重放状态，不直接操作 Tk 控件。"""
 
     def __init__(
         self,
@@ -177,16 +173,9 @@ class LogController:
         self._on_search_rerun = on_search_rerun
         self._on_replay_state_change = on_replay_state_change
 
-        self._stores: dict[LogSource, LogStore] = {
-            'luker': LogStore(),
-            'gcl': LogStore(),
-        }
-        self._queues: dict[LogSource, BoundedLogQueue] = {
-            'luker': BoundedLogQueue(MAX_LOG_QUEUE_SIZE, MAX_LOG_BYTES),
-            'gcl': BoundedLogQueue(MAX_LOG_QUEUE_SIZE, MAX_LOG_BYTES),
-        }
-        self._source: LogSource = 'luker'
-        # 屏幕文本是否已与当前 store 脱节，下次可见时需要整段重建
+        self._store = LogStore()
+        self._queue = BoundedLogQueue(MAX_LOG_QUEUE_SIZE, MAX_LOG_BYTES)
+        # 屏幕文本是否已与 store 脱节，下次可见时需要整段重建
         self._needs_rebuild = False
         self._started = False
         self._pump_job: str | None = None
@@ -200,10 +189,6 @@ class LogController:
         )
 
     @property
-    def source(self) -> LogSource:
-        return self._source
-
-    @property
     def replaying(self) -> bool:
         return self._replay.active
 
@@ -213,8 +198,8 @@ class LogController:
 
     @property
     def last_error(self) -> LogEntry | None:
-        """当前日志源最近一条错误；供错误横幅使用。"""
-        return self._stores[self._source].last_error()
+        """最近一条错误；供错误横幅使用。"""
+        return self._store.last_error()
 
     def start(self) -> None:
         """启动日志泵；重复调用不产生第二条轮询链。"""
@@ -235,11 +220,7 @@ class LogController:
 
     def add_log(self, line: str) -> None:
         """把一行 Luker 日志放入队列。"""
-        self._queues['luker'].put(line)
-
-    def add_gcl_log(self, line: str) -> None:
-        """把一行 GCL 日志放入队列。"""
-        self._queues['gcl'].put(line)
+        self._queue.put(line)
 
     def drain_once(self) -> None:
         """执行一轮日志泵，但不续排；供测试和调试使用。"""
@@ -247,18 +228,17 @@ class LogController:
             return
         if self._needs_rebuild and self._viewable():
             self.refresh()
-        self._drain_queue('luker')
-        self._drain_queue('gcl')
+        self._drain_queue()
 
     def refresh(self) -> None:
-        """清空当前显示，并按当前源的分批快照重建。"""
+        """清空显示，并按分批快照重建。"""
         self._cancel_search_refresh()
         self._replay.cancel()
         self._notify_replay(True)
         self._reset_display()
         self._needs_rebuild = False
 
-        logs = self._stores[self._source].snapshot()
+        logs = self._store.snapshot()
         if not logs:
             self._notify_replay(False)
             if self._has_query():
@@ -268,27 +248,14 @@ class LogController:
         self._replay.start(logs)
 
     def clear(self) -> None:
-        """清空两个日志源的历史、队列和当前显示。"""
+        """清空历史、队列和当前显示。"""
         self._cancel_search_refresh()
         self._replay.cancel()
         self._notify_replay(False)
         self._reset_display()
-        for store in self._stores.values():
-            store.clear()
-        for queue in self._queues.values():
-            queue.clear()
+        self._store.clear()
+        self._queue.clear()
         self._needs_rebuild = False
-
-    def toggle_source(self) -> None:
-        """在 Luker 和 GCL 日志之间切换并重建显示。"""
-        self._source = 'gcl' if self._source == 'luker' else 'luker'
-        self.refresh()
-
-    def set_gcl_enabled(self, enabled: bool) -> None:
-        """GCL 被禁用时，如果正在显示 GCL 日志就切回 Luker。"""
-        if not enabled and self._source == 'gcl':
-            self._source = 'luker'
-            self.refresh()
 
     def on_show(self) -> None:
         """窗口显示时补上隐藏期间积压的日志。"""
@@ -312,30 +279,27 @@ class LogController:
         self.drain_once()
         if not self._started:
             return
-        if not self._queues['luker'].empty() or not self._queues['gcl'].empty():
+        if not self._queue.empty():
             delay = ACTIVE_POLL_MS
         else:
             # 隐藏到托盘时降低轮询频率
             delay = VISIBLE_POLL_MS if self._viewable() else HIDDEN_POLL_MS
         self._pump_job = self._schedule(delay, self._pump)
 
-    def _drain_queue(self, source: LogSource) -> None:
-        """从指定源取一批日志写入存储；仅当前源且可见时渲染。"""
-        log_queue = self._queues[source]
-        log_store = self._stores[source]
+    def _drain_queue(self) -> None:
+        """取一批日志写入存储；窗口可见时渲染。"""
         entries = []
         for _ in range(MAX_LOG_LINES_PER_CYCLE):
-            line = log_queue.get_nowait()
+            line = self._queue.get_nowait()
             if line is None:
                 break
 
-            entry = log_store.append(line)
-            if self._source == source:
-                if self._replay.active:
-                    # 重放的是开始时的快照，新日志留到快照结束后再插入
-                    self._replay.append(entry)
-                else:
-                    entries.append(entry)
+            entry = self._store.append(line)
+            if self._replay.active:
+                # 重放的是开始时的快照，新日志留到快照结束后再插入
+                self._replay.append(entry)
+            else:
+                entries.append(entry)
 
         if not entries:
             return

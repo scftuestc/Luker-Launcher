@@ -1,4 +1,4 @@
-"""PWA 浏览器启动：优先 APPX，其次 Edge --app-id/--app，最后默认浏览器。"""
+"""沉浸应用（PWA）启动：优先 APPX，其次 Edge --app-id/--app，最后默认浏览器。"""
 
 import ctypes
 import json

@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 from ui.tokens import ICON_MENU, ICON_RENDER, ICON_THEME, ICON_TOOLBAR
 
 TransportIcon = Literal['play', 'stop']
-MenuIcon = Literal['window', 'play', 'stop', 'refresh', 'globe', 'gcl', 'settings', 'power']
+MenuIcon = Literal['window', 'play', 'stop', 'refresh', 'globe', 'settings', 'power']
 ThemeIcon = Literal['sun', 'moon', 'tree', 'cloud', 'wave', 'rose']
 ToolbarIcon = Literal['search', 'trash', 'scroll', 'pause']
 THEME_ICON_KINDS: tuple[ThemeIcon, ...] = ('sun', 'moon', 'tree', 'cloud', 'wave', 'rose')
@@ -103,18 +103,6 @@ def _render_menu_icon_cached(kind: MenuIcon, color: str, size: int) -> Image.Ima
             [*point(8.5, 3.5), *point(15.5, 20.5)],
             outline=color,
             width=max(1, stroke - 1),
-        )
-    elif kind == 'gcl':
-        draw.polygon(
-            [
-                point(13, 2.5),
-                point(5.5, 13),
-                point(10.5, 13),
-                point(9, 21.5),
-                point(18.5, 10),
-                point(13.5, 10),
-            ],
-            fill=color,
         )
     elif kind == 'settings':
         for y, knob in ((6.5, 8.5), (12, 16), (17.5, 10)):

@@ -100,16 +100,8 @@ def auto_scroll_button_colors(colors: dict[str, str], enabled: bool) -> dict[str
     return options
 
 
-def empty_log_text(
-    state: LukerState,
-    source: str,
-    gcl_enabled: bool,
-) -> tuple[str, str]:
+def empty_log_text(state: LukerState) -> tuple[str, str]:
     """返回日志区空状态的主标题和说明。"""
-    if source == 'gcl':
-        if not gcl_enabled:
-            return "GCL 未启用", "在设置中开启 GCL 后，日志会显示在这里。"
-        return "暂无 GCL 日志", "从托盘菜单启动 GCL 后，日志会显示在这里。"
     if state is LukerState.STARTING:
         return "正在启动 Luker…", "等待服务就绪，日志马上出现。"
     if state is LukerState.READY:
@@ -232,7 +224,6 @@ class LogWindow(ctk.CTk):
         self._theme_from: dict[str, str] | None = None
         self._theme_to: dict[str, str] | None = None
 
-        self._gcl_enabled = False
         self._replaying = False
         self._overlay_job: str | None = None
         self._error_reveal_job: str | None = None
@@ -350,7 +341,6 @@ class LogWindow(ctk.CTk):
         with contextlib.suppress(tk.TclError):
             self.configure(fg_color=palette['bg'])
         self._apply_theme_bindings(palette)
-        self._apply_log_source_ui()
         configure_log_tags(self._get_textbox(), palette)
         self.search.refresh_colors(update_icon=False)
         self._apply_error_banner_colors()
@@ -367,7 +357,6 @@ class LogWindow(ctk.CTk):
             self._refresh_toolbar_icons()
 
             # 动态状态依赖静态颜色，必须放在绑定之后
-            self._apply_log_source_ui()
             configure_log_tags(self._get_textbox(), self.COLORS)
             self.search.refresh_colors()
             self.update_status(self._luker_state)
@@ -485,7 +474,6 @@ class LogWindow(ctk.CTk):
             on_search_rerun=lambda: self.search.rerun(preserve_current=True),
             on_replay_state_change=self._on_replay_state_change,
         )
-        self._apply_log_source_ui()
         self._bind_search_shortcuts()
         self._update_log_state()
 
@@ -557,22 +545,6 @@ class LogWindow(ctk.CTk):
     def _build_window_buttons(self, parent: tk.Misc) -> None:
         right = ctk.CTkFrame(parent, fg_color="transparent")
         right.pack(side="right", padx=PAD_ROW_X)
-
-        # 日志源切换按钮（仅在 GCL 启用时显示）
-        self._log_source_btn = make_button(
-            right,
-            'primary',
-            self.COLORS,
-            text="📊 Luker 日志",
-            width=110,
-            height=CONTROL_HEIGHT_MD,
-            corner_radius=RADIUS_CARD,
-            font_family=self.UI_FONT,
-            font_size=FONT_SMALL,
-            font_weight='bold',
-            command=self._toggle_log_source,
-        )
-        self._register_button(self._log_source_btn, 'primary')
 
         self._min_btn = make_button(
             right,
@@ -893,9 +865,7 @@ class LogWindow(ctk.CTk):
         self._show_overlay("正在加载日志…", "正在恢复历史日志，请稍候。")
 
     def _show_empty_overlay(self) -> None:
-        title, detail = empty_log_text(
-            self._luker_state, self._logs.source, self.__dict__.get('_gcl_enabled', False)
-        )
+        title, detail = empty_log_text(self._luker_state)
         self._show_overlay(title, detail)
 
     def _show_overlay(self, title: str, detail: str) -> None:
@@ -980,32 +950,6 @@ class LogWindow(ctk.CTk):
         """添加 Luker 日志。"""
         self._logs.add_log(line)
 
-    def add_gcl_log(self, line: str) -> None:
-        """添加 GCL 日志。"""
-        self._logs.add_gcl_log(line)
-
-    def _toggle_log_source(self) -> None:
-        """切换日志源"""
-        self._logs.toggle_source()
-        self._apply_log_source_ui()
-
-    def _apply_log_source_ui(self) -> None:
-        """按当前日志源更新切换按钮和标题。"""
-        if self._logs.source == 'gcl':
-            text, color, title = "🚀 GCL 日志", self.COLORS['warning'], "GCL 日志"
-            text_color = self.COLORS['bg']
-        else:
-            text, color, title = "📊 Luker 日志", self.COLORS['accent'], "Luker 日志"
-            text_color = self.COLORS['on_accent']
-
-        self._log_source_btn.configure(
-            text=text,
-            fg_color=color,
-            hover_color=shade_color(color, 0.85),
-            text_color=text_color,
-        )
-        self._title_label.configure(text=title)
-
     def _cancel_after_job(self, job: str) -> None:
         """取消 Tk after 任务；任务已执行时忽略 TclError。"""
         with contextlib.suppress(tk.TclError):
@@ -1020,17 +964,6 @@ class LogWindow(ctk.CTk):
         tb.delete("1.0", "end")
         tb.configure(state="disabled")
         self._display.reset()
-        self._update_log_state()
-
-    def set_gcl_enabled(self, enabled: bool) -> None:
-        """设置 GCL 功能是否启用，控制切换按钮的显示"""
-        self._gcl_enabled = enabled
-        if enabled:
-            self._log_source_btn.pack(side="left", padx=GAP_XS, before=self._min_btn)
-        else:
-            self._log_source_btn.pack_forget()
-            self._logs.set_gcl_enabled(False)
-            self._apply_log_source_ui()
         self._update_log_state()
 
     def _add_log_lines(self, entries: Sequence[LogEntry]) -> int:

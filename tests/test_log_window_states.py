@@ -59,8 +59,7 @@ class FakeDisplay:
 
 
 class FakeLogs:
-    def __init__(self, source: str = "luker", error: LogEntry | None = None) -> None:
-        self.source = source
+    def __init__(self, error: LogEntry | None = None) -> None:
         self.last_error = error
 
 
@@ -70,8 +69,6 @@ class LogWindowStateTests(unittest.TestCase):
         *,
         count: int = 0,
         state: LukerState = LukerState.STOPPED,
-        source: str = "luker",
-        gcl_enabled: bool = False,
         replaying: bool = False,
         error: LogEntry | None = None,
         index: str | None = None,
@@ -79,10 +76,9 @@ class LogWindowStateTests(unittest.TestCase):
         window = object.__new__(LogWindow)
         window.COLORS = PRESET_THEMES["summer"]
         window._luker_state = state
-        window._gcl_enabled = gcl_enabled
         window._replaying = replaying
         window._display = FakeDisplay(count, index)
-        window._logs = FakeLogs(source, error)
+        window._logs = FakeLogs(error)
         window._overlay = FakeOverlay()
         window._overlay_title = FakeLabel()
         window._overlay_detail = FakeLabel()

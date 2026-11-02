@@ -226,7 +226,7 @@ class LogControllerReplayTests(unittest.TestCase):
 
         self.assertEqual(fixture.adjusted, [2])
 
-    def test_clear_empties_stores_and_queues(self):
+    def test_clear_empties_store_and_queue(self):
         fixture = make_controller(viewable=False)
         seed(fixture, "a")
         fixture.controller.add_log("queued")
@@ -234,21 +234,10 @@ class LogControllerReplayTests(unittest.TestCase):
 
         fixture.controller.clear()
 
-        self.assertEqual(fixture.controller._stores["luker"].snapshot(), [])
-        self.assertEqual(fixture.controller._stores["gcl"].snapshot(), [])
-        self.assertTrue(fixture.controller._queues["luker"].empty())
-        self.assertTrue(fixture.controller._queues["gcl"].empty())
+        self.assertEqual(fixture.controller._store.snapshot(), [])
+        self.assertTrue(fixture.controller._queue.empty())
         self.assertFalse(fixture.controller.needs_rebuild)
         self.assertEqual(len(fixture.resets), resets_before + 1)
-
-    def test_set_gcl_enabled_false_switches_back_to_luker(self):
-        fixture = make_controller()
-        fixture.controller.toggle_source()
-        self.assertEqual(fixture.controller.source, "gcl")
-
-        fixture.controller.set_gcl_enabled(False)
-
-        self.assertEqual(fixture.controller.source, "luker")
 
     def test_start_is_idempotent(self):
         fixture = make_controller()
@@ -290,24 +279,13 @@ class LogControllerReplayTests(unittest.TestCase):
         self.assertFalse(fixture.controller._started)
         self.assertEqual(fixture.scheduled, [])
 
-    def test_add_gcl_log_drains_into_gcl_store(self):
-        fixture = make_controller(viewable=False)
-        fixture.controller.add_gcl_log("gcl line")
-
-        fixture.controller.drain_once()
-
-        self.assertEqual(
-            [entry.text for entry in fixture.controller._stores["gcl"].snapshot()],
-            ["gcl line"],
-        )
-
     def test_drain_skips_destroyed_window(self):
         fixture = make_controller(viewable=False, exists=False)
         fixture.controller.add_log("pending")
 
         fixture.controller.drain_once()
 
-        self.assertFalse(fixture.controller._queues["luker"].empty())
+        self.assertFalse(fixture.controller._queue.empty())
 
     def test_drain_rebuilds_when_visible(self):
         fixture = make_controller(viewable=False)

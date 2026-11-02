@@ -22,7 +22,6 @@ class ConfigTests(unittest.TestCase):
         config = Config(self.config_path)
         self.assertEqual(config.theme_name, DEFAULT_THEME)
         self.assertFalse(config.use_pwa_mode)
-        self.assertFalse(config.gcl_enabled)
         self.assertTrue(config.blur_enabled)
         self.assertEqual(config.close_behavior, DEFAULT_CLOSE_BEHAVIOR)
         self.assertIsNone(config.luker_path)
@@ -53,18 +52,15 @@ class ConfigTests(unittest.TestCase):
         self._write(
             {
                 "use_pwa_mode": "false",
-                "gcl_enabled": 1,
                 "blur_enabled": "false",
                 "close_behavior": "unknown",
                 "theme": "unknown",
                 "luker_path": 123,
-                "gcl_url": "  ",
                 "unknown_key": True,
             }
         )
         config = Config(self.config_path)
         self.assertFalse(config.use_pwa_mode)
-        self.assertFalse(config.gcl_enabled)
         self.assertTrue(config.blur_enabled)
         self.assertEqual(config.close_behavior, DEFAULT_CLOSE_BEHAVIOR)
         self.assertEqual(config.theme_name, DEFAULT_THEME)
@@ -96,20 +92,26 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(saved["luker_path"], "D:/New/Luker")
         self.assertNotIn("sillytavern_path", saved)
 
-    def test_gcl_callback_can_be_removed(self):
+    def test_legacy_gcl_keys_are_ignored_and_removed_on_save(self):
+        self._write(
+            {
+                "luker_path": "D:/Luker",
+                "gcl_enabled": True,
+                "gcl_bat_path": "D:/Old/start.bat",
+                "gcl_url": "http://127.0.0.1:7861/",
+                "blur_enabled": True,
+            }
+        )
         config = Config(self.config_path)
-        calls = []
+        self.assertEqual(config.luker_path, "D:/Luker")
+        self.assertTrue(config.blur_enabled)
 
-        def callback(enabled, path):
-            calls.append((enabled, path))
+        config.blur_enabled = False
 
-        config.add_gcl_change_callback(callback)
-        config.gcl_enabled = True
-        self.assertEqual(calls, [(True, None)])
-
-        config.remove_gcl_change_callback(callback)
-        config.gcl_enabled = False
-        self.assertEqual(calls, [(True, None)])
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertFalse(any(key.startswith("gcl_") for key in saved))
+        self.assertEqual(saved["luker_path"], "D:/Luker")
+        self.assertFalse(saved["blur_enabled"])
 
     def test_blur_callback_can_be_removed(self):
         config = Config(self.config_path)
@@ -241,20 +243,6 @@ class ConfigTests(unittest.TestCase):
 
         config = Config(self.config_path)
         self.assertFalse(config.is_valid_luker_path(str(luker_dir)))
-
-    def test_valid_gcl_path_accepts_bat_file(self):
-        bat_path = Path(self.temp_dir.name) / "start.bat"
-        bat_path.write_text("", encoding="utf-8")
-
-        config = Config(self.config_path)
-        self.assertTrue(config.is_valid_gcl_path(str(bat_path)))
-
-    def test_gcl_path_rejects_directory_with_bat_suffix(self):
-        bat_path = Path(self.temp_dir.name) / "start.bat"
-        bat_path.mkdir()
-
-        config = Config(self.config_path)
-        self.assertFalse(config.is_valid_gcl_path(str(bat_path)))
 
     def test_invalid_utf8_luker_config_yaml_falls_back(self):
         luker_dir = Path(self.temp_dir.name) / "Luker"

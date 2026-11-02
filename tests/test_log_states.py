@@ -7,23 +7,19 @@ from ui.theme import PRESET_THEMES, mix_color
 
 class EmptyLogTextTests(unittest.TestCase):
     def test_stopped_luker_has_start_hint(self):
-        title, detail = empty_log_text(LukerState.STOPPED, 'luker', False)
+        title, detail = empty_log_text(LukerState.STOPPED)
         self.assertEqual(title, "还没有日志")
         self.assertIn("开始", detail)
 
     def test_starting_and_ready_have_distinct_titles(self):
         self.assertEqual(
-            empty_log_text(LukerState.STARTING, 'luker', False)[0],
+            empty_log_text(LukerState.STARTING)[0],
             "正在启动 Luker…",
         )
         self.assertEqual(
-            empty_log_text(LukerState.READY, 'luker', False)[0],
+            empty_log_text(LukerState.READY)[0],
             "暂无日志输出",
         )
-
-    def test_gcl_source_mentions_enable_state(self):
-        self.assertEqual(empty_log_text(LukerState.STOPPED, 'gcl', False)[0], "GCL 未启用")
-        self.assertEqual(empty_log_text(LukerState.STOPPED, 'gcl', True)[0], "暂无 GCL 日志")
 
 
 class TruncateLogTextTests(unittest.TestCase):
