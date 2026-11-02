@@ -18,8 +18,56 @@ from ui.dpi import (
     sync_window_scaling,
 )
 from ui.icons import theme_icon
+from ui.motion import WindowFade
 from ui.switch import AnimatedSwitch
 from ui.theme import PRESET_THEMES, mix_color, shade_color, theme_swatch_colors
+from ui.tokens import (
+    CHECK_SIZE,
+    CONTROL_HEIGHT_MD,
+    CONTROL_HEIGHT_SM,
+    CONTROL_HEIGHT_XL,
+    DELAY_BLUR_SETTINGS_MS,
+    FONT_BODY,
+    FONT_CAPTION,
+    FONT_HEADING,
+    FONT_SMALL,
+    FONT_TITLE,
+    GAP_DESCRIPTION,
+    GAP_FOOTER,
+    GAP_GRID,
+    GAP_INLINE,
+    GAP_INLINE_SM,
+    GAP_RADIO,
+    GAP_ROW,
+    GAP_SECTION,
+    GAP_SECTION_HEADER,
+    GAP_TITLEBAR,
+    HINT_SIZE,
+    ICON_BOX,
+    MOTION_HOVER_INTERVAL_MS,
+    MOTION_HOVER_STEPS,
+    MOTION_SETTINGS_FADE_MS,
+    MOTION_WINDOW_ALPHA,
+    MOTION_WINDOW_FADE_START,
+    PAD_CARD,
+    PAD_CARD_COMPACT,
+    PAD_ROW_X,
+    PAD_ROW_Y,
+    PAD_WINDOW,
+    RADIUS_CARD,
+    RADIUS_CARD_LG,
+    RADIUS_CONTROL,
+    RADIUS_PILL,
+    RADIUS_SWATCH,
+    SEPARATOR_HEIGHT,
+    SWATCH_HEIGHT,
+    TITLEBAR_SETTINGS_HEIGHT,
+    WINDOW_SETTINGS_HEIGHT,
+    WINDOW_SETTINGS_MARGIN,
+    WINDOW_SETTINGS_WIDTH,
+    WRAP_SETTINGS_TOOLTIP,
+    WRAP_VERSION_SUMMARY,
+)
 from ui.tooltip import Tooltip
 from ui.window_utils import (
     apply_window_rounding,
@@ -29,9 +77,9 @@ from ui.window_utils import (
     sync_window_blur,
 )
 
-SETTINGS_WIDTH = 600
-SETTINGS_HEIGHT = 720
-SETTINGS_MARGIN = 16
+SETTINGS_WIDTH = WINDOW_SETTINGS_WIDTH
+SETTINGS_HEIGHT = WINDOW_SETTINGS_HEIGHT
+SETTINGS_MARGIN = WINDOW_SETTINGS_MARGIN
 
 PWA_HINT_TEXT = "需要 Edge；未安装 PWA 时以应用窗口打开。"
 GCL_HINT_TEXT = "GCL 是可选配套服务，可在托盘菜单联动启停。"
@@ -43,10 +91,10 @@ CLOSE_BEHAVIOR_OPTIONS = (
     ('tray', '隐藏到托盘'),
     ('exit', '退出程序'),
 )
-THEME_HOVER_STEPS = 6
-THEME_HOVER_INTERVAL_MS = 18
-BUTTON_FADE_STEPS = 6
-BUTTON_FADE_INTERVAL_MS = 18
+THEME_HOVER_STEPS = MOTION_HOVER_STEPS
+THEME_HOVER_INTERVAL_MS = MOTION_HOVER_INTERVAL_MS
+BUTTON_FADE_STEPS = MOTION_HOVER_STEPS
+BUTTON_FADE_INTERVAL_MS = MOTION_HOVER_INTERVAL_MS
 
 # CTkScrollableFrame 在 root 上注册的全局事件；CTk 6.0 销毁时不会解绑，
 # 旧控件树会被 root 的绑定脚本一直引用。
@@ -175,13 +223,21 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
-        self.attributes('-alpha', 0.95 if config.blur_enabled else 1.0)
+        self.attributes('-alpha', MOTION_WINDOW_ALPHA if config.blur_enabled else 1.0)
         apply_window_rounding(self, context="设置窗口")
         self.configure(fg_color=self.COLORS['bg'])
 
         self._build_ui()
 
-        self._blur_job = self.after(100, self._setup_blur)
+        self._fade = WindowFade(self)
+        if config.blur_enabled:
+            self._fade.start(
+                MOTION_WINDOW_FADE_START,
+                MOTION_WINDOW_ALPHA,
+                duration_ms=MOTION_SETTINGS_FADE_MS,
+            )
+
+        self._blur_job = self.after(DELAY_BLUR_SETTINGS_MS, self._setup_blur)
 
         config.add_theme_change_callback(self._on_theme_change)
         config.add_blur_change_callback(self._on_blur_change)
@@ -240,6 +296,9 @@ class SettingsWindow(ctk.CTkToplevel):
                         self.after_cancel(job)
             self._blur_job = None
             self._rebuild_job = None
+            fade = self.__dict__.get('_fade')
+            if fade is not None:
+                fade.cancel()
             tooltip = getattr(self, '_tooltip', None)
             if tooltip is not None:
                 tooltip.destroy()
@@ -338,11 +397,14 @@ class SettingsWindow(ctk.CTkToplevel):
                 return
         except tk.TclError:
             return
+        fade = self.__dict__.get('_fade')
+        if fade is not None:
+            fade.cancel()
         sync_window_blur(
             self,
             self.COLORS['bg'],
             enabled=config.blur_enabled,
-            window_alpha=0.95,
+            window_alpha=MOTION_WINDOW_ALPHA,
             tint_alpha=0xEE,
             context="设置窗口",
         )
@@ -368,10 +430,10 @@ class SettingsWindow(ctk.CTkToplevel):
         self._rebuild_job = self.after(0, self._rebuild_ui)
 
     def _build_ui(self) -> None:
-        self._tooltip = Tooltip(self, self.COLORS, self.UI_FONT, wraplength=380)
+        self._tooltip = Tooltip(self, self.COLORS, self.UI_FONT, wraplength=WRAP_SETTINGS_TOOLTIP)
 
         main = ctk.CTkFrame(self, fg_color="transparent")
-        main.pack(fill="both", expand=True, padx=12, pady=12)
+        main.pack(fill="both", expand=True, padx=PAD_WINDOW, pady=PAD_WINDOW)
 
         self._build_titlebar(main)
 
@@ -381,7 +443,7 @@ class SettingsWindow(ctk.CTkToplevel):
             scrollbar_button_color=self.COLORS['border'],
             scrollbar_button_hover_color=self.COLORS['accent'],
         )
-        scroll_frame.pack(fill="both", expand=True, pady=(0, 8))
+        scroll_frame.pack(fill="both", expand=True, pady=(0, GAP_FOOTER))
 
         self._build_theme_section(scroll_frame)
 
@@ -396,8 +458,13 @@ class SettingsWindow(ctk.CTkToplevel):
         self._build_footer(main)
 
     def _build_titlebar(self, parent: tk.Misc) -> None:
-        bar = ctk.CTkFrame(parent, height=48, fg_color=self.COLORS['card'], corner_radius=14)
-        bar.pack(fill="x", pady=(0, 16))
+        bar = ctk.CTkFrame(
+            parent,
+            height=TITLEBAR_SETTINGS_HEIGHT,
+            fg_color=self.COLORS['card'],
+            corner_radius=RADIUS_CARD_LG,
+        )
+        bar.pack(fill="x", pady=(0, GAP_TITLEBAR))
         bar.pack_propagate(False)
 
         bind_window_drag(self, bar)
@@ -405,9 +472,9 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             bar,
             text="⚙️  设置",
-            font=ctk.CTkFont(family=self.UI_FONT, size=16, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_TITLE, weight="bold"),
             text_color=self.COLORS['text'],
-        ).pack(side="left", padx=16, pady=12)
+        ).pack(side="left", padx=PAD_CARD, pady=GAP_SECTION)
 
         make_button(
             bar,
@@ -415,13 +482,13 @@ class SettingsWindow(ctk.CTkToplevel):
             self.COLORS,
             text="✕",
             width=36,
-            height=28,
-            corner_radius=8,
+            height=CONTROL_HEIGHT_SM,
+            corner_radius=RADIUS_CONTROL,
             font_family=self.UI_FONT,
-            font_size=14,
+            font_size=FONT_HEADING,
             font_weight='bold',
             command=self.destroy,
-        ).pack(side="right", padx=10)
+        ).pack(side="right", padx=PAD_ROW_X)
 
     def _make_switch(
         self,
@@ -430,7 +497,7 @@ class SettingsWindow(ctk.CTkToplevel):
         text: str,
         command: Callable[[], None],
         selected: bool,
-        font_size: int = 13,
+        font_size: int = FONT_BODY,
     ) -> AnimatedSwitch:
         """创建统一配色、带平滑切换动画的开关。"""
         return AnimatedSwitch(
@@ -453,11 +520,11 @@ class SettingsWindow(ctk.CTkToplevel):
     ) -> AnimatedSwitch:
         """创建“标题 + 右侧开关”的 section 头部；hint 为标题后的悬停说明。"""
         header = ctk.CTkFrame(parent, fg_color="transparent")
-        header.pack(fill="x", pady=(0, 8))
+        header.pack(fill="x", pady=(0, GAP_SECTION_HEADER))
         ctk.CTkLabel(
             header,
             text=title,
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_HEADING, weight="bold"),
             text_color=self.COLORS['text'],
         ).pack(side="left")
         if hint is not None:
@@ -471,14 +538,14 @@ class SettingsWindow(ctk.CTkToplevel):
         hint = ctk.CTkLabel(
             parent,
             text="?",
-            width=18,
-            height=18,
-            corner_radius=9,
+            width=HINT_SIZE,
+            height=HINT_SIZE,
+            corner_radius=RADIUS_PILL,
             fg_color=self.COLORS['card_hover'],
             text_color=self.COLORS['text_muted'],
-            font=ctk.CTkFont(family=self.UI_FONT, size=11, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_CAPTION, weight="bold"),
         )
-        hint.pack(side="left", padx=(6, 0))
+        hint.pack(side="left", padx=(GAP_GRID, 0))
         self._tooltip.attach(hint, text)
         hint.bind('<Enter>', lambda _event: self._on_hint_enter(hint), add='+')
         hint.bind('<Leave>', lambda _event: self._on_hint_leave(hint), add='+')
@@ -494,10 +561,10 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _create_section(self, parent: tk.Misc) -> tuple[ctk.CTkFrame, ctk.CTkFrame]:
         """创建 section 外壳和内容区，统一边距。"""
-        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
-        section.pack(fill="x", pady=(0, 12))
+        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=RADIUS_CARD_LG)
+        section.pack(fill="x", pady=(0, GAP_SECTION))
         inner = ctk.CTkFrame(section, fg_color="transparent")
-        inner.pack(fill="x", padx=16, pady=16)
+        inner.pack(fill="x", padx=PAD_CARD, pady=PAD_CARD)
         return section, inner
 
     def _create_path_row(
@@ -510,17 +577,19 @@ class SettingsWindow(ctk.CTkToplevel):
         path_row = ctk.CTkFrame(parent, fg_color="transparent")
         path_row.pack(fill="x")
 
-        path_display = ctk.CTkFrame(path_row, fg_color=self.COLORS['bg'], corner_radius=8)
-        path_display.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        path_display = ctk.CTkFrame(
+            path_row, fg_color=self.COLORS['bg'], corner_radius=RADIUS_CONTROL
+        )
+        path_display.pack(side="left", fill="x", expand=True, padx=(0, GAP_INLINE))
 
         value_label = ctk.CTkLabel(
             path_display,
             text=current_value,
-            font=ctk.CTkFont(family=self.MONO_FONT, size=12),
+            font=ctk.CTkFont(family=self.MONO_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text_muted'],
             anchor="w",
         )
-        value_label.pack(fill="x", padx=10, pady=8)
+        value_label.pack(fill="x", padx=PAD_ROW_X, pady=PAD_ROW_Y)
 
         button = make_button(
             path_row,
@@ -528,8 +597,8 @@ class SettingsWindow(ctk.CTkToplevel):
             self.COLORS,
             text="📂 选择",
             font_family=self.UI_FONT,
-            font_size=12,
-            height=32,
+            font_size=FONT_SMALL,
+            height=CONTROL_HEIGHT_MD,
             width=80,
             command=command,
         )
@@ -537,16 +606,16 @@ class SettingsWindow(ctk.CTkToplevel):
         return value_label, button
 
     def _build_theme_section(self, parent: tk.Misc) -> None:
-        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=14)
-        section.pack(fill="x", pady=(0, 12))
+        section = ctk.CTkFrame(parent, fg_color=self.COLORS['card'], corner_radius=RADIUS_CARD_LG)
+        section.pack(fill="x", pady=(0, GAP_SECTION))
 
         header = ctk.CTkFrame(section, fg_color="transparent")
-        header.pack(fill="x", padx=16, pady=(16, 12))
+        header.pack(fill="x", padx=PAD_CARD, pady=(PAD_CARD, GAP_SECTION))
 
         ctk.CTkLabel(
             header,
             text="🎨  主题颜色",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_HEADING, weight="bold"),
             text_color=self.COLORS['text'],
         ).pack(side="left")
 
@@ -555,22 +624,22 @@ class SettingsWindow(ctk.CTkToplevel):
             text="",
             command=self._on_blur_toggle,
             selected=config.blur_enabled,
-            font_size=12,
+            font_size=FONT_SMALL,
         )
         self.blur_switch.pack(side="right")
         blur_label = ctk.CTkLabel(
             header,
             text="毛玻璃",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text_dim'],
         )
-        blur_label.pack(side="right", padx=(0, 8))
+        blur_label.pack(side="right", padx=(0, GAP_INLINE))
         blur_label.bind('<Button-1>', lambda _event: self.blur_switch.toggle())
         self._tooltip.attach(blur_label, BLUR_HINT_TEXT)
         self._tooltip.attach(self.blur_switch, BLUR_HINT_TEXT)
 
         grid = ctk.CTkFrame(section, fg_color="transparent")
-        grid.pack(fill="x", padx=12, pady=(0, 16))
+        grid.pack(fill="x", padx=PAD_CARD, pady=(0, PAD_CARD))
 
         current_theme = config.theme_name
 
@@ -578,7 +647,7 @@ class SettingsWindow(ctk.CTkToplevel):
         col = 0
         for theme_id, colors in PRESET_THEMES.items():
             card = self._create_theme_card(grid, theme_id, colors, current_theme == theme_id)
-            card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
+            card.grid(row=row, column=col, padx=GAP_GRID, pady=GAP_GRID, sticky="nsew")
 
             col += 1
             if col >= 3:
@@ -598,13 +667,13 @@ class SettingsWindow(ctk.CTkToplevel):
         card = ctk.CTkFrame(
             parent,
             fg_color=colors['card'],
-            corner_radius=10,
+            corner_radius=RADIUS_CARD,
             border_width=2,
             border_color=colors['accent'] if is_selected else colors['border'],
         )
 
         inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=12, pady=12)
+        inner.pack(fill="both", expand=True, padx=PAD_CARD_COMPACT, pady=PAD_CARD_COMPACT)
 
         self._build_theme_card_header(inner, colors)
         self._build_theme_swatches(inner, theme_id)
@@ -677,39 +746,39 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _build_theme_card_header(self, parent: tk.Misc, colors: dict[str, str]) -> None:
         header = ctk.CTkFrame(parent, fg_color="transparent")
-        header.pack(fill="x", pady=(0, 8))
+        header.pack(fill="x", pady=(0, GAP_ROW))
 
         ctk.CTkLabel(
             header,
             image=theme_icon(colors['icon'], colors['accent']),
             text="",
-            width=20,
-            height=20,
+            width=ICON_BOX,
+            height=ICON_BOX,
         ).pack(side="left")
 
         ctk.CTkLabel(
             header,
             text=colors['short_name'],
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_HEADING, weight="bold"),
             text_color=colors['text'],
-            height=20,
-        ).pack(side="left", padx=(6, 0))
+            height=ICON_BOX,
+        ).pack(side="left", padx=(GAP_GRID, 0))
 
     def _build_theme_swatches(self, parent: tk.Misc, theme_id: str) -> None:
         preview = ctk.CTkFrame(parent, fg_color="transparent")
-        preview.pack(fill="x", pady=(0, 6))
+        preview.pack(fill="x", pady=(0, GAP_GRID))
 
         for index, color in enumerate(theme_swatch_colors(theme_id)):
             ctk.CTkFrame(
                 preview,
-                height=20,
+                height=SWATCH_HEIGHT,
                 fg_color=color,
-                corner_radius=4,
+                corner_radius=RADIUS_SWATCH,
             ).grid(
                 row=0,
                 column=index,
                 sticky="ew",
-                padx=(0 if index == 0 else 4, 0),
+                padx=(0 if index == 0 else GAP_INLINE_SM, 0),
             )
             preview.columnconfigure(index, weight=1)
 
@@ -722,11 +791,11 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             parent,
             text="✓ 当前主题" if is_selected else "",
-            font=ctk.CTkFont(family=self.UI_FONT, size=11),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_CAPTION),
             text_color=colors['accent'],
-            height=18,
+            height=HINT_SIZE,
             anchor="w",
-        ).pack(fill="x", pady=(4, 0))
+        ).pack(fill="x", pady=(GAP_INLINE_SM, 0))
 
     def _select_theme(self, theme_id: str) -> None:
         if theme_id in PRESET_THEMES and theme_id != config.theme_name:
@@ -767,7 +836,7 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             inner,
             text=PWA_DESCRIPTION,
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text_muted'],
             justify="left",
         ).pack(anchor="w")
@@ -789,10 +858,10 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             inner,
             text=GCL_DESCRIPTION,
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text_muted'],
             justify="left",
-        ).pack(anchor="w", pady=(0, 10))
+        ).pack(anchor="w", pady=(0, GAP_DESCRIPTION))
 
         # GCL 路径选择区域（仅在开启时显示）
         self._gcl_path_frame = ctk.CTkFrame(inner, fg_color="transparent")
@@ -800,9 +869,9 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             self._gcl_path_frame,
             text="GCL start.bat 路径:",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text_dim'],
-        ).pack(anchor="w", pady=(0, 6))
+        ).pack(anchor="w", pady=(0, GAP_GRID))
 
         self.gcl_path_label, _ = self._create_path_row(
             self._gcl_path_frame,
@@ -846,9 +915,9 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             inner,
             text="🚪  当关闭日志窗口时",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_HEADING, weight="bold"),
             text_color=self.COLORS['text'],
-        ).pack(anchor="w", pady=(0, 10))
+        ).pack(anchor="w", pady=(0, GAP_DESCRIPTION))
 
         self._close_behavior_var.set(config.close_behavior)
         row = ctk.CTkFrame(inner, fg_color="transparent")
@@ -862,17 +931,17 @@ class SettingsWindow(ctk.CTkToplevel):
                 variable=self._close_behavior_var,
                 command=lambda value=value: self._on_close_behavior_change(value),
                 width=128,
-                font=ctk.CTkFont(family=self.UI_FONT, size=12),
+                font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
                 text_color=self.COLORS['text'],
                 fg_color=self.COLORS['accent'],
                 hover_color=shade_color(self.COLORS['accent'], 0.85),
                 border_color=self.COLORS['border'],
-                radiobutton_width=18,
-                radiobutton_height=18,
-                corner_radius=9,
+                radiobutton_width=CHECK_SIZE,
+                radiobutton_height=CHECK_SIZE,
+                corner_radius=RADIUS_PILL,
                 border_width_unchecked=2,
                 border_width_checked=6,
-            ).pack(side="left", padx=(0, 18))
+            ).pack(side="left", padx=(0, GAP_RADIO))
 
     def _on_close_behavior_change(self, value: str) -> None:
         config.close_behavior = value
@@ -890,16 +959,16 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             inner,
             text="📁  Luker 管理",
-            font=ctk.CTkFont(family=self.UI_FONT, size=14, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_HEADING, weight="bold"),
             text_color=self.COLORS['text'],
-        ).pack(anchor="w", pady=(0, 10))
+        ).pack(anchor="w", pady=(0, GAP_DESCRIPTION))
 
         ctk.CTkLabel(
             inner,
             text="安装路径",
-            font=ctk.CTkFont(family=self.UI_FONT, size=13, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_BODY, weight="bold"),
             text_color=self.COLORS['text_dim'],
-        ).pack(anchor="w", pady=(0, 6))
+        ).pack(anchor="w", pady=(0, GAP_GRID))
 
         self.path_label, self.path_button = self._create_path_row(
             inner,
@@ -907,28 +976,28 @@ class SettingsWindow(ctk.CTkToplevel):
             self._select_path,
         )
 
-        ctk.CTkFrame(inner, height=1, fg_color=self.COLORS['border']).pack(
+        ctk.CTkFrame(inner, height=SEPARATOR_HEIGHT, fg_color=self.COLORS['border']).pack(
             fill="x",
-            pady=12,
+            pady=GAP_SECTION,
         )
 
         ctk.CTkLabel(
             inner,
             text="版本管理",
-            font=ctk.CTkFont(family=self.UI_FONT, size=13, weight="bold"),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_BODY, weight="bold"),
             text_color=self.COLORS['text_dim'],
-        ).pack(anchor="w", pady=(0, 6))
+        ).pack(anchor="w", pady=(0, GAP_GRID))
 
         self._current_label = ctk.CTkLabel(
             inner,
             text="",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text_dim'],
             justify="left",
             anchor="w",
-            wraplength=480,
+            wraplength=WRAP_VERSION_SUMMARY,
         )
-        self._current_label.pack(fill="x", pady=(0, 8))
+        self._current_label.pack(fill="x", pady=(0, GAP_ROW))
 
         self._release_summary = self._create_version_choice(
             inner,
@@ -942,7 +1011,7 @@ class SettingsWindow(ctk.CTkToplevel):
         )
 
         actions = ctk.CTkFrame(inner, fg_color="transparent")
-        actions.pack(fill="x", pady=(10, 0))
+        actions.pack(fill="x", pady=(GAP_DESCRIPTION, 0))
 
         self._check_button = make_button(
             actions,
@@ -950,9 +1019,9 @@ class SettingsWindow(ctk.CTkToplevel):
             self.COLORS,
             text="检查更新",
             width=100,
-            height=32,
+            height=CONTROL_HEIGHT_MD,
             font_family=self.UI_FONT,
-            font_size=12,
+            font_size=FONT_SMALL,
             command=self._on_check_update,
         )
         self._check_button.pack(side="left")
@@ -963,18 +1032,18 @@ class SettingsWindow(ctk.CTkToplevel):
             self.COLORS,
             text="更新",
             width=190,
-            height=32,
+            height=CONTROL_HEIGHT_MD,
             font_family=self.UI_FONT,
-            font_size=12,
+            font_size=FONT_SMALL,
             command=self._on_apply_update,
             state="disabled",
         )
         self._update_button.pack(side="right")
 
-        self._status_font = ctk.CTkFont(family=self.UI_FONT, size=12)
+        self._status_font = ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL)
         self._status_font_bold = ctk.CTkFont(
             family=self.UI_FONT,
-            size=12,
+            size=FONT_SMALL,
             weight="bold",
         )
         self._version_status = ctk.CTkLabel(
@@ -984,9 +1053,9 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text_muted'],
             justify="left",
             anchor="w",
-            wraplength=480,
+            wraplength=WRAP_VERSION_SUMMARY,
         )
-        self._version_status.pack(fill="x", pady=(8, 0))
+        self._version_status.pack(fill="x", pady=(GAP_ROW, 0))
 
         self._render_luker_state()
 
@@ -998,7 +1067,7 @@ class SettingsWindow(ctk.CTkToplevel):
     ) -> ctk.CTkLabel:
         """创建“单选项 + 一行版本摘要”，返回摘要标签。"""
         row = ctk.CTkFrame(parent, fg_color="transparent")
-        row.pack(fill="x", pady=(0, 4))
+        row.pack(fill="x", pady=(0, GAP_INLINE_SM))
 
         radio = ctk.CTkRadioButton(
             row,
@@ -1007,14 +1076,14 @@ class SettingsWindow(ctk.CTkToplevel):
             variable=self._update_channel_var,
             command=self._on_update_channel_change,
             width=110,
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text'],
             fg_color=self.COLORS['accent'],
             hover_color=shade_color(self.COLORS['accent'], 0.85),
             border_color=self.COLORS['border'],
-            radiobutton_width=18,
-            radiobutton_height=18,
-            corner_radius=9,
+            radiobutton_width=CHECK_SIZE,
+            radiobutton_height=CHECK_SIZE,
+            corner_radius=RADIUS_PILL,
             border_width_unchecked=2,
             border_width_checked=6,
         )
@@ -1027,7 +1096,7 @@ class SettingsWindow(ctk.CTkToplevel):
         summary = ctk.CTkLabel(
             row,
             text="尚未检查",
-            font=ctk.CTkFont(family=self.UI_FONT, size=12),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text_muted'],
             justify="left",
             anchor="w",
@@ -1303,7 +1372,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _build_footer(self, parent: tk.Misc) -> None:
         footer = ctk.CTkFrame(parent, fg_color="transparent")
-        footer.pack(fill="x", pady=(8, 0))
+        footer.pack(fill="x", pady=(GAP_ROW, 0))
 
         make_button(
             footer,
@@ -1311,7 +1380,7 @@ class SettingsWindow(ctk.CTkToplevel):
             self.COLORS,
             text="完成",
             font_family=self.UI_FONT,
-            height=40,
+            height=CONTROL_HEIGHT_XL,
             width=120,
             command=self.destroy,
         ).pack(side="right")
