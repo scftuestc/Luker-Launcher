@@ -48,5 +48,45 @@ class LogStoreTests(unittest.TestCase):
         self.assertEqual(store.snapshot(), [])
 
 
+class LastErrorTests(unittest.TestCase):
+    def test_returns_latest_error(self):
+        store = LogStore(max_entries=10, max_bytes=10_000)
+        store.append("[信息] 启动")
+        first = store.append("[错误] 第一个问题")
+        store.append("[信息] 继续")
+        second = store.append("[错误] 第二个问题")
+
+        self.assertIsNot(first, second)
+        self.assertIs(store.last_error(), second)
+
+    def test_returns_none_without_errors(self):
+        store = LogStore(max_entries=10, max_bytes=10_000)
+        store.append("[信息] ok")
+        store.append("listening on port 8000")
+
+        self.assertIsNone(store.last_error())
+
+    def test_gcl_prefixed_error_is_detected(self):
+        store = LogStore(max_entries=10, max_bytes=10_000)
+        entry = store.append("[GCL 错误] 连接失败")
+
+        self.assertIs(store.last_error(), entry)
+
+    def test_evicting_error_clears_cache(self):
+        store = LogStore(max_entries=2, max_bytes=10_000)
+        store.append("[错误] 旧问题")
+        store.append("[信息] ok")
+        store.append("[信息] 再来一条")
+        self.assertIsNone(store.last_error())
+
+    def test_clear_resets_error(self):
+        store = LogStore(max_entries=10, max_bytes=10_000)
+        store.append("[错误] 出错了")
+        store.clear()
+
+        self.assertIsNone(store.last_error())
+        self.assertEqual(len(store), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

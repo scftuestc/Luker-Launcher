@@ -409,5 +409,59 @@ class LiveSearchRefreshTests(unittest.TestCase):
         self.assertIsNone(fixture.controller._search_job)
 
 
+class ReplayStateCallbackTests(unittest.TestCase):
+    def make_controller(self):
+        states: list[bool] = []
+        scheduled: list[tuple[int, object]] = []
+
+        def schedule(delay: int, callback: object) -> str:
+            scheduled.append((delay, callback))
+            return f"job-{len(scheduled)}"
+
+        controller = LogController(
+            schedule=schedule,
+            cancel=lambda _job: None,
+            exists=lambda: True,
+            viewable=lambda: True,
+            reset_display=lambda: None,
+            add_entries=lambda _entries: 0,
+            adjust_search=lambda _removed: None,
+            has_query=lambda: False,
+            on_search_rerun=lambda: None,
+            on_replay_state_change=states.append,
+        )
+        return controller, states, scheduled
+
+    def test_empty_refresh_notifies_true_then_false(self):
+        controller, states, _scheduled = self.make_controller()
+
+        controller.refresh()
+
+        self.assertEqual(states, [True, False])
+
+    def test_replay_finish_notifies_false(self):
+        controller, states, scheduled = self.make_controller()
+        controller.add_log("line")
+        controller.drain_once()
+        controller.refresh()
+
+        self.assertEqual(states, [True])
+        while scheduled:
+            _delay, callback = scheduled.pop(0)
+            callback()
+        self.assertEqual(states[-1], False)
+
+    def test_clear_and_hide_notify_false(self):
+        controller, states, _scheduled = self.make_controller()
+        controller.clear()
+        self.assertEqual(states, [False])
+
+        controller.add_log("line")
+        controller.drain_once()
+        controller.refresh()
+        controller.on_hide()
+        self.assertEqual(states[-1], False)
+
+
 if __name__ == "__main__":
     unittest.main()

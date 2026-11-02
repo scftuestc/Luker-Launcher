@@ -164,6 +164,7 @@ class LogController:
         adjust_search: Callable[[int], None],
         has_query: Callable[[], bool],
         on_search_rerun: Callable[[], None],
+        on_replay_state_change: Callable[[bool], None] | None = None,
     ) -> None:
         self._schedule = schedule
         self._cancel = cancel
@@ -174,6 +175,7 @@ class LogController:
         self._adjust_search = adjust_search
         self._has_query = has_query
         self._on_search_rerun = on_search_rerun
+        self._on_replay_state_change = on_replay_state_change
 
         self._stores: dict[LogSource, LogStore] = {
             'luker': LogStore(),
@@ -209,6 +211,11 @@ class LogController:
     def needs_rebuild(self) -> bool:
         return self._needs_rebuild
 
+    @property
+    def last_error(self) -> LogEntry | None:
+        """当前日志源最近一条错误；供错误横幅使用。"""
+        return self._stores[self._source].last_error()
+
     def start(self) -> None:
         """启动日志泵；重复调用不产生第二条轮询链。"""
         if self._started:
@@ -221,6 +228,7 @@ class LogController:
         self._started = False
         self._cancel_search_refresh()
         self._replay.cancel()
+        self._notify_replay(False)
         if self._pump_job is not None:
             self._cancel(self._pump_job)
             self._pump_job = None
@@ -246,11 +254,13 @@ class LogController:
         """清空当前显示，并按当前源的分批快照重建。"""
         self._cancel_search_refresh()
         self._replay.cancel()
+        self._notify_replay(True)
         self._reset_display()
         self._needs_rebuild = False
 
         logs = self._stores[self._source].snapshot()
         if not logs:
+            self._notify_replay(False)
             if self._has_query():
                 self._on_search_rerun()
             return
@@ -261,6 +271,7 @@ class LogController:
         """清空两个日志源的历史、队列和当前显示。"""
         self._cancel_search_refresh()
         self._replay.cancel()
+        self._notify_replay(False)
         self._reset_display()
         for store in self._stores.values():
             store.clear()
@@ -290,6 +301,7 @@ class LogController:
         if self._replay.active:
             self._needs_rebuild = True
         self._replay.cancel()
+        self._notify_replay(False)
 
     def _pump(self) -> None:
         self._pump_job = None
@@ -359,8 +371,13 @@ class LogController:
         self._cancel(self._search_job)
         self._search_job = None
 
+    def _notify_replay(self, active: bool) -> None:
+        if self._on_replay_state_change is not None:
+            self._on_replay_state_change(active)
+
     def _on_replay_finished(self) -> None:
         self._cancel_search_refresh()
         self._needs_rebuild = False
+        self._notify_replay(False)
         if self._has_query():
             self._on_search_rerun()

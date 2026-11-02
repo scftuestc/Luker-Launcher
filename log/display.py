@@ -7,7 +7,9 @@ from collections.abc import Callable, Mapping, Sequence
 
 import customtkinter as ctk
 
+from log.classify import get_tag_for_line
 from log.store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry
+from ui.theme import mix_color
 
 _TAG_COLOR_KEYS = {
     'time': 'text_muted',
@@ -25,29 +27,12 @@ def configure_log_tags(textbox: tk.Text, colors: Mapping[str, str]) -> None:
     for tag, color_key in _TAG_COLOR_KEYS.items():
         textbox.tag_configure(tag, foreground=colors[color_key])
     textbox.tag_configure('separator', foreground=colors['accent'], elide=False)
-
-
-def get_tag_for_line(line: str) -> str:
-    """按日志内容选择颜色标签。"""
-    line_lower = line.lower()
-    # GCL 日志带 [GCL 错误] 这类作用域前缀，归一化后复用同一套匹配
-    normalized = line.replace('[GCL ', '[')
-    if '[错误]' in normalized or 'error' in line_lower or 'fail' in line_lower:
-        return 'error'
-    elif '[警告]' in normalized or 'warn' in line_lower:
-        return 'warn'
-    elif '[信息]' in normalized or 'info' in line_lower:
-        return 'info'
-    elif '[启动器]' in line:
-        return 'accent'
-    elif (
-        'success' in line_lower
-        or '成功' in line
-        or 'listening' in line_lower
-        or 'compiled' in line_lower
-    ):
-        return 'success'
-    return 'dim'
+    if 'card' in colors and 'text' in colors:
+        textbox.tag_configure(
+            'error_reveal',
+            background=mix_color(colors['card'], colors['error'], 0.35),
+            foreground=colors['text'],
+        )
 
 
 class LogDisplay:
@@ -64,6 +49,8 @@ class LogDisplay:
         self.entry_bytes: deque[int] = deque()
         self.bytes = 0
         self.last_timestamp: datetime.datetime | None = None
+        # 最近一条错误日志在 Text 中的起始位置，供“定位”按钮滚动
+        self.last_error_index: str | None = None
 
     @property
     def count(self) -> int:
@@ -75,6 +62,7 @@ class LogDisplay:
         self.entry_bytes.clear()
         self.bytes = 0
         self.last_timestamp = None
+        self.last_error_index = None
         self._update_count_label()
 
     def add_entries(self, entries: Sequence[LogEntry], *, auto_scroll: bool) -> int:
@@ -92,6 +80,7 @@ class LogDisplay:
         tb.configure(state="disabled")
 
         removed_lines = self.trim()
+        self._update_last_error_index(tb)
         self._update_count_label()
         return removed_lines
 
@@ -114,8 +103,19 @@ class LogDisplay:
         tb.configure(state="normal")
         tb.delete("1.0", f"{removed_lines + 1}.0")
         tb.configure(state="disabled")
+        self._update_last_error_index(tb)
         self._update_count_label()
         return removed_lines
+
+    def _update_last_error_index(self, tb: tk.Text) -> None:
+        """从 Text 的 error 标签范围反推最近一条错误的位置。"""
+        tag_ranges = getattr(tb, "tag_ranges", None)
+        if tag_ranges is None:
+            # 测试替身可能只实现插入/删除，没有标签查询
+            self.last_error_index = None
+            return
+        ranges = tag_ranges("error")
+        self.last_error_index = str(ranges[-2]) if ranges else None
 
     def _insert_entry(self, tb: tk.Text, text: str, timestamp: datetime.datetime) -> None:
         ts = timestamp.strftime("%H:%M:%S")
