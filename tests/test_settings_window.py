@@ -93,7 +93,7 @@ class FakeTrayMenu:
     def update_state(self, *args: bool) -> None:
         self.state = args
 
-    def show_at(self, x: int, y: int) -> None:
+    def show_at(self, x: int, y: int, previous_foreground: int = 0) -> None:
         self.point = (x, y)
 
 

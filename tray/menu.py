@@ -5,7 +5,7 @@ import logging
 import math
 import tkinter as tk
 import webbrowser
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from ctypes import windll
 from typing import TypedDict
 
@@ -16,23 +16,56 @@ from core.readiness import LukerState
 from ui.buttons import make_button
 from ui.dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
 from ui.icons import MenuIcon, menu_icon
+from ui.motion import WindowFade
 from ui.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,
     LOGO_STOPPED_COLOR,
     logo_bar_glow_color,
 )
+from ui.tokens import (
+    DELAY_BLUR_TRAY_MS,
+    DELAY_NOACTIVATE_TRAY_MS,
+    FONT_MENU_TITLE,
+    GAP_INLINE_SM,
+    GAP_MENU_ITEM,
+    GAP_MENU_SEPARATOR,
+    GAP_SECTION,
+    ICON_MENU,
+    LOGO_BAR_GAP,
+    LOGO_BAR_HEIGHT_MENU,
+    LOGO_BAR_WIDTH,
+    MENU_WIDTH,
+    MOTION_TRAY_FADE_MS,
+    MOTION_TRAY_FADE_START,
+    MOTION_WINDOW_ALPHA,
+    PAD_MENU,
+    PAD_TRAY_HEADER_X,
+    PAD_TRAY_HEADER_Y,
+    POLL_TRAY_MOUSE_MS,
+    RADIUS_CARD,
+    RADIUS_LOGO,
+    SEPARATOR_HEIGHT,
+)
 from ui.window_utils import apply_window_rounding, get_ui_font, sync_window_blur
 
 logger = logging.getLogger(__name__)
 
-MENU_WIDTH = 240
-HEADER_PAD_X = 18
-HEADER_PAD_Y = 14
-TITLE_FONT_SIZE = 18
-LOGO_BAR_WIDTH = 4
-LOGO_BAR_HEIGHT = 24
-MENU_ICON_SIZE = 18
+HEADER_PAD_X = PAD_TRAY_HEADER_X
+HEADER_PAD_Y = PAD_TRAY_HEADER_Y
+TITLE_FONT_SIZE = FONT_MENU_TITLE
+LOGO_BAR_HEIGHT = LOGO_BAR_HEIGHT_MENU
+MENU_ICON_SIZE = ICON_MENU
+
+
+def next_menu_key(keys: Sequence[str], current: str | None, step: int) -> str | None:
+    """在可用菜单项中循环移动；当前项失效时从头/尾进入。"""
+    if not keys:
+        return None
+    if current not in keys:
+        return keys[0] if step >= 0 else keys[-1]
+    index = keys.index(current)
+    return keys[(index + step) % len(keys)]
 
 
 class MenuItem(TypedDict):
@@ -69,7 +102,7 @@ class TrayMenu(ctk.CTkToplevel):
 
         self.overrideredirect(True)
         self.attributes('-topmost', True)
-        self.attributes('-alpha', 0.95 if config.blur_enabled else 1.0)
+        self.attributes('-alpha', MOTION_WINDOW_ALPHA if config.blur_enabled else 1.0)
         apply_window_rounding(self, context="托盘菜单")
 
         # 外层只保留系统圆角，面板颜色铺满窗口避免出现第二层圆角亮边
@@ -80,14 +113,19 @@ class TrayMenu(ctk.CTkToplevel):
         self._menu_animation_active = False
         self._menu_logo_gray = True
         self._mouse_poll_id: str | None = None
+        self._fade = WindowFade(self)
+        self._selected_key: str | None = None
+        self._previous_foreground = 0
+        self._menu_focused = False
 
         self._build_menu()
+        self._bind_keyboard()
 
         config.add_theme_change_callback(self._on_theme_change)
         config.add_blur_change_callback(self._on_blur_change)
 
-        self.after(50, self._setup_blur)
-        self.after(100, self._setup_no_activate)
+        self.after(DELAY_BLUR_TRAY_MS, self._setup_blur)
+        self.after(DELAY_NOACTIVATE_TRAY_MS, self._set_no_activate)
 
         self.withdraw()
 
@@ -99,6 +137,9 @@ class TrayMenu(ctk.CTkToplevel):
         self.COLORS = new_colors
         self.configure(fg_color=self.COLORS['card'])
 
+        was_viewable = self.__dict__.get('_menu_focused', False)
+        selected = self.__dict__.get('_selected_key')
+        self._selected_key = None
         for child in self.winfo_children():
             child.destroy()
 
@@ -113,7 +154,12 @@ class TrayMenu(ctk.CTkToplevel):
         )
         self._setup_blur()
 
-        if self.winfo_viewable():
+        if was_viewable:
+            if selected in self._navigable_keys():
+                self._select_key(selected)
+            else:
+                self._select_first()
+            self.focus_force()
             self._start_menu_animation()
             self._start_mouse_poll()
 
@@ -121,18 +167,135 @@ class TrayMenu(ctk.CTkToplevel):
         if self.winfo_exists():
             self._setup_blur()
 
-    def _setup_no_activate(self) -> None:
+    def _set_no_activate(self, enabled: bool = True) -> None:
+        """切换 WS_EX_NOACTIVATE；键盘模式下让菜单可以接收焦点。"""
         try:
             hwnd = windll.user32.GetParent(self.winfo_id())
             ex_style = windll.user32.GetWindowLongW(hwnd, self.GWL_EXSTYLE)
-            new_style = ex_style | self.WS_EX_NOACTIVATE | self.WS_EX_TOOLWINDOW
-            windll.user32.SetWindowLongW(hwnd, self.GWL_EXSTYLE, new_style)
+            if enabled:
+                new_style = ex_style | self.WS_EX_NOACTIVATE | self.WS_EX_TOOLWINDOW
+            else:
+                new_style = (ex_style & ~self.WS_EX_NOACTIVATE) | self.WS_EX_TOOLWINDOW
+            windll.user32.SetWindowLongW(hwnd, self.GWL_EXSTYLE, new_style & 0xFFFFFFFF)
         except Exception:
             logger.warning("设置无焦点窗口失败", exc_info=True)
 
+    def _bind_keyboard(self) -> None:
+        self.bind('<Up>', self._on_key_up)
+        self.bind('<Down>', self._on_key_down)
+        self.bind('<Home>', self._on_key_home)
+        self.bind('<End>', self._on_key_end)
+        self.bind('<Return>', self._on_key_activate)
+        self.bind('<KP_Enter>', self._on_key_activate)
+        self.bind('<Escape>', self._on_key_escape)
+        self.bind('<Tab>', self._on_key_down)
+        self.bind('<Shift-Tab>', self._on_key_up)
+
+    def _navigable_keys(self) -> list[str]:
+        """按视觉顺序返回当前可见且未禁用的菜单项。"""
+        keys: list[str] = []
+        for key, item in self.menu_items.items():
+            try:
+                if item['frame'].winfo_manager() != "pack":
+                    continue
+                if str(item['btn'].cget('state')) == "disabled":
+                    continue
+            except (tk.TclError, AttributeError):
+                continue
+            keys.append(key)
+        return keys
+
+    def _select_first(self) -> None:
+        keys = self._navigable_keys()
+        if keys:
+            self._select_key(keys[0])
+
+    def _select_key(self, key: str | None) -> None:
+        if key == self._selected_key:
+            return
+        self._clear_selection()
+        if key is None:
+            return
+        item = self.menu_items.get(key)
+        if item is None:
+            return
+        try:
+            item['frame'].configure(
+                fg_color=self.COLORS['card_hover'],
+                border_width=1,
+                border_color=self.COLORS['accent'],
+            )
+        except tk.TclError:
+            return
+        self._selected_key = key
+
+    def _clear_selection(self) -> None:
+        key = self.__dict__.get('_selected_key')
+        self._selected_key = None
+        if key is None:
+            return
+        item = self.menu_items.get(key)
+        if item is None:
+            return
+        with contextlib.suppress(tk.TclError):
+            item['frame'].configure(fg_color="transparent", border_width=0)
+
+    def _clamp_selection(self) -> None:
+        """状态变化后让高亮落在仍然可用的一项上。"""
+        if not self.__dict__.get('_menu_focused', False):
+            return
+        keys = self._navigable_keys()
+        if not keys:
+            self._clear_selection()
+            return
+        if self._selected_key not in keys:
+            self._select_key(keys[0])
+
+    def _move_selection(self, step: int) -> str:
+        keys = self._navigable_keys()
+        next_key = next_menu_key(keys, self._selected_key, step)
+        self._select_key(next_key)
+        return "break"
+
+    def _on_key_up(self, _event: tk.Event | None = None) -> str:
+        return self._move_selection(-1)
+
+    def _on_key_down(self, _event: tk.Event | None = None) -> str:
+        return self._move_selection(1)
+
+    def _on_key_home(self, _event: tk.Event | None = None) -> str:
+        keys = self._navigable_keys()
+        if keys:
+            self._select_key(keys[0])
+        return "break"
+
+    def _on_key_end(self, _event: tk.Event | None = None) -> str:
+        keys = self._navigable_keys()
+        if keys:
+            self._select_key(keys[-1])
+        return "break"
+
+    def _on_key_activate(self, _event: tk.Event | None = None) -> str:
+        if self._selected_key is None:
+            self._select_first()
+        item = self.menu_items.get(self._selected_key or "")
+        if item is None:
+            return "break"
+        try:
+            if str(item['btn'].cget('state')) == "disabled":
+                return "break"
+            item['btn'].invoke()
+        except tk.TclError:
+            pass
+        return "break"
+
+    def _on_key_escape(self, _event: tk.Event | None = None) -> str:
+        self.hide()
+        return "break"
+
     def _start_mouse_poll(self) -> None:
         if self._mouse_poll_id is None:
-            self._mouse_poll_id = self.after(100, self._check_mouse_outside)
+            self._mouse_poll_id = self.after(POLL_TRAY_MOUSE_MS, self._check_mouse_outside)
 
     def _stop_mouse_poll(self) -> None:
         if self._mouse_poll_id is not None:
@@ -160,20 +323,24 @@ class TrayMenu(ctk.CTkToplevel):
             if not in_menu:
                 left_button = windll.user32.GetAsyncKeyState(0x01) & 0x8000
                 if left_button:
-                    self.hide()
+                    # 点击外部时焦点已经交给目标窗口，不要再抢回来
+                    self.hide(restore_focus=False)
                     return
 
         except Exception:
             pass
 
-        self._mouse_poll_id = self.after(100, self._check_mouse_outside)
+        self._mouse_poll_id = self.after(POLL_TRAY_MOUSE_MS, self._check_mouse_outside)
 
     def _setup_blur(self) -> None:
+        fade = self.__dict__.get('_fade')
+        if fade is not None:
+            fade.cancel()
         sync_window_blur(
             self,
             self.COLORS['bg'],
             enabled=config.blur_enabled,
-            window_alpha=0.95,
+            window_alpha=MOTION_WINDOW_ALPHA,
             tint_alpha=0xEE,
             context="托盘菜单",
         )
@@ -240,14 +407,14 @@ class TrayMenu(ctk.CTkToplevel):
         self._build_menu_header(main)
 
         items_frame = ctk.CTkFrame(main, fg_color="transparent")
-        items_frame.pack(fill="x", padx=8, pady=8)
+        items_frame.pack(fill="x", padx=PAD_MENU, pady=PAD_MENU)
         self.menu_items: dict[str, MenuItem] = {}
         self._build_menu_items(items_frame)
         self._build_menu_footer(items_frame)
 
     def _build_menu_header(self, parent: tk.Misc) -> None:
         header = ctk.CTkFrame(parent, fg_color="transparent")
-        header.pack(fill="x", padx=HEADER_PAD_X, pady=(HEADER_PAD_Y, 12))
+        header.pack(fill="x", padx=HEADER_PAD_X, pady=(HEADER_PAD_Y, GAP_SECTION))
 
         logo = ctk.CTkFrame(header, fg_color="transparent")
         logo.pack(side="left")
@@ -260,9 +427,9 @@ class TrayMenu(ctk.CTkToplevel):
                 width=LOGO_BAR_WIDTH,
                 height=LOGO_BAR_HEIGHT,
                 fg_color=LOGO_STOPPED_COLOR,
-                corner_radius=2,
+                corner_radius=RADIUS_LOGO,
             )
-            bar.pack(side="left", padx=1)
+            bar.pack(side="left", padx=LOGO_BAR_GAP)
             self._menu_logo_bars.append(bar)
 
         ctk.CTkLabel(
@@ -270,17 +437,19 @@ class TrayMenu(ctk.CTkToplevel):
             text="Luker",
             font=ctk.CTkFont(family=self.UI_FONT, size=TITLE_FONT_SIZE, weight="bold"),
             text_color=self.COLORS['text'],
-        ).pack(side="left", padx=(12, 0))
+        ).pack(side="left", padx=(GAP_SECTION, 0))
 
-        ctk.CTkFrame(parent, height=1, fg_color=self.COLORS['border']).pack(fill="x", padx=12)
+        ctk.CTkFrame(parent, height=SEPARATOR_HEIGHT, fg_color=self.COLORS['border']).pack(
+            fill="x", padx=GAP_SECTION
+        )
 
     def _build_menu_items(self, parent: tk.Misc) -> None:
         self.menu_items['window'] = self._create_menu_item(
             parent, 'window', "显示日志窗口", self._on_toggle_window
         )
 
-        ctk.CTkFrame(parent, height=1, fg_color=self.COLORS['border']).pack(
-            fill="x", padx=8, pady=6
+        ctk.CTkFrame(parent, height=SEPARATOR_HEIGHT, fg_color=self.COLORS['border']).pack(
+            fill="x", padx=PAD_MENU, pady=GAP_MENU_SEPARATOR
         )
 
         # Luker 控制区域：启动/停止合并为一个动态按钮
@@ -295,7 +464,9 @@ class TrayMenu(ctk.CTkToplevel):
         )
 
         # GCL 菜单项按配置动态显示
-        self._gcl_separator = ctk.CTkFrame(parent, height=1, fg_color=self.COLORS['border'])
+        self._gcl_separator = ctk.CTkFrame(
+            parent, height=SEPARATOR_HEIGHT, fg_color=self.COLORS['border']
+        )
         self.menu_items['gcl_toggle'] = self._create_menu_item(
             parent,
             'play',
@@ -314,8 +485,10 @@ class TrayMenu(ctk.CTkToplevel):
         )
 
     def _build_menu_footer(self, parent: tk.Misc) -> None:
-        self._bottom_separator = ctk.CTkFrame(parent, height=1, fg_color=self.COLORS['border'])
-        self._bottom_separator.pack(fill="x", padx=8, pady=6)
+        self._bottom_separator = ctk.CTkFrame(
+            parent, height=SEPARATOR_HEIGHT, fg_color=self.COLORS['border']
+        )
+        self._bottom_separator.pack(fill="x", padx=PAD_MENU, pady=GAP_MENU_SEPARATOR)
         self.menu_items['settings'] = self._create_menu_item(
             parent, 'settings', "设置", self._on_settings
         )
@@ -333,9 +506,9 @@ class TrayMenu(ctk.CTkToplevel):
         visible: bool = True,
     ) -> MenuItem:
         """创建菜单项；visible=False 时由 update_state 控制显示。"""
-        frame = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=10)
+        frame = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=RADIUS_CARD)
         if visible:
-            frame.pack(fill="x", pady=2)
+            frame.pack(fill="x", pady=GAP_MENU_ITEM)
 
         icon_color = color if color is not None else self.COLORS['text']
         btn = make_button(
@@ -350,7 +523,7 @@ class TrayMenu(ctk.CTkToplevel):
             text_color=icon_color,
             command=command,
         )
-        btn.pack(fill="x", padx=4)
+        btn.pack(fill="x", padx=GAP_INLINE_SM)
 
         return {'frame': frame, 'btn': btn}
 
@@ -483,6 +656,7 @@ class TrayMenu(ctk.CTkToplevel):
 
         self._set_gcl_items_visible(gcl_enabled)
         self._apply_menu_logo_state()
+        self._clamp_selection()
 
     def _set_gcl_items_visible(self, visible: bool) -> None:
         """按 GCL 是否启用显示或隐藏分隔线和两个 GCL 菜单项。"""
@@ -492,14 +666,23 @@ class TrayMenu(ctk.CTkToplevel):
         if not visible:
             return
 
-        self._gcl_separator.pack(fill="x", padx=8, pady=6, before=self._bottom_separator)
-        self.menu_items['gcl_toggle']['frame'].pack(fill="x", pady=2, before=self._bottom_separator)
+        self._gcl_separator.pack(
+            fill="x", padx=PAD_MENU, pady=GAP_MENU_SEPARATOR, before=self._bottom_separator
+        )
+        self.menu_items['gcl_toggle']['frame'].pack(
+            fill="x", pady=GAP_MENU_ITEM, before=self._bottom_separator
+        )
         self.menu_items['gcl_browser']['frame'].pack(
-            fill="x", pady=2, before=self._bottom_separator
+            fill="x", pady=GAP_MENU_ITEM, before=self._bottom_separator
         )
 
-    def show_at(self, x: int, y: int) -> None:
+    def show_at(self, x: int, y: int, previous_foreground: int = 0) -> None:
         """在物理坐标 (x, y) 附近显示，并限制在光标所在显示器。"""
+        was_visible = self.winfo_viewable()
+        if not was_visible:
+            self._previous_foreground = previous_foreground or self._get_foreground()
+            self._selected_key = None
+
         monitor = get_monitor_info(point=(x, y))
         scale = sync_window_scaling(self, monitor.scale)
         self.update_idletasks()
@@ -510,17 +693,116 @@ class TrayMenu(ctk.CTkToplevel):
         x, y = clamp_popup_position(x, y, width, height, monitor)
         logical_height = max(1, math.ceil(height / scale))
 
+        fade = self.__dict__.get('_fade')
+        if fade is not None:
+            if config.blur_enabled:
+                fade.start(
+                    MOTION_TRAY_FADE_START,
+                    MOTION_WINDOW_ALPHA,
+                    duration_ms=MOTION_TRAY_FADE_MS,
+                )
+            else:
+                fade.cancel(reset=1.0)
+
+        # 允许键盘输入后再显示，避免先以 NOACTIVATE 出现再切换样式
+        self._set_no_activate(False)
         self.geometry(format_geometry(MENU_WIDTH, logical_height, x, y))
         self.deiconify()
         self.lift()
         apply_window_rounding(self, context="托盘菜单")
+        self._force_foreground()
+        self.focus_force()
 
-        self._setup_no_activate()
+        self._menu_focused = True
+        if was_visible:
+            self._clamp_selection()
+        else:
+            self._select_first()
 
         self._start_menu_animation()
         self._start_mouse_poll()
 
-    def hide(self) -> None:
+    def hide(self, restore_focus: bool = True) -> None:
+        self._clear_selection()
+        focused = self.__dict__.get('_menu_focused', False)
+        self._menu_focused = False
+        fade = self.__dict__.get('_fade')
+        if fade is not None:
+            base = MOTION_WINDOW_ALPHA if config.blur_enabled else 1.0
+            fade.cancel(reset=base)
         self._stop_menu_animation()
         self._stop_mouse_poll()
         self.withdraw()
+        if focused:
+            self._set_no_activate(True)
+        if restore_focus and self.__dict__.get('_previous_foreground'):
+            self._restore_foreground()
+
+    def _get_foreground(self) -> int:
+        try:
+            return int(windll.user32.GetForegroundWindow())
+        except Exception:
+            return 0
+
+    def _set_foreground(self, hwnd: int) -> bool:
+        """把窗口设为系统前台。
+
+        托盘回调来自 explorer，不属于本进程的输入事件，直接调用
+        SetForegroundWindow 会被 Windows 前台锁拒绝；临时附加到当前前台
+        线程的输入队列可以稳定绕过限制，随后立即分离。
+        """
+        if not hwnd:
+            return False
+        user32 = windll.user32
+        kernel32 = windll.kernel32
+        try:
+            if user32.GetForegroundWindow() == hwnd:
+                return True
+            foreground = user32.GetForegroundWindow()
+            foreground_thread = (
+                user32.GetWindowThreadProcessId(foreground, None) if foreground else 0
+            )
+            current_thread = kernel32.GetCurrentThreadId()
+            attached = False
+            try:
+                if foreground_thread and foreground_thread != current_thread:
+                    attached = bool(
+                        user32.AttachThreadInput(current_thread, foreground_thread, True)
+                    )
+                return bool(user32.SetForegroundWindow(hwnd))
+            finally:
+                if attached:
+                    user32.AttachThreadInput(current_thread, foreground_thread, False)
+        except Exception:
+            logger.warning("设置前台窗口失败", exc_info=True)
+            return False
+
+    def _force_foreground(self) -> None:
+        try:
+            hwnd = windll.user32.GetParent(self.winfo_id())
+        except Exception:
+            logger.warning("读取托盘菜单窗口句柄失败", exc_info=True)
+            return
+        self._set_foreground(hwnd)
+
+    def _restore_foreground(self) -> None:
+        previous = self.__dict__.get('_previous_foreground', 0)
+        self._previous_foreground = 0
+        if not previous:
+            return
+        try:
+            if windll.user32.IsWindow(previous) and windll.user32.IsWindowVisible(previous):
+                self._set_foreground(previous)
+        except Exception:
+            logger.debug("恢复前台窗口失败", exc_info=True)
+
+    def destroy(self) -> None:
+        self._clear_selection()
+        fade = self.__dict__.get('_fade')
+        if fade is not None:
+            fade.cancel()
+        self._stop_menu_animation()
+        self._stop_mouse_poll()
+        config.remove_theme_change_callback(self._on_theme_change)
+        config.remove_blur_change_callback(self._on_blur_change)
+        super().destroy()

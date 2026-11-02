@@ -6,6 +6,7 @@ import tkinter as tk
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from ctypes import windll
 from pathlib import Path
 from threading import Thread
 from tkinter import messagebox
@@ -983,13 +984,17 @@ class LukerLauncher:
     def _on_show_menu(self, x: int, y: int) -> None:
         if self._exiting:
             return
-        # 托盘线程只传坐标，状态读取和菜单显示都回到主线程
+        # 托盘线程在右键当下记录前台窗口，主线程稍后可能已被任务栏抢走
+        try:
+            previous_foreground = int(windll.user32.GetForegroundWindow())
+        except Exception:
+            previous_foreground = 0
         self._post_ui(
-            lambda: self._show_tray_menu(x, y),
+            lambda: self._show_tray_menu(x, y, previous_foreground),
             UI_KEY_TRAY_MENU,
         )
 
-    def _show_tray_menu(self, x: int, y: int) -> None:
+    def _show_tray_menu(self, x: int, y: int, previous_foreground: int = 0) -> None:
         if not (self.tray_menu and self.log_window):
             return
 
@@ -1006,7 +1011,7 @@ class LukerLauncher:
             gcl_running,
             state,
         )
-        self.tray_menu.show_at(x, y)
+        self.tray_menu.show_at(x, y, previous_foreground)
 
     def _update_status(self) -> None:
         if not self.process_manager:
