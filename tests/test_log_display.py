@@ -29,10 +29,9 @@ class FakeLabel:
 
 
 class ConfigureLogTagsTests(unittest.TestCase):
-    def test_maps_every_tag_to_unified_colors(self):
+    def test_maps_every_tag_to_theme_colors(self):
         textbox = FakeTextbox()
         colors = {
-            'text': '#888888',
             'text_muted': '#111111',
             'info': '#222222',
             'success': '#333333',
@@ -48,13 +47,13 @@ class ConfigureLogTagsTests(unittest.TestCase):
             {tag: options['foreground'] for tag, options in textbox.tags.items()},
             {
                 'time': '#111111',
-                'info': '#888888',
-                'success': '#888888',
+                'info': '#222222',
+                'success': '#333333',
                 'error': '#444444',
-                'warn': '#888888',
-                'accent': '#888888',
-                'dim': '#888888',
-                'separator': '#111111',
+                'warn': '#555555',
+                'accent': '#666666',
+                'dim': '#777777',
+                'separator': '#666666',
             },
         )
         self.assertFalse(textbox.tags['separator']['elide'])

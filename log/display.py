@@ -14,12 +14,12 @@ from ui.theme import mix_color
 
 _TAG_COLOR_KEYS = {
     'time': 'text_muted',
-    'info': 'text',
-    'success': 'text',
+    'info': 'info',
+    'success': 'success',
     'error': 'error',
-    'warn': 'text',
-    'accent': 'text',
-    'dim': 'text',
+    'warn': 'warning',
+    'accent': 'accent',
+    'dim': 'text_dim',
 }
 
 
@@ -41,7 +41,7 @@ def configure_log_tags(
     """把日志级别映射到文本标签颜色，并为换行正文设置悬挂缩进。"""
     for tag, color_key in _TAG_COLOR_KEYS.items():
         textbox.tag_configure(tag, foreground=colors[color_key])
-    textbox.tag_configure('separator', foreground=colors['text_muted'], elide=False)
+    textbox.tag_configure('separator', foreground=colors['accent'], elide=False)
     indent = measure_log_indent(textbox) if body_indent is None else body_indent
     if indent > 0:
         textbox.tag_configure('body', lmargin1=0, lmargin2=indent)
