@@ -2,6 +2,7 @@
 
 import datetime
 import tkinter as tk
+import tkinter.font as tkfont
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 
@@ -13,20 +14,37 @@ from ui.theme import mix_color
 
 _TAG_COLOR_KEYS = {
     'time': 'text_muted',
-    'info': 'info',
-    'success': 'success',
+    'info': 'text',
+    'success': 'text',
     'error': 'error',
-    'warn': 'warning',
-    'accent': 'accent',
-    'dim': 'text_dim',
+    'warn': 'text',
+    'accent': 'text',
+    'dim': 'text',
 }
 
 
-def configure_log_tags(textbox: tk.Text, colors: Mapping[str, str]) -> None:
-    """把日志级别映射到文本标签颜色。"""
+def measure_log_indent(textbox: tk.Text) -> int:
+    """返回与 "[00:00:00] " 时间戳前缀等宽的像素缩进。"""
+    try:
+        font = tkfont.Font(root=textbox, font=textbox.cget("font"))
+        return font.measure("[00:00:00] ")
+    except (AttributeError, TypeError, ValueError, tk.TclError):
+        return 0
+
+
+def configure_log_tags(
+    textbox: tk.Text,
+    colors: Mapping[str, str],
+    *,
+    body_indent: int | None = None,
+) -> None:
+    """把日志级别映射到文本标签颜色，并为换行正文设置悬挂缩进。"""
     for tag, color_key in _TAG_COLOR_KEYS.items():
         textbox.tag_configure(tag, foreground=colors[color_key])
-    textbox.tag_configure('separator', foreground=colors['accent'], elide=False)
+    textbox.tag_configure('separator', foreground=colors['text_muted'], elide=False)
+    indent = measure_log_indent(textbox) if body_indent is None else body_indent
+    if indent > 0:
+        textbox.tag_configure('body', lmargin1=0, lmargin2=indent)
     if 'card' in colors and 'text' in colors:
         textbox.tag_configure(
             'error_reveal',
@@ -132,8 +150,9 @@ class LogDisplay:
 
         self.last_timestamp = timestamp
 
-        tb.insert("end", f"[{ts}] ", "time")
-        tb.insert("end", f"{text}\n", tag)
+        # Tk 的 insert 只接受一个 tag 列表，多个标签必须打包成 tuple
+        tb.insert("end", f"[{ts}] ", ("time", "body"))
+        tb.insert("end", f"{text}\n", (tag, "body"))
 
         lines_after = int(tb.index("end-1c").split(".")[0])
         self.entry_lines.append(lines_after - lines_before)

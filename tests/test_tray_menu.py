@@ -44,7 +44,7 @@ class BlurChangeTests(unittest.TestCase):
             window,
             '#112233',
             enabled=False,
-            window_alpha=0.95,
+            window_alpha=0.92,
             tint_alpha=0xEE,
             context='托盘菜单',
         )
@@ -122,6 +122,7 @@ class MenuLogoStateTests(unittest.TestCase):
         button = FakeButton()
         menu.menu_items = {'luker_toggle': {'btn': button}}
         menu.COLORS = {
+            'text': '#666666',
             'text_dim': '#111111',
             'error': '#222222',
             'success': '#333333',
@@ -138,7 +139,7 @@ class MenuLogoStateTests(unittest.TestCase):
             menu.set_luker_state(LukerState.READY)
 
         self.assertEqual(button.options['text'], '停止 Luker')
-        self.assertEqual(button.options['image'], 'stop:#222222')
+        self.assertEqual(button.options['image'], 'stop:#666666')
         self.assertEqual(button.options['text_color'], '#222222')
         self.assertTrue(menu._is_running)
 
@@ -147,6 +148,7 @@ class MenuLogoStateTests(unittest.TestCase):
         button = FakeButton()
         menu.menu_items = {'luker_toggle': {'btn': button}}
         menu.COLORS = {
+            'text': '#666666',
             'text_dim': '#111111',
             'error': '#222222',
             'success': '#333333',
@@ -163,7 +165,7 @@ class MenuLogoStateTests(unittest.TestCase):
             menu.set_luker_state(LukerState.STOPPED)
 
         self.assertEqual(button.options['text'], '启动 Luker')
-        self.assertEqual(button.options['image'], 'play:#333333')
+        self.assertEqual(button.options['image'], 'play:#666666')
         self.assertEqual(button.options['text_color'], '#333333')
         self.assertFalse(menu._is_running)
 
@@ -177,6 +179,7 @@ class MenuLogoStateTests(unittest.TestCase):
             'restart': {'btn': restart},
         }
         menu.COLORS = {
+            'text': '#666666',
             'text_dim': '#111111',
             'error': '#222222',
             'success': '#333333',
@@ -206,6 +209,7 @@ class MenuLogoStateTests(unittest.TestCase):
             'restart': {'btn': restart},
         }
         menu.COLORS = {
+            'text': '#666666',
             'text_dim': '#111111',
             'error': '#222222',
             'success': '#333333',
@@ -221,7 +225,7 @@ class MenuLogoStateTests(unittest.TestCase):
             menu._apply_luker_toggle()
 
         self.assertEqual(restart.options['state'], 'normal')
-        self.assertEqual(restart.options['image'], 'refresh:#444444')
+        self.assertEqual(restart.options['image'], 'refresh:#666666')
         self.assertEqual(restart.options['text_color'], '#444444')
 
 

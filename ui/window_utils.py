@@ -228,32 +228,14 @@ def bind_window_drag(window: tk.Tk | tk.Toplevel, *widgets: tk.Misc) -> None:
 
 
 def get_ui_font() -> str:
-    """返回可用界面字体，优先 Source Han / Noto。"""
-    source_han_fonts = [
-        'Source Han Sans SC',
-        'Source Han Sans CN',
-        'Noto Sans SC',
-        'Noto Sans CJK SC',
-        'Source Han Sans',
+    """返回统一界面字体，优先微软雅黑 UI。"""
+    ui_fonts = [
+        'Microsoft YaHei UI',
+        'Microsoft YaHei',
+        'Segoe UI',
     ]
     available = tkfont.families()
-    for font in source_han_fonts:
+    for font in ui_fonts:
         if font in available:
             return font
     return 'Microsoft YaHei'
-
-
-def get_mono_font() -> str:
-    """返回可用等宽字体，优先 Source Han Mono / Consolas。"""
-    mono_fonts = [
-        'Source Han Mono SC',
-        'Noto Sans Mono CJK SC',
-        'Sarasa Mono SC',
-        'Consolas',
-        'Cascadia Code',
-    ]
-    available = tkfont.families()
-    for font in mono_fonts:
-        if font in available:
-            return font
-    return 'Consolas'

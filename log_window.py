@@ -73,7 +73,6 @@ from ui.tokens import (
 from ui.window_utils import (
     apply_window_rounding,
     bind_window_drag,
-    get_mono_font,
     get_ui_font,
     sync_window_blur,
 )
@@ -182,7 +181,6 @@ class LogWindow(ctk.CTk):
         config.add_theme_change_callback(self._on_theme_change)
         config.add_blur_change_callback(self._on_blur_change)
         self.UI_FONT = get_ui_font()
-        self.MONO_FONT = get_mono_font()
 
     def _init_window(self) -> None:
         self.withdraw()
@@ -200,7 +198,7 @@ class LogWindow(ctk.CTk):
         self._set_window_icon()
 
         self.configure(fg_color=self.COLORS['bg'])
-        self.attributes('-alpha', 0.95 if config.blur_enabled else 1.0)
+        self.attributes('-alpha', MOTION_WINDOW_ALPHA if config.blur_enabled else 1.0)
 
         self.after(DELAY_BLUR_LOG_MS, self._ensure_blur)
 
@@ -691,7 +689,7 @@ class LogWindow(ctk.CTk):
             'outline',
             self.COLORS,
             text="自动滚动",
-            image=toolbar_icon('scroll', self.COLORS['accent']),
+            image=toolbar_icon('scroll', self.COLORS['text']),
             compound='left',
             font_family=self.UI_FONT,
             font_size=FONT_HEADING,
@@ -788,7 +786,7 @@ class LogWindow(ctk.CTk):
             self._log_card,
             fg_color="transparent",
             text_color=self.COLORS['text'],
-            font=ctk.CTkFont(family=self.MONO_FONT, size=FONT_BODY),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_BODY),
             corner_radius=RADIUS_CARD,
             scrollbar_button_color=self.COLORS['border'],
             scrollbar_button_hover_color=self.COLORS['accent'],
@@ -982,14 +980,12 @@ class LogWindow(ctk.CTk):
 
     def _apply_auto_scroll_ui(self) -> None:
         """按自动滚动状态同步文字、图标、描边和悬停色。"""
-        key = 'accent' if self._auto_scroll else 'warning'
-        color = self.COLORS[key]
         self.scroll_btn.configure(
             **auto_scroll_button_colors(self.COLORS, self._auto_scroll),
             text="自动滚动" if self._auto_scroll else "已暂停",
             image=toolbar_icon(
                 'scroll' if self._auto_scroll else 'pause',
-                color,
+                self.COLORS['text'],
                 size=16,
             ),
         )

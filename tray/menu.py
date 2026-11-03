@@ -483,7 +483,8 @@ class TrayMenu(ctk.CTkToplevel):
         if visible:
             frame.pack(fill="x", pady=GAP_MENU_ITEM)
 
-        icon_color = color if color is not None else self.COLORS['text']
+        icon_color = self.COLORS['text']
+        text_color = color if color is not None else self.COLORS['text']
         btn = make_button(
             frame,
             'menu',
@@ -493,7 +494,7 @@ class TrayMenu(ctk.CTkToplevel):
             compound='left',
             font_family=self.UI_FONT,
             anchor="w",
-            text_color=icon_color,
+            text_color=text_color,
             command=command,
         )
         btn.pack(fill="x", padx=GAP_INLINE_SM)
@@ -548,7 +549,7 @@ class TrayMenu(ctk.CTkToplevel):
         item['btn'].configure(
             text=text,
             text_color=color,
-            image=menu_icon(icon, color, size=MENU_ICON_SIZE),
+            image=menu_icon(icon, self.COLORS['text'], size=MENU_ICON_SIZE),
         )
 
     def _apply_luker_toggle(self) -> None:
@@ -565,7 +566,7 @@ class TrayMenu(ctk.CTkToplevel):
                 restart['btn'].configure(
                     state="normal",
                     text_color=self.COLORS['accent'],
-                    image=menu_icon('refresh', self.COLORS['accent'], size=MENU_ICON_SIZE),
+                    image=menu_icon('refresh', self.COLORS['text'], size=MENU_ICON_SIZE),
                 )
             else:
                 restart['btn'].configure(

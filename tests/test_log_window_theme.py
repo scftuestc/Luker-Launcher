@@ -157,7 +157,7 @@ class ThemeBindingTests(unittest.TestCase):
         self.assertEqual(calls, ['blur', 'icons', 'status:ready'])
         self.assertEqual(search.refresh_count, 1)
         self.assertEqual(textbox.tags['error']['foreground'], COLORS['error'])
-        self.assertEqual(textbox.tags['separator']['foreground'], COLORS['accent'])
+        self.assertEqual(textbox.tags['separator']['foreground'], COLORS['text_muted'])
 
     def test_apply_theme_reapplies_button_roles(self):
         window, _, _, _, _ = self.make_window()

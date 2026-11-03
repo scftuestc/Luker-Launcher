@@ -293,7 +293,7 @@ class SearchBar:
 
         self.icon = ctk.CTkLabel(
             inner,
-            image=toolbar_icon('search', colors['text_muted']),
+            image=toolbar_icon('search', colors['text']),
             text="",
             width=ICON_BOX,
             height=ICON_BOX,
@@ -470,16 +470,14 @@ class SearchBar:
         self._next_btn.configure(state=state)
 
     def _apply_focus_style(self, *, update_icon: bool = True) -> None:
-        """聚焦时用强调色描边和图标，失焦恢复中性色。"""
+        """聚焦时用强调色描边，图标保持正文色。"""
         colors = self._get_colors()
         if self._focused:
             self.frame.configure(border_color=colors['accent'])
-            if update_icon:
-                self.icon.configure(image=toolbar_icon('search', colors['accent']))
         else:
             self.frame.configure(border_color=colors['border'])
-            if update_icon:
-                self.icon.configure(image=toolbar_icon('search', colors['text_muted']))
+        if update_icon:
+            self.icon.configure(image=toolbar_icon('search', colors['text']))
 
     def _on_entry_next(self, _event: tk.Event | None = None) -> str:
         self.next()

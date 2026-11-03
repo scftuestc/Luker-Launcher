@@ -29,10 +29,10 @@ class AutoScrollTests(unittest.TestCase):
         window._clear_btn = FakeWidget()
         return window
 
-    def test_enabled_uses_scroll_icon_and_accent_colors(self):
+    def test_enabled_uses_scroll_icon_and_text_color(self):
         window = self.make_window(True)
         expected = auto_scroll_button_colors(window.COLORS, True)
-        expected.update(text='自动滚动', image='scroll:#444444:16')
+        expected.update(text='自动滚动', image='scroll:#111111:16')
 
         with patch(
             'log_window.toolbar_icon',
@@ -42,10 +42,10 @@ class AutoScrollTests(unittest.TestCase):
 
         self.assertEqual(window.scroll_btn.options, expected)
 
-    def test_paused_uses_pause_icon_and_warning_colors(self):
+    def test_paused_uses_pause_icon_and_text_color(self):
         window = self.make_window(False)
         expected = auto_scroll_button_colors(window.COLORS, False)
-        expected.update(text='已暂停', image='pause:#222222:16')
+        expected.update(text='已暂停', image='pause:#111111:16')
 
         with patch(
             'log_window.toolbar_icon',
@@ -89,7 +89,7 @@ class AutoScrollTests(unittest.TestCase):
             window._refresh_toolbar_icons()
 
         self.assertEqual(window._clear_btn.options['image'], 'trash:#111111:16')
-        self.assertEqual(window.scroll_btn.options['image'], 'scroll:#444444:16')
+        self.assertEqual(window.scroll_btn.options['image'], 'scroll:#111111:16')
 
     def test_refresh_keeps_paused_warning_state(self):
         window = self.make_window(False)
@@ -102,7 +102,7 @@ class AutoScrollTests(unittest.TestCase):
 
         self.assertEqual(window.scroll_btn.options['text'], '已暂停')
         self.assertEqual(window.scroll_btn.options['text_color'], '#222222')
-        self.assertEqual(window.scroll_btn.options['image'], 'pause:#222222:16')
+        self.assertEqual(window.scroll_btn.options['image'], 'pause:#111111:16')
 
 
 if __name__ == '__main__':

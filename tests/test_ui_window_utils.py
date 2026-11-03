@@ -298,5 +298,27 @@ class WindowDragTests(unittest.TestCase):
         self.assertEqual(window.geometry_value, "+130+240")
 
 
+class FontTests(unittest.TestCase):
+    def test_prefers_microsoft_yahei_ui(self):
+        with patch.object(
+            window_utils.tkfont,
+            "families",
+            return_value=["Microsoft YaHei UI", "Microsoft YaHei"],
+        ):
+            self.assertEqual(window_utils.get_ui_font(), "Microsoft YaHei UI")
+
+    def test_falls_back_when_yahei_ui_is_missing(self):
+        with patch.object(
+            window_utils.tkfont,
+            "families",
+            return_value=["Microsoft YaHei"],
+        ):
+            self.assertEqual(window_utils.get_ui_font(), "Microsoft YaHei")
+
+    def test_falls_back_to_segoe_ui(self):
+        with patch.object(window_utils.tkfont, "families", return_value=["Segoe UI"]):
+            self.assertEqual(window_utils.get_ui_font(), "Segoe UI")
+
+
 if __name__ == "__main__":
     unittest.main()
