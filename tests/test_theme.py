@@ -19,6 +19,7 @@ from ui.theme import (
     logo_bar_glow_color,
     mix_color,
     shade_color,
+    theme_supports_blur,
     theme_swatch_colors,
 )
 
@@ -69,6 +70,14 @@ class ThemeTests(unittest.TestCase):
         colors = get_theme_colors(DEFAULT_THEME)
         colors["bg"] = "#000000"
         self.assertNotEqual(PRESET_THEMES[DEFAULT_THEME]["bg"], "#000000")
+
+    def test_mist_gray_is_the_only_theme_without_blur(self):
+        for name in PRESET_THEMES:
+            with self.subTest(theme=name):
+                self.assertEqual(theme_supports_blur(name), name != "mist_gray")
+
+    def test_unknown_theme_uses_default_blur_support(self):
+        self.assertEqual(theme_supports_blur("not-a-theme"), theme_supports_blur(DEFAULT_THEME))
 
 
 class LogoColorTests(unittest.TestCase):

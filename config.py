@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ui.theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
+from ui.theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES, theme_supports_blur
 from ui.theme import get_theme_colors as _get_theme_colors
 
 logger = logging.getLogger(__name__)
@@ -201,9 +201,14 @@ class Config:
         self._save_config()
 
     @property
+    def blur_available(self) -> bool:
+        """当前主题是否提供毛玻璃效果。"""
+        return theme_supports_blur(self.theme_name)
+
+    @property
     def blur_enabled(self) -> bool:
-        """是否启用窗口毛玻璃与半透明效果。"""
-        return bool(self._config.get('blur_enabled', True))
+        """是否启用窗口毛玻璃与半透明效果；雾灰主题固定关闭。"""
+        return self.blur_available and bool(self._config.get('blur_enabled', True))
 
     @blur_enabled.setter
     def blur_enabled(self, value: bool) -> None:

@@ -133,6 +133,16 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
 
 DEFAULT_THEME = 'summer'
 
+# 雾灰是唯一的浅色主题，毛玻璃会让文字发灰，不提供该效果
+BLUR_DISABLED_THEMES = frozenset({'mist_gray'})
+
+
+def theme_supports_blur(name: str) -> bool:
+    """判断主题是否提供毛玻璃；未知主题按默认主题处理。"""
+    effective = name if name in PRESET_THEMES else DEFAULT_THEME
+    return effective not in BLUR_DISABLED_THEMES
+
+
 # 主题卡片四个色块取用的调色板角色；'deep' 表示 accent 的深色版本。
 # 单独成表，避免新增主题时还要改 theme_swatch_colors 的分支。
 SwatchKey = Literal['accent', 'text_dim', 'success', 'info', 'warning', 'error', 'deep']

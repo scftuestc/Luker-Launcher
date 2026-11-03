@@ -65,14 +65,11 @@ from ui.tokens import (
     WINDOW_SETTINGS_HEIGHT,
     WINDOW_SETTINGS_MARGIN,
     WINDOW_SETTINGS_WIDTH,
-    WRAP_SETTINGS_TOOLTIP,
     WRAP_VERSION_SUMMARY,
 )
-from ui.tooltip import Tooltip
 from ui.window_utils import (
     apply_window_rounding,
     bind_window_drag,
-    get_mono_font,
     get_ui_font,
     sync_window_blur,
 )
@@ -81,7 +78,6 @@ SETTINGS_WIDTH = WINDOW_SETTINGS_WIDTH
 SETTINGS_HEIGHT = WINDOW_SETTINGS_HEIGHT
 SETTINGS_MARGIN = WINDOW_SETTINGS_MARGIN
 
-BLUR_HINT_TEXT = "半透明背景与系统模糊；关闭后窗口完全不透明。"
 PWA_DESCRIPTION = (
     "用 Edge 的 PWA 独立窗口打开 Luker，隐藏地址栏和标签页。\n"
     "未安装 PWA 时回退到 Edge 应用窗口；标题栏颜色跟随 Luker 主题色。"
@@ -196,7 +192,6 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self.COLORS = config.get_theme_colors()
         self.UI_FONT = get_ui_font()
-        self.MONO_FONT = get_mono_font()
         self._close_behavior_var = tk.StringVar(master=self, value=config.close_behavior)
         self._update_channel_var = tk.StringVar(master=self, value="release")
 
@@ -299,9 +294,6 @@ class SettingsWindow(ctk.CTkToplevel):
             fade = self.__dict__.get('_fade')
             if fade is not None:
                 fade.cancel()
-            tooltip = getattr(self, '_tooltip', None)
-            if tooltip is not None:
-                tooltip.destroy()
             config.remove_theme_change_callback(self._on_theme_change)
             config.remove_blur_change_callback(self._on_blur_change)
             config.remove_close_behavior_change_callback(self._on_close_behavior_config_change)
@@ -412,10 +404,13 @@ class SettingsWindow(ctk.CTkToplevel):
     def _on_blur_change(self, enabled: bool) -> None:
         if self._destroyed:
             return
-        if enabled:
-            self.blur_switch.select()
-        else:
-            self.blur_switch.deselect()
+        switch = self.__dict__.get('blur_switch')
+        if switch is not None:
+            with contextlib.suppress(tk.TclError):
+                if enabled:
+                    switch.select()
+                else:
+                    switch.deselect()
         self._setup_blur()
 
     def _on_theme_change(self, new_colors: dict[str, str]) -> None:
@@ -430,8 +425,6 @@ class SettingsWindow(ctk.CTkToplevel):
         self._rebuild_job = self.after(0, self._rebuild_ui)
 
     def _build_ui(self) -> None:
-        self._tooltip = Tooltip(self, self.COLORS, self.UI_FONT, wraplength=WRAP_SETTINGS_TOOLTIP)
-
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=PAD_WINDOW, pady=PAD_WINDOW)
 
@@ -553,7 +546,7 @@ class SettingsWindow(ctk.CTkToplevel):
         value_label = ctk.CTkLabel(
             path_display,
             text=current_value,
-            font=ctk.CTkFont(family=self.MONO_FONT, size=FONT_SMALL),
+            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
             text_color=self.COLORS['text_muted'],
             anchor="w",
         )
@@ -587,24 +580,24 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=self.COLORS['text'],
         ).pack(side="left")
 
-        self.blur_switch = self._make_switch(
-            header,
-            text="",
-            command=self._on_blur_toggle,
-            selected=config.blur_enabled,
-            font_size=FONT_SMALL,
-        )
-        self.blur_switch.pack(side="right")
-        blur_label = ctk.CTkLabel(
-            header,
-            text="毛玻璃",
-            font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
-            text_color=self.COLORS['text_dim'],
-        )
-        blur_label.pack(side="right", padx=(0, GAP_INLINE))
-        blur_label.bind('<Button-1>', lambda _event: self.blur_switch.toggle())
-        self._tooltip.attach(blur_label, BLUR_HINT_TEXT)
-        self._tooltip.attach(self.blur_switch, BLUR_HINT_TEXT)
+        self.blur_switch = None
+        if config.blur_available:
+            self.blur_switch = self._make_switch(
+                header,
+                text="",
+                command=self._on_blur_toggle,
+                selected=config.blur_enabled,
+                font_size=FONT_SMALL,
+            )
+            self.blur_switch.pack(side="right")
+            blur_label = ctk.CTkLabel(
+                header,
+                text="毛玻璃",
+                font=ctk.CTkFont(family=self.UI_FONT, size=FONT_SMALL),
+                text_color=self.COLORS['text_dim'],
+            )
+            blur_label.pack(side="right", padx=(0, GAP_INLINE))
+            blur_label.bind('<Button-1>', lambda _event: self.blur_switch.toggle())
 
         grid = ctk.CTkFrame(section, fg_color="transparent")
         grid.pack(fill="x", padx=PAD_CARD, pady=(0, PAD_CARD))
@@ -770,6 +763,8 @@ class SettingsWindow(ctk.CTkToplevel):
             config.theme_name = theme_id
 
     def _on_blur_toggle(self) -> None:
+        if self.blur_switch is None:
+            return
         config.blur_enabled = self.blur_switch.get() == 1
         self.update()
 
@@ -868,7 +863,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             inner,
-            text="安装路径",
+            text="启动路径",
             font=ctk.CTkFont(family=self.UI_FONT, size=FONT_BODY, weight="bold"),
             text_color=self.COLORS['text_dim'],
         ).pack(anchor="w", pady=(0, GAP_GRID))
@@ -1120,7 +1115,7 @@ class SettingsWindow(ctk.CTkToplevel):
             return self._update_progress.message
         check = self._version_check
         if check is None:
-            return "点击“检查更新”获取最新发行版和最新提交。"
+            return ""
         if check.error and target is None:
             return check.error
         if check.local.error:

@@ -307,6 +307,17 @@ class BlurToggleTests(unittest.TestCase):
         self.assertTrue(window.blur_switch.selected)
         self.assertEqual(calls, [True])
 
+    def test_blur_change_without_switch_still_applies(self):
+        window = object.__new__(SettingsWindow)
+        window._destroyed = False
+        window.blur_switch = None
+        calls = []
+        window._setup_blur = lambda: calls.append(True)
+
+        window._on_blur_change(True)
+
+        self.assertEqual(calls, [True])
+
     def test_blur_change_ignored_after_destroy(self):
         window = object.__new__(SettingsWindow)
         window._destroyed = True
@@ -737,17 +748,20 @@ class UpdateUiTests(unittest.TestCase):
         self.assertNotIn("签名", release_summary)
         self.assertNotIn("签名", commit_summary)
 
-    def test_blur_hint_is_short_single_sentence(self):
-        text = settings_window.BLUR_HINT_TEXT
-        self.assertNotIn("\n", text)
-        self.assertEqual(text.count("。"), 1)
-        self.assertLessEqual(len(text), 30)
-
     def test_pwa_description_is_useful(self):
         self.assertNotIn("打开浏览器时将使用 PWA 模式", settings_window.PWA_DESCRIPTION)
         self.assertIn("PWA", settings_window.PWA_DESCRIPTION)
         self.assertIn("Edge", settings_window.PWA_DESCRIPTION)
         self.assertIn("\n", settings_window.PWA_DESCRIPTION)
+
+    def test_status_text_is_empty_before_check(self):
+        window = object.__new__(SettingsWindow)
+        window._version_checking = False
+        window._update_progress = None
+        window._version_check = None
+        window._on_check_luker_update = lambda: None
+
+        self.assertEqual(window._status_text(None), "")
 
     def test_status_text_and_color_use_progress(self):
         window = object.__new__(SettingsWindow)

@@ -173,6 +173,18 @@ class ConfigTests(unittest.TestCase):
         reloaded = Config(self.config_path)
         self.assertFalse(reloaded.blur_enabled)
 
+    def test_mist_gray_disables_blur_but_keeps_saved_preference(self):
+        self._write({"theme": "mist_gray", "blur_enabled": True})
+        config = Config(self.config_path)
+
+        self.assertFalse(config.blur_available)
+        self.assertFalse(config.blur_enabled)
+
+        config.theme_name = "summer"
+
+        self.assertTrue(config.blur_available)
+        self.assertTrue(config.blur_enabled)
+
     def test_save_is_atomic_and_roundtrips(self):
         config = Config(self.config_path)
         config.theme_name = "ocean_cyan"
