@@ -65,14 +65,14 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 右键托盘 → **设置**：
 
 - 🎨 主题切换
-- 🪟 毛玻璃效果开关
+- 🪟 毛玻璃效果开关（雾灰主题不提供）
 - 🌐 沉浸应用模式
 - 🚪 关闭日志窗口时的行为
-- 📁 Luker 管理（安装路径与版本）
+- 📁 Luker 管理（启动路径与版本）
 
 ### Luker 版本管理
 
-设置 → **Luker 管理** 里除了安装路径，还可以检查并切换 Luker 版本：
+设置 → **Luker 管理** 里除了启动路径，还可以检查并切换 Luker 版本：
 
 - **最新发行版**：GitHub 上最新的正式 Release，显示 Tag、发布日期和对应提交的短哈希。
 - **最新提交**：Luker 默认分支的最新提交，显示提交日期和短哈希。
@@ -91,9 +91,9 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 
 | 键 | 说明 |
 | :--- | :--- |
-| `luker_path` | Luker 安装根目录 |
+| `luker_path` | Luker 启动根目录（包含 `Start.bat` 和 `server.js`） |
 | `use_pwa_mode` | 是否使用沉浸应用模式（PWA） |
-| `blur_enabled` | 是否启用毛玻璃效果 |
+| `blur_enabled` | 是否启用毛玻璃效果（雾灰主题固定关闭） |
 | `close_behavior` | 关闭日志窗口时的行为：`ask` 每次询问 / `tray` 隐藏到托盘 / `exit` 退出程序 |
 | `theme` | 主题 ID |
 | `pwa_app_id` | Edge PWA App ID（可选） |
