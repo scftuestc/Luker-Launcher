@@ -1,7 +1,9 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from config import DEFAULT_CLOSE_BEHAVIOR, DEFAULT_PORT, Config
 from ui.theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
@@ -17,6 +19,12 @@ class ConfigTests(unittest.TestCase):
 
     def _write(self, data) -> None:
         self.config_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    def _make_luker_dir(self, port_text: str) -> Path:
+        luker_dir = Path(self.temp_dir.name) / "Luker"
+        luker_dir.mkdir(exist_ok=True)
+        (luker_dir / "config.yaml").write_text(port_text, encoding="utf-8")
+        return luker_dir
 
     def test_missing_file_uses_defaults(self):
         config = Config(self.config_path)
@@ -296,6 +304,74 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(config.get_server_port(), DEFAULT_PORT)
 
+    def test_luker_config_yaml_with_bom_is_read(self):
+        luker_dir = Path(self.temp_dir.name) / "Luker"
+        luker_dir.mkdir()
+        (luker_dir / "config.yaml").write_bytes(b"\xef\xbb\xbfport: 8125\n")
+        config = Config(self.config_path)
+        config.luker_path = str(luker_dir)
+
+        self.assertEqual(config.get_server_port(), 8125)
+
+    def test_oversized_port_number_falls_back_without_raising(self):
+        luker_dir = self._make_luker_dir("port: " + "9" * 5000 + "\n")
+        config = Config(self.config_path)
+        config.luker_path = str(luker_dir)
+
+        self.assertEqual(config.get_server_port(), DEFAULT_PORT)
+
+    def test_server_port_is_cached_until_file_changes(self):
+        luker_dir = self._make_luker_dir("port: 8123\n")
+        config_yaml = luker_dir / "config.yaml"
+        config = Config(self.config_path)
+        config.luker_path = str(luker_dir)
+        original = Path.read_text
+        reads: list[Path] = []
+
+        def counting_read(path_obj, *args, **kwargs):
+            reads.append(path_obj)
+            return original(path_obj, *args, **kwargs)
+
+        with patch.object(Path, "read_text", new=counting_read):
+            self.assertEqual(config.get_server_port(), 8123)
+            self.assertEqual(config.get_server_port(), 8123)
+
+        self.assertEqual(reads, [config_yaml])
+
+        config_yaml.write_text("port: 8124\n", encoding="utf-8")
+        stat = config_yaml.stat()
+        os.utime(config_yaml, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+
+        with patch.object(Path, "read_text", new=counting_read):
+            self.assertEqual(config.get_server_port(), 8124)
+
+        self.assertEqual(len(reads), 2)
+
+    def test_missing_luker_config_yaml_warns_once(self):
+        luker_dir = Path(self.temp_dir.name) / "Luker"
+        luker_dir.mkdir()
+        config = Config(self.config_path)
+        config.luker_path = str(luker_dir)
+
+        with self.assertLogs("config", level="WARNING") as logs:
+            self.assertEqual(config.get_server_port(), DEFAULT_PORT)
+            self.assertEqual(config.get_server_port(), DEFAULT_PORT)
+
+        self.assertEqual(len(logs.output), 1)
+
+    def test_port_recovers_after_luker_config_appears(self):
+        luker_dir = Path(self.temp_dir.name) / "Luker"
+        luker_dir.mkdir()
+        config = Config(self.config_path)
+        config.luker_path = str(luker_dir)
+
+        with self.assertLogs("config", level="WARNING"):
+            self.assertEqual(config.get_server_port(), DEFAULT_PORT)
+
+        (luker_dir / "config.yaml").write_text("port: 8123\n", encoding="utf-8")
+
+        self.assertEqual(config.get_server_port(), 8123)
+
     def test_null_byte_luker_path_falls_back(self):
         self._write({"luker_path": "C:/bad\u0000x"})
         config = Config(self.config_path)
@@ -321,6 +397,16 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(config.theme_name, "ocean_cyan")
         self.assertIn("保存配置失败", logs.output[0])
+
+    def test_unknown_keys_are_dropped_when_saving(self):
+        self._write({"luker_path": "D:/Luker", "future_key": {"nested": True}})
+        config = Config(self.config_path)
+
+        config.use_pwa_mode = True
+
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertNotIn("future_key", saved)
+        self.assertEqual(saved["luker_path"], "D:/Luker")
 
 
 if __name__ == "__main__":

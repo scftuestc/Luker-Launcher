@@ -50,6 +50,15 @@ def _is_regular_file(path: Path) -> bool:
         return False
 
 
+def _file_signature(path: Path) -> tuple[int, int] | None:
+    """返回文件的 (mtime_ns, size)；不存在或不可访问时返回 None。"""
+    try:
+        stat = path.stat()
+    except (OSError, ValueError):
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
 class Config:
     """launcher_config.json 的读写与主题/毛玻璃/关闭行为变更通知。"""
 
@@ -61,6 +70,11 @@ class Config:
         )
         # import 阶段日志系统可能还没初始化，先缓冲错误，等 main 初始化后再上报
         self._load_error: str | None = None
+        # 端口按 config.yaml 的路径与 stat 签名缓存，避免就绪探测每秒读盘
+        self._port_cache_path: str | None = None
+        self._port_cache_signature: tuple[int, int] | None = None
+        self._port_cache_value: int = DEFAULT_PORT
+        self._port_warning_key: tuple[str, type[BaseException]] | None = None
         self._config: dict[str, Any] = self._load_config()
         self._theme_change_callbacks: list[Callable[[dict[str, str]], None]] = []
         self._blur_change_callbacks: list[Callable[[bool], None]] = []
@@ -293,25 +307,56 @@ class Config:
         self._save_config()
 
     def get_server_port(self) -> int:
-        """从 Luker 的 config.yaml 读取服务端口，读取失败时返回默认端口"""
+        """从 Luker 的 config.yaml 读取服务端口，读取失败时返回默认端口。
+
+        就绪探测每秒调用一次，文件未变化时直接返回缓存；
+        同一路径和错误类型只告警一次，避免刷屏。
+        """
         if not self.luker_path:
             return DEFAULT_PORT
 
         config_yaml = Path(self.luker_path) / "config.yaml"
+        cache_path = os.path.abspath(config_yaml)
+        signature = _file_signature(config_yaml)
+
+        if self._port_cache_path == cache_path and self._port_cache_signature == signature:
+            return self._port_cache_value
+
         try:
-            text = config_yaml.read_text(encoding='utf-8')
+            # utf-8-sig 兼容带 BOM 的配置文件
+            text = config_yaml.read_text(encoding='utf-8-sig')
         except (OSError, UnicodeError, ValueError) as e:
-            logger.warning("读取 Luker config.yaml 失败，使用默认端口: %s", e)
+            self._port_cache_path = cache_path
+            self._port_cache_signature = signature
+            self._port_cache_value = DEFAULT_PORT
+            warning_key = (cache_path, type(e))
+            if self._port_warning_key != warning_key:
+                self._port_warning_key = warning_key
+                logger.warning("读取 Luker config.yaml 失败，使用默认端口: %s", e)
             return DEFAULT_PORT
+
+        # 文件恢复可读后，下一次失败应重新告警
+        self._port_warning_key = None
+        port = DEFAULT_PORT
 
         # 只匹配顶层的 port 配置（行首无缩进），
         # 忽略 browserLaunch.port 等缩进的嵌套配置项
         match = re.search(r'^port:\s*["\']?(\d+)["\']?\s*(?:#.*)?$', text, re.MULTILINE)
         if match:
-            port = int(match.group(1))
-            if 1 <= port <= 65535:
-                return port
-        return DEFAULT_PORT
+            digits = match.group(1)
+            # 端口最多 5 位；超长数字不做 int 转换，避免整数转换限制抛异常
+            if len(digits) <= 5:
+                try:
+                    value = int(digits)
+                except ValueError:
+                    value = DEFAULT_PORT
+                if 1 <= value <= 65535:
+                    port = value
+
+        self._port_cache_path = cache_path
+        self._port_cache_signature = signature
+        self._port_cache_value = port
+        return port
 
     def get_server_url(self) -> str:
         """获取 Luker 的本地访问地址"""
