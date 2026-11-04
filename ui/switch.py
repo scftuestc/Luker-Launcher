@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 import customtkinter as ctk
 
+from ui.ctk_adapter import CtkSwitchAdapter
 from ui.theme import mix_color
 from ui.tokens import (
     MOTION_SWITCH_INTERVAL_MS as SWITCH_ANIMATION_INTERVAL_MS,
@@ -94,6 +95,7 @@ class AnimatedSwitch(ctk.CTkSwitch):
         options.update(kwargs)
         super().__init__(parent, **options)
 
+        self._adapter = CtkSwitchAdapter(self)
         self._colors = colors
         self._slider_value = 1.0 if selected else 0.0
         self._animation_target = self._slider_value
@@ -122,6 +124,10 @@ class AnimatedSwitch(ctk.CTkSwitch):
 
     def _animate_to(self, target: float) -> None:
         self._animation_target = target
+        if not self._adapter.supported:
+            # 缺少 CTk 私有绘制接口时直接切到目标状态，不播放半程动画
+            self._slider_value = target
+            return
         if self._destroyed or self._animation_job is not None:
             return
         if self._slider_value == target:
@@ -166,22 +172,11 @@ class AnimatedSwitch(ctk.CTkSwitch):
         thumb = switch_thumb_color(self._colors, self._slider_value)
         if self._hovering:
             thumb = switch_thumb_hover_color(self._colors, self._slider_value)
-        self._canvas.itemconfig("slider_parts", fill=thumb, outline=thumb)
-        self._draw_engine.draw_rounded_slider_with_border_and_button(
-            self._apply_widget_scaling(self._switch_width),
-            self._apply_widget_scaling(self._switch_height),
-            self._apply_widget_scaling(self._corner_radius),
-            self._apply_widget_scaling(self._border_width),
-            self._apply_widget_scaling(self._button_length),
-            self._apply_widget_scaling(self._corner_radius),
-            self._slider_value,
-            "w",
-        )
+        self._adapter.draw_slider(self._slider_value, thumb)
 
     def _apply_track_colors(self) -> None:
         off, on = switch_track_colors(self._colors, self._hovering)
-        self._canvas.itemconfig("inner_parts", fill=off, outline=off)
-        self._canvas.itemconfig("progress_parts", fill=on, outline=on)
+        self._adapter.set_track_colors(off, on)
         self._redraw_slider()
 
     def _on_enter(self, event: object = 0) -> None:

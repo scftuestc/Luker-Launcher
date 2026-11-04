@@ -1,5 +1,8 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock, call
 
+from ui.ctk_adapter import CtkSwitchAdapter
 from ui.switch import (
     SWITCH_ANIMATION_STEPS,
     AnimatedSwitch,
@@ -8,6 +11,74 @@ from ui.switch import (
     switch_track_colors,
 )
 from ui.theme import PRESET_THEMES, get_theme_colors
+
+
+class CtkSwitchAdapterTests(unittest.TestCase):
+    def make_switch(self, **overrides) -> tuple[SimpleNamespace, Mock, Mock]:
+        canvas = Mock()
+        draw_engine = Mock()
+        values = {
+            '_canvas': canvas,
+            '_draw_engine': draw_engine,
+            '_switch_width': 44,
+            '_switch_height': 22,
+            '_corner_radius': 10,
+            '_border_width': 2,
+            '_button_length': 20,
+            '_apply_widget_scaling': lambda value: value * 2,
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values), canvas, draw_engine
+
+    def test_supported_when_private_interface_exists(self):
+        switch, _, _ = self.make_switch()
+
+        self.assertTrue(CtkSwitchAdapter(switch).supported)
+
+    def test_missing_private_attribute_disables_adapter(self):
+        switch, canvas, draw_engine = self.make_switch(_canvas=None)
+        adapter = CtkSwitchAdapter(switch)
+
+        self.assertFalse(adapter.supported)
+        adapter.draw_slider(0.5, '#ffffff')
+        adapter.set_track_colors('#111111', '#222222')
+
+        canvas.itemconfig.assert_not_called()
+        draw_engine.draw_rounded_slider_with_border_and_button.assert_not_called()
+
+    def test_draw_slider_delegates_scaled_geometry(self):
+        switch, canvas, draw_engine = self.make_switch()
+
+        CtkSwitchAdapter(switch).draw_slider(0.5, '#abcdef')
+
+        canvas.itemconfig.assert_called_once_with(
+            'slider_parts',
+            fill='#abcdef',
+            outline='#abcdef',
+        )
+        draw_engine.draw_rounded_slider_with_border_and_button.assert_called_once_with(
+            88,
+            44,
+            20,
+            4,
+            40,
+            20,
+            0.5,
+            'w',
+        )
+
+    def test_track_colors_update_inner_and_progress(self):
+        switch, canvas, _ = self.make_switch()
+
+        CtkSwitchAdapter(switch).set_track_colors('#111111', '#222222')
+
+        self.assertEqual(
+            canvas.itemconfig.call_args_list,
+            [
+                call('inner_parts', fill='#111111', outline='#111111'),
+                call('progress_parts', fill='#222222', outline='#222222'),
+            ],
+        )
 
 
 class SwitchColorTests(unittest.TestCase):
@@ -46,6 +117,7 @@ class SwitchAnimationTests(unittest.TestCase):
         switch._animation_target = target
         switch._animation_job = None
         switch._destroyed = False
+        switch._adapter = SimpleNamespace(supported=True)
         switch.redraws = []
         switch.jobs = []
         switch._redraw_slider = lambda: switch.redraws.append(switch._slider_value)
@@ -91,6 +163,15 @@ class SwitchAnimationTests(unittest.TestCase):
 
         self.assertEqual(switch.jobs, [])
         self.assertIsNone(switch._animation_job)
+
+    def test_unsupported_adapter_switches_immediately(self):
+        switch = self.make_switch(0.0, 0.0)
+        switch._adapter = SimpleNamespace(supported=False)
+
+        switch._animate_to(1.0)
+
+        self.assertEqual(switch._slider_value, 1.0)
+        self.assertEqual(switch.jobs, [])
 
 
 if __name__ == '__main__':
