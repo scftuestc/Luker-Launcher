@@ -11,6 +11,8 @@ from ctypes import wintypes
 # use_last_error=True 让 ctypes.get_last_error() 能读到这些调用失败的原因
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+dwmapi = ctypes.WinDLL('dwmapi', use_last_error=True)
+shell32 = ctypes.WinDLL('shell32', use_last_error=True)
 
 user32.GetParent.argtypes = [wintypes.HWND]
 user32.GetParent.restype = wintypes.HWND
@@ -36,6 +38,49 @@ user32.IsIconic.argtypes = [wintypes.HWND]
 user32.IsIconic.restype = wintypes.BOOL
 user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.ShowWindow.restype = wintypes.BOOL
+user32.SetWindowPos.argtypes = [
+    wintypes.HWND,
+    wintypes.HWND,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+    wintypes.UINT,
+]
+user32.SetWindowPos.restype = wintypes.BOOL
+user32.SetWindowCompositionAttribute.argtypes = [wintypes.HWND, ctypes.c_void_p]
+user32.SetWindowCompositionAttribute.restype = wintypes.BOOL
+user32.MessageBoxW.argtypes = [
+    wintypes.HWND,
+    wintypes.LPCWSTR,
+    wintypes.LPCWSTR,
+    wintypes.UINT,
+]
+user32.MessageBoxW.restype = ctypes.c_int
+
+# DWM 接口返回 HRESULT，不能按默认 int 处理
+dwmapi.DwmSetWindowAttribute.argtypes = [
+    wintypes.HWND,
+    wintypes.DWORD,
+    ctypes.c_void_p,
+    wintypes.DWORD,
+]
+dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
+dwmapi.DwmExtendFrameIntoClientArea.argtypes = [wintypes.HWND, ctypes.c_void_p]
+dwmapi.DwmExtendFrameIntoClientArea.restype = ctypes.c_long
+dwmapi.DwmFlush.argtypes = []
+dwmapi.DwmFlush.restype = ctypes.c_long
+
+# ShellExecuteW 返回 HINSTANCE，64 位下不能用默认 int
+shell32.ShellExecuteW.argtypes = [
+    wintypes.HWND,
+    wintypes.LPCWSTR,
+    wintypes.LPCWSTR,
+    wintypes.LPCWSTR,
+    wintypes.LPCWSTR,
+    ctypes.c_int,
+]
+shell32.ShellExecuteW.restype = wintypes.HINSTANCE
 
 kernel32.GetCurrentThreadId.argtypes = []
 kernel32.GetCurrentThreadId.restype = wintypes.DWORD

@@ -5,8 +5,9 @@ import logging
 import sys
 import tkinter as tk
 import tkinter.font as tkfont
-from ctypes import byref, c_int, sizeof, windll
+from ctypes import byref, c_int, sizeof
 
+import win32_api
 from ui.theme import is_light_color
 
 logger = logging.getLogger(__name__)
@@ -50,8 +51,8 @@ class WindowsBlur:
     @staticmethod
     def enable_blur(hwnd: int, color: int = 0xCC000000, accent_state: int = 4) -> None:
         """应用 DWM 模糊；失败时抛出异常，由调用者统一记录。"""
-        user32 = windll.user32
-        dwmapi = windll.dwmapi
+        user32 = win32_api.user32
+        dwmapi = win32_api.dwmapi
 
         value = c_int(1)
         dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(value), sizeof(value))
@@ -71,13 +72,13 @@ class WindowsBlur:
     @staticmethod
     def extend_frame(hwnd: int) -> None:
         margins = WindowsBlur.MARGINS(-1, -1, -1, -1)
-        windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(margins))
+        win32_api.dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(margins))
 
     @staticmethod
     def disable_blur(hwnd: int) -> None:
         """关闭 DWM 毛玻璃，并移除 Tk 透明度留下的分层窗口样式。"""
-        user32 = windll.user32
-        dwmapi = windll.dwmapi
+        user32 = win32_api.user32
+        dwmapi = win32_api.dwmapi
 
         value = c_int(0)
         dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(value), sizeof(value))
@@ -141,7 +142,7 @@ def apply_window_blur(
     只接受顶层窗口；子控件会解析到错误的父句柄。
     """
     try:
-        hwnd = windll.user32.GetParent(window.winfo_id())
+        hwnd = win32_api.user32.GetParent(window.winfo_id())
         apply_blur(hwnd, bg_color, alpha=alpha, accent_state=accent_state)
     except Exception:
         logger.warning("%s毛玻璃失败", context, exc_info=True)
@@ -150,7 +151,7 @@ def apply_window_blur(
 def disable_window_blur(window: tk.Tk | tk.Toplevel, *, context: str = "窗口") -> None:
     """关闭顶层窗口的毛玻璃与分层透明效果。"""
     try:
-        hwnd = windll.user32.GetParent(window.winfo_id())
+        hwnd = win32_api.user32.GetParent(window.winfo_id())
         WindowsBlur.disable_blur(hwnd)
     except Exception:
         logger.warning("%s关闭毛玻璃失败", context, exc_info=True)
@@ -161,19 +162,19 @@ def apply_window_rounding(window: tk.Tk | tk.Toplevel, *, context: str = "窗口
     try:
         if sys.getwindowsversion().build < CORNER_PREFERENCE_MIN_BUILD:
             return
-        hwnd = windll.user32.GetParent(window.winfo_id())
+        hwnd = win32_api.user32.GetParent(window.winfo_id())
         if not hwnd:
             return
 
         corner = c_int(DWMWCP_ROUND)
-        result = windll.dwmapi.DwmSetWindowAttribute(
+        result = win32_api.dwmapi.DwmSetWindowAttribute(
             hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, byref(corner), sizeof(corner)
         )
         if result != 0:
             logger.warning("%s圆角设置被系统拒绝: %s", context, result)
             return
         # 已经显示的窗口需要一次 frame change 才会重新取整
-        windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, WindowsBlur.SWP_FLAGS)
+        win32_api.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, WindowsBlur.SWP_FLAGS)
     except Exception:
         logger.warning("%s设置圆角失败", context, exc_info=True)
 

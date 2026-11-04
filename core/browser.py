@@ -1,6 +1,5 @@
 """沉浸应用（PWA）启动：优先 APPX，其次 Edge --app-id/--app，最后默认浏览器。"""
 
-import ctypes
 import json
 import logging
 import os
@@ -10,6 +9,7 @@ import time
 from pathlib import Path
 from threading import Lock
 
+import win32_api
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -189,7 +189,7 @@ def open_as_appx(family_name: str, app_id: str = DEFAULT_APPX_APP_ID) -> bool:
 
     try:
         # ShellExecuteW 返回 > 32 表示启动成功；失败时交给调用方回退到其他方式
-        result = ctypes.windll.shell32.ShellExecuteW(None, "open", app_uri, None, None, 1)
+        result = win32_api.shell32.ShellExecuteW(None, "open", app_uri, None, None, 1)
         if result > 32:
             logger.info("通过 APPX 启动成功")
             return True

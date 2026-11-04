@@ -1,3 +1,4 @@
+import ctypes
 import unittest
 from ctypes import wintypes
 
@@ -34,6 +35,25 @@ class NativeBindingTests(unittest.TestCase):
             [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL],
         )
         self.assertIs(win32_api.user32.AttachThreadInput.restype, wintypes.BOOL)
+
+    def test_dwm_calls_use_hwnd_and_hresult(self):
+        self.assertIs(win32_api.dwmapi.DwmSetWindowAttribute.argtypes[0], wintypes.HWND)
+        self.assertIs(win32_api.dwmapi.DwmSetWindowAttribute.restype, ctypes.c_long)
+        self.assertIs(win32_api.dwmapi.DwmExtendFrameIntoClientArea.argtypes[0], wintypes.HWND)
+        self.assertIs(win32_api.dwmapi.DwmExtendFrameIntoClientArea.restype, ctypes.c_long)
+        self.assertEqual(win32_api.dwmapi.DwmFlush.argtypes, [])
+        self.assertIs(win32_api.dwmapi.DwmFlush.restype, ctypes.c_long)
+
+    def test_window_effects_use_declared_types(self):
+        self.assertIs(win32_api.user32.SetWindowPos.argtypes[0], wintypes.HWND)
+        self.assertIs(win32_api.user32.SetWindowPos.restype, wintypes.BOOL)
+        self.assertIs(win32_api.user32.SetWindowCompositionAttribute.argtypes[0], wintypes.HWND)
+        self.assertIs(win32_api.user32.SetWindowCompositionAttribute.restype, wintypes.BOOL)
+        self.assertIs(win32_api.user32.MessageBoxW.argtypes[0], wintypes.HWND)
+
+    def test_shell_execute_returns_hinstance(self):
+        self.assertIs(win32_api.shell32.ShellExecuteW.argtypes[0], wintypes.HWND)
+        self.assertIs(win32_api.shell32.ShellExecuteW.restype, wintypes.HINSTANCE)
 
 
 if __name__ == '__main__':

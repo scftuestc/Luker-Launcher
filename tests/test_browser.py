@@ -350,9 +350,7 @@ class OpenAsPwaRoutingTests(unittest.TestCase):
 
 class OpenAsAppxTests(unittest.TestCase):
     def test_success_uses_apps_folder_uri(self):
-        with patch.object(
-            browser.ctypes.windll.shell32, "ShellExecuteW", return_value=33
-        ) as execute:
+        with patch.object(browser.win32_api.shell32, "ShellExecuteW", return_value=33) as execute:
             self.assertTrue(browser.open_as_appx(VALID_FAMILY_NAME, "LukerApp"))
 
         self.assertEqual(
@@ -361,12 +359,12 @@ class OpenAsAppxTests(unittest.TestCase):
         )
 
     def test_shell_rejection_returns_false(self):
-        with patch.object(browser.ctypes.windll.shell32, "ShellExecuteW", return_value=0):
+        with patch.object(browser.win32_api.shell32, "ShellExecuteW", return_value=0):
             self.assertFalse(browser.open_as_appx(VALID_FAMILY_NAME))
 
     def test_shell_exception_returns_false(self):
         with patch.object(
-            browser.ctypes.windll.shell32,
+            browser.win32_api.shell32,
             "ShellExecuteW",
             side_effect=OSError("boom"),
         ):

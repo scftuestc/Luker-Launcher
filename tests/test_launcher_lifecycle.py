@@ -1,6 +1,8 @@
 import tkinter as tk
 import unittest
+from unittest.mock import Mock, patch
 
+import launcher_app
 from launcher_app import LukerLauncher
 
 
@@ -72,6 +74,25 @@ class UiScheduleTests(unittest.TestCase):
         launcher._schedule_ui(50, lambda: None)
 
         self.assertEqual(window.calls, [])
+
+
+class TrayMenuRequestTests(unittest.TestCase):
+    def test_reads_foreground_handle_before_posting_ui(self):
+        launcher = object.__new__(LukerLauncher)
+        launcher._exiting = False
+        launcher._show_tray_menu = Mock()
+        posted: list[tuple[object, object]] = []
+        launcher._post_ui = lambda callback, key=None: posted.append((callback, key)) or True
+
+        with patch.object(launcher_app.win32_api, 'user32') as user32:
+            user32.GetForegroundWindow.return_value = 1234
+            launcher._on_show_menu(10, 20)
+
+        user32.GetForegroundWindow.assert_called_once_with()
+        self.assertEqual(len(posted), 1)
+        self.assertEqual(posted[0][1], launcher_app.UI_KEY_TRAY_MENU)
+        posted[0][0]()
+        launcher._show_tray_menu.assert_called_once_with(10, 20, 1234)
 
 
 class ExitTests(unittest.TestCase):

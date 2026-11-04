@@ -26,7 +26,7 @@ class MainStartupTests(unittest.TestCase):
                 side_effect=lambda: order.append('release'),
             ) as release_mock,
             patch.object(main, 'LukerLauncher') as launcher_cls,
-            patch.object(main, 'windll') as windll_mock,
+            patch.object(main.win32_api, 'user32') as user32,
         ):
             setup_mock.side_effect = lambda: order.append('logging')
             main.main()
@@ -38,7 +38,7 @@ class MainStartupTests(unittest.TestCase):
         theme_mock.assert_called_once_with('dark-blue')
         launcher_cls.assert_not_called()
         release_mock.assert_not_called()
-        message = windll_mock.user32.MessageBoxW.call_args.args[1]
+        message = user32.MessageBoxW.call_args.args[1]
         self.assertIn("已在运行", message)
 
     def test_normal_startup_runs_launcher_and_releases_mutex(self):

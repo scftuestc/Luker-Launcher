@@ -8,6 +8,7 @@ from ctypes import windll
 import customtkinter as ctk
 
 import logging_setup
+import win32_api
 from config import APP_VERSION, config
 from launcher_app import LukerLauncher
 from process import single_instance
@@ -67,7 +68,7 @@ def main() -> None:
 
     # 同一会话只允许一个启动器，避免两个托盘和两个 node 抢同一端口
     if not single_instance.acquire():
-        windll.user32.MessageBoxW(
+        win32_api.user32.MessageBoxW(
             None,
             "Luker 启动器已在运行。\n请从系统托盘图标打开。",
             "Luker 启动器",

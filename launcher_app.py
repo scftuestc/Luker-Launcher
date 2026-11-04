@@ -6,12 +6,12 @@ import tkinter as tk
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from ctypes import windll
 from pathlib import Path
 from threading import Thread
 from tkinter import messagebox
 
 import logging_setup
+import win32_api
 from config import config
 from core.browser import open_in_browser
 from core.readiness import LukerReadinessMonitor, LukerState
@@ -850,7 +850,7 @@ class LukerLauncher:
             return
         # 托盘线程在右键当下记录前台窗口，主线程稍后可能已被任务栏抢走
         try:
-            previous_foreground = int(windll.user32.GetForegroundWindow())
+            previous_foreground = int(win32_api.user32.GetForegroundWindow())
         except Exception:
             previous_foreground = 0
         self._post_ui(
