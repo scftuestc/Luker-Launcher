@@ -5,11 +5,11 @@ import logging
 import math
 import tkinter as tk
 from collections.abc import Callable, Sequence
-from ctypes import windll
 from typing import TypedDict
 
 import customtkinter as ctk
 
+import win32_api
 from config import config
 from core.readiness import LukerState
 from ui.buttons import make_button
@@ -164,13 +164,13 @@ class TrayMenu(ctk.CTkToplevel):
     def _set_no_activate(self, enabled: bool = True) -> None:
         """切换 WS_EX_NOACTIVATE；键盘模式下让菜单可以接收焦点。"""
         try:
-            hwnd = windll.user32.GetParent(self.winfo_id())
-            ex_style = windll.user32.GetWindowLongW(hwnd, self.GWL_EXSTYLE)
+            hwnd = win32_api.user32.GetParent(self.winfo_id())
+            ex_style = win32_api.user32.GetWindowLongW(hwnd, self.GWL_EXSTYLE)
             if enabled:
                 new_style = ex_style | self.WS_EX_NOACTIVATE | self.WS_EX_TOOLWINDOW
             else:
                 new_style = (ex_style & ~self.WS_EX_NOACTIVATE) | self.WS_EX_TOOLWINDOW
-            windll.user32.SetWindowLongW(hwnd, self.GWL_EXSTYLE, new_style & 0xFFFFFFFF)
+            win32_api.user32.SetWindowLongW(hwnd, self.GWL_EXSTYLE, new_style & 0xFFFFFFFF)
         except Exception:
             logger.warning("设置无焦点窗口失败", exc_info=True)
 
@@ -315,7 +315,7 @@ class TrayMenu(ctk.CTkToplevel):
             in_menu = menu_x <= mouse_x <= menu_x + menu_w and menu_y <= mouse_y <= menu_y + menu_h
 
             if not in_menu:
-                left_button = windll.user32.GetAsyncKeyState(0x01) & 0x8000
+                left_button = win32_api.user32.GetAsyncKeyState(0x01) & 0x8000
                 if left_button:
                     # 点击外部时焦点已经交给目标窗口，不要再抢回来
                     self.hide(restore_focus=False)
@@ -670,7 +670,7 @@ class TrayMenu(ctk.CTkToplevel):
 
     def _get_foreground(self) -> int:
         try:
-            return int(windll.user32.GetForegroundWindow())
+            return int(win32_api.user32.GetForegroundWindow())
         except Exception:
             return 0
 
@@ -683,8 +683,8 @@ class TrayMenu(ctk.CTkToplevel):
         """
         if not hwnd:
             return False
-        user32 = windll.user32
-        kernel32 = windll.kernel32
+        user32 = win32_api.user32
+        kernel32 = win32_api.kernel32
         try:
             if user32.GetForegroundWindow() == hwnd:
                 return True
@@ -709,7 +709,7 @@ class TrayMenu(ctk.CTkToplevel):
 
     def _force_foreground(self) -> None:
         try:
-            hwnd = windll.user32.GetParent(self.winfo_id())
+            hwnd = win32_api.user32.GetParent(self.winfo_id())
         except Exception:
             logger.warning("读取托盘菜单窗口句柄失败", exc_info=True)
             return
@@ -721,7 +721,7 @@ class TrayMenu(ctk.CTkToplevel):
         if not previous:
             return
         try:
-            if windll.user32.IsWindow(previous) and windll.user32.IsWindowVisible(previous):
+            if win32_api.user32.IsWindow(previous) and win32_api.user32.IsWindowVisible(previous):
                 self._set_foreground(previous)
         except Exception:
             logger.debug("恢复前台窗口失败", exc_info=True)

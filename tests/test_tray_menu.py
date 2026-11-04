@@ -229,5 +229,96 @@ class MenuLogoStateTests(unittest.TestCase):
         self.assertEqual(restart.options['text_color'], '#444444')
 
 
+class NativeBindingTests(unittest.TestCase):
+    def make_menu(self) -> TrayMenu:
+        menu = object.__new__(TrayMenu)
+        menu.winfo_id = lambda: 10
+        return menu
+
+    def test_set_no_activate_sets_toolwindow_and_noactivate(self):
+        menu = self.make_menu()
+
+        with patch.object(tray_menu.win32_api, 'user32') as user32:
+            user32.GetParent.return_value = 20
+            user32.GetWindowLongW.return_value = TrayMenu.WS_EX_TOOLWINDOW
+            menu._set_no_activate(True)
+
+        user32.GetParent.assert_called_once_with(10)
+        user32.GetWindowLongW.assert_called_once_with(20, TrayMenu.GWL_EXSTYLE)
+        user32.SetWindowLongW.assert_called_once_with(
+            20,
+            TrayMenu.GWL_EXSTYLE,
+            TrayMenu.WS_EX_TOOLWINDOW | TrayMenu.WS_EX_NOACTIVATE,
+        )
+
+    def test_set_no_activate_can_enable_activation(self):
+        menu = self.make_menu()
+
+        with patch.object(tray_menu.win32_api, 'user32') as user32:
+            user32.GetParent.return_value = 20
+            user32.GetWindowLongW.return_value = (
+                TrayMenu.WS_EX_TOOLWINDOW | TrayMenu.WS_EX_NOACTIVATE
+            )
+            menu._set_no_activate(False)
+
+        user32.SetWindowLongW.assert_called_once_with(
+            20,
+            TrayMenu.GWL_EXSTYLE,
+            TrayMenu.WS_EX_TOOLWINDOW,
+        )
+
+    def test_foreground_handle_is_read_through_declared_binding(self):
+        menu = self.make_menu()
+
+        with patch.object(tray_menu.win32_api, 'user32') as user32:
+            user32.GetForegroundWindow.return_value = 0x123456789
+            self.assertEqual(menu._get_foreground(), 0x123456789)
+
+    def test_set_foreground_attaches_to_foreground_thread(self):
+        menu = self.make_menu()
+
+        with (
+            patch.object(tray_menu.win32_api, 'user32') as user32,
+            patch.object(tray_menu.win32_api, 'kernel32') as kernel32,
+        ):
+            user32.GetForegroundWindow.side_effect = [111, 222]
+            user32.GetWindowThreadProcessId.return_value = 333
+            kernel32.GetCurrentThreadId.return_value = 444
+            user32.AttachThreadInput.return_value = 1
+            user32.SetForegroundWindow.return_value = 1
+
+            self.assertTrue(menu._set_foreground(999))
+
+        user32.GetWindowThreadProcessId.assert_called_once_with(222, None)
+        user32.AttachThreadInput.assert_any_call(444, 333, True)
+        user32.AttachThreadInput.assert_any_call(444, 333, False)
+        user32.SetForegroundWindow.assert_called_once_with(999)
+
+    def test_set_foreground_skips_work_when_already_foreground(self):
+        menu = self.make_menu()
+
+        with patch.object(tray_menu.win32_api, 'user32') as user32:
+            user32.GetForegroundWindow.return_value = 999
+            self.assertTrue(menu._set_foreground(999))
+
+        user32.SetForegroundWindow.assert_not_called()
+
+    def test_restore_foreground_checks_window_state(self):
+        menu = self.make_menu()
+        menu._previous_foreground = 555
+        restored: list[int] = []
+        menu._set_foreground = restored.append
+
+        with patch.object(tray_menu.win32_api, 'user32') as user32:
+            user32.IsWindow.return_value = 1
+            user32.IsWindowVisible.return_value = 1
+            menu._restore_foreground()
+
+        user32.IsWindow.assert_called_once_with(555)
+        user32.IsWindowVisible.assert_called_once_with(555)
+        self.assertEqual(restored, [555])
+        self.assertEqual(menu._previous_foreground, 0)
+
+
 if __name__ == '__main__':
     unittest.main()

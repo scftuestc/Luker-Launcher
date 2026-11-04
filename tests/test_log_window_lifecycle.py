@@ -1,7 +1,7 @@
 import tkinter as tk
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import customtkinter as ctk
 
@@ -11,6 +11,13 @@ from log_window import LogWindow
 
 
 class WindowStatePollTests(unittest.TestCase):
+    def setUp(self):
+        patcher = patch.object(log_window.win32_api, 'user32')
+        self.user32 = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.user32.GetParent.return_value = 0
+        self.user32.IsIconic.return_value = 0
+
     def make_window(self) -> tuple[LogWindow, list[tuple[int, object]]]:
         window = object.__new__(LogWindow)
         window._was_minimized = False
@@ -43,6 +50,76 @@ class WindowStatePollTests(unittest.TestCase):
         window._check_window_state()
 
         self.assertEqual(calls, [])
+
+
+class NativeWindowStateTests(unittest.TestCase):
+    def make_window(self) -> tuple[LogWindow, list[tuple[int, object]]]:
+        window = object.__new__(LogWindow)
+        window._was_minimized = True
+        window.winfo_id = lambda: 10
+        window.winfo_viewable = lambda: True
+        window._restore_window = Mock()
+        calls: list[tuple[int, object]] = []
+
+        def schedule(delay: int, callback: object) -> str:
+            calls.append((delay, callback))
+            return 'job'
+
+        window.after = schedule
+        return window, calls
+
+    def test_check_window_state_restores_after_minimize(self):
+        window, calls = self.make_window()
+
+        with patch.object(log_window.win32_api, 'user32') as user32:
+            user32.GetParent.return_value = 20
+            user32.IsIconic.return_value = 0
+            window._check_window_state()
+
+        user32.GetParent.assert_called_once_with(10)
+        user32.IsIconic.assert_called_once_with(20)
+        self.assertFalse(window._was_minimized)
+        self.assertEqual(calls[0], (50, window._restore_window))
+        self.assertEqual(calls[1][0], 300)
+
+    def test_check_window_state_records_minimized(self):
+        window, calls = self.make_window()
+        window._was_minimized = False
+
+        with patch.object(log_window.win32_api, 'user32') as user32:
+            user32.GetParent.return_value = 20
+            user32.IsIconic.return_value = 1
+            window._check_window_state()
+
+        self.assertTrue(window._was_minimized)
+        self.assertEqual(calls, [(300, window._check_window_state)])
+
+    def test_restore_window_shows_and_focuses(self):
+        window = object.__new__(LogWindow)
+        window.winfo_id = lambda: 10
+        window.lift = Mock()
+        window.focus_force = Mock()
+
+        with patch.object(log_window.win32_api, 'user32') as user32:
+            user32.GetParent.return_value = 20
+            window._restore_window()
+
+        user32.ShowWindow.assert_called_once_with(20, 9)
+        window.lift.assert_called_once_with()
+        window.focus_force.assert_called_once_with()
+
+    def test_restore_window_logs_failure(self):
+        window = object.__new__(LogWindow)
+        window.winfo_id = lambda: 10
+
+        with (
+            patch.object(log_window.win32_api, 'user32') as user32,
+            self.assertLogs('log_window', level='WARNING') as logs,
+        ):
+            user32.GetParent.side_effect = OSError("boom")
+            window._restore_window()
+
+        self.assertIn("恢复窗口失败", logs.output[0])
 
 
 class AnimationJobTests(unittest.TestCase):

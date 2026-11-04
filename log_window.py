@@ -6,11 +6,11 @@ import math
 import os
 import tkinter as tk
 from collections.abc import Callable, Sequence
-from ctypes import windll
 from types import TracebackType
 
 import customtkinter as ctk
 
+import win32_api
 from config import APP_VERSION, config
 from core.readiness import LukerState
 from log.display import LogDisplay, configure_log_tags
@@ -599,8 +599,8 @@ class LogWindow(ctk.CTk):
 
     def _check_window_state(self) -> None:
         with contextlib.suppress(Exception):
-            hwnd = windll.user32.GetParent(self.winfo_id())
-            is_minimized = windll.user32.IsIconic(hwnd)
+            hwnd = win32_api.user32.GetParent(self.winfo_id())
+            is_minimized = win32_api.user32.IsIconic(hwnd)
 
             if self._was_minimized and not is_minimized:
                 self.after(50, self._restore_window)
@@ -616,9 +616,9 @@ class LogWindow(ctk.CTk):
 
     def _restore_window(self) -> None:
         try:
-            hwnd = windll.user32.GetParent(self.winfo_id())
+            hwnd = win32_api.user32.GetParent(self.winfo_id())
             SW_RESTORE = 9
-            windll.user32.ShowWindow(hwnd, SW_RESTORE)
+            win32_api.user32.ShowWindow(hwnd, SW_RESTORE)
             self.lift()
             self.focus_force()
         except Exception:
