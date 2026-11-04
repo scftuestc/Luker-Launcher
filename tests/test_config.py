@@ -279,6 +279,18 @@ class ConfigTests(unittest.TestCase):
 
         self.assertFalse(temp_path.exists())
 
+    def test_save_failure_keeps_value_in_memory_and_logs_error(self):
+        config = Config(self.config_path)
+        blocked = Path(self.temp_dir.name) / "blocked.json"
+        blocked.mkdir()
+        config.config_path = blocked
+
+        with self.assertLogs("config", level="ERROR") as logs:
+            config.theme_name = "ocean_cyan"
+
+        self.assertEqual(config.theme_name, "ocean_cyan")
+        self.assertIn("保存配置失败", logs.output[0])
+
 
 if __name__ == "__main__":
     unittest.main()
