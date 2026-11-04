@@ -272,25 +272,26 @@ class CloseChoiceDialog(ctk.CTkToplevel):
 
 def _dialog_owner(
     parent: tk.Tk | tk.Toplevel | None = None,
-) -> tuple[tk.Tk | tk.Toplevel, tk.Tk | None]:
-    """优先使用现有窗口作为对话框父窗口，否则创建一个临时隐藏根窗口。"""
+) -> tuple[tk.Tk | tk.Toplevel, tk.Tk | None, bool | None]:
+    """返回对话框父窗口、临时根窗口和父窗口原来的置顶状态。"""
     if parent is not None:
         try:
             if parent.winfo_exists():
+                previous_topmost = bool(parent.attributes('-topmost'))
                 parent.attributes('-topmost', True)
-                return parent, None
+                return parent, None, previous_topmost
         except tk.TclError:
             pass
 
     root = tk.Tk()
     root.withdraw()
     root.attributes('-topmost', True)
-    return root, root
+    return root, root, None
 
 
 def select_luker_path(parent: tk.Tk | tk.Toplevel | None = None) -> str | None:
     """让用户选择 Luker 安装根目录并校验，返回有效路径或 None。"""
-    owner, temp_root = _dialog_owner(parent)
+    owner, temp_root, previous_topmost = _dialog_owner(parent)
     try:
         messagebox.showinfo(
             "Luker 启动器",
@@ -320,6 +321,9 @@ def select_luker_path(parent: tk.Tk | tk.Toplevel | None = None) -> str | None:
     finally:
         if temp_root is not None:
             temp_root.destroy()
+        elif previous_topmost is not None:
+            with contextlib.suppress(tk.TclError):
+                owner.attributes('-topmost', previous_topmost)
 
 
 def ensure_luker_path_configured() -> bool:

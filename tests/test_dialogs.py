@@ -110,7 +110,7 @@ class SelectLukerPathTests(unittest.TestCase):
 
         with (
             patch.object(dialogs, 'config', fake_config),
-            patch.object(dialogs, '_dialog_owner', lambda _parent: (owner, None)),
+            patch.object(dialogs, '_dialog_owner', lambda _parent: (owner, None, None)),
             patch.object(dialogs.messagebox, 'showinfo') as showinfo,
             patch.object(dialogs.messagebox, 'showerror') as showerror,
             patch.object(dialogs.filedialog, 'askdirectory', return_value='C:/Luker') as ask,
@@ -133,7 +133,7 @@ class SelectLukerPathTests(unittest.TestCase):
 
         with (
             patch.object(dialogs, 'config', fake_config),
-            patch.object(dialogs, '_dialog_owner', lambda _parent: (owner, None)),
+            patch.object(dialogs, '_dialog_owner', lambda _parent: (owner, None, None)),
             patch.object(dialogs.messagebox, 'showinfo'),
             patch.object(dialogs.messagebox, 'showerror') as showerror,
             patch.object(dialogs.filedialog, 'askdirectory', return_value='C:/NotLuker'),
@@ -149,7 +149,7 @@ class SelectLukerPathTests(unittest.TestCase):
 
         with (
             patch.object(dialogs, 'config', fake_config),
-            patch.object(dialogs, '_dialog_owner', lambda _parent: (object(), None)),
+            patch.object(dialogs, '_dialog_owner', lambda _parent: (object(), None, None)),
             patch.object(dialogs.messagebox, 'showinfo'),
             patch.object(dialogs.messagebox, 'showerror') as showerror,
             patch.object(dialogs.filedialog, 'askdirectory', return_value=''),
@@ -159,6 +159,39 @@ class SelectLukerPathTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertIsNone(fake_config.luker_path)
         showerror.assert_not_called()
+
+
+class DialogOwnerTests(unittest.TestCase):
+    def test_restores_parent_topmost_state_after_dialog(self):
+        class FakeParent:
+            def __init__(self) -> None:
+                self.topmost = False
+                self.calls: list[bool] = []
+
+            def winfo_exists(self) -> bool:
+                return True
+
+            def attributes(self, name, value=None):
+                if name != '-topmost':
+                    return None
+                if value is None:
+                    return int(self.topmost)
+                self.calls.append(value)
+                self.topmost = bool(value)
+                return None
+
+        parent = FakeParent()
+        fake_config = SimpleNamespace(is_valid_luker_path=lambda _path: True, luker_path=None)
+
+        with (
+            patch.object(dialogs, 'config', fake_config),
+            patch.object(dialogs.messagebox, 'showinfo'),
+            patch.object(dialogs.filedialog, 'askdirectory', return_value=''),
+        ):
+            self.assertIsNone(select_luker_path(parent))
+
+        self.assertEqual(parent.calls, [True, False])
+        self.assertFalse(parent.topmost)
 
 
 if __name__ == "__main__":

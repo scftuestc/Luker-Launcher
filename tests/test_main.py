@@ -102,7 +102,7 @@ class ConfigErrorReportingTests(unittest.TestCase):
             patch.object(main.ctk, 'set_default_color_theme'),
             patch.object(main.config, 'report_load_error') as report_mock,
             patch.object(main.single_instance, 'acquire', return_value=False),
-            patch.object(main, 'windll'),
+            patch.object(main.win32_api, 'user32') as user32,
         ):
             setup_mock.side_effect = lambda: order.append('logging')
             report_mock.side_effect = lambda: order.append('report') or False
@@ -110,6 +110,7 @@ class ConfigErrorReportingTests(unittest.TestCase):
 
         self.assertEqual(order, ['logging', 'report'])
         report_mock.assert_called_once_with()
+        user32.MessageBoxW.assert_called_once()
 
 
 class DpiAwarenessTests(unittest.TestCase):
@@ -170,11 +171,14 @@ class FirstRunCancelTests(unittest.TestCase):
                 'ensure_luker_path_configured',
                 return_value=False,
             ),
+            patch.object(launcher_app.messagebox, 'showinfo') as showinfo,
             self.assertLogs('launcher_app', level='ERROR') as logs,
         ):
             launcher.run()
 
         self.assertIn("未配置 Luker 路径", logs.output[0])
+        showinfo.assert_called_once()
+        self.assertIn("程序将退出", showinfo.call_args.args[1])
 
 
 if __name__ == '__main__':

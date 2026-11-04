@@ -917,6 +917,7 @@ class LukerLauncher:
         # 首次运行：配置缺失时引导选择 Luker 路径
         if not ensure_luker_path_configured():
             logger.error("未配置 Luker 路径，程序退出")
+            messagebox.showinfo("Luker 启动器", "未配置 Luker 路径，程序将退出。")
             return
 
         self._create_log_window()
