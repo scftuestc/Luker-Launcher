@@ -111,7 +111,10 @@ class ConfigTests(unittest.TestCase):
                 self._write({"theme": legacy})
                 config = Config(self.config_path)
                 self.assertEqual(config.theme_name, current)
-                self.assertEqual(config.get_theme_colors(), PRESET_THEMES[current])
+                colors = config.get_theme_colors()
+                for key, value in colors.items():
+                    self.assertEqual(value, PRESET_THEMES[current][key])
+                self.assertNotIn("name", colors)
 
     def test_legacy_theme_id_is_migrated_by_setter(self):
         config = Config(self.config_path)

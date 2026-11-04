@@ -10,9 +10,9 @@ from ui.theme import (
     LOGO_BAR_RGB,
     LOGO_STOPPED_COLOR,
     PRESET_THEMES,
+    THEME_COLOR_KEYS,
     THEME_SWATCH_KEYS,
     _parse_hex_color,
-    blend_color,
     get_theme_colors,
     is_light_color,
     logo_bar_brightness,
@@ -55,7 +55,16 @@ class ThemeTests(unittest.TestCase):
 
     def test_invalid_theme_falls_back_to_default(self):
         colors = get_theme_colors("not-a-theme")
-        self.assertEqual(colors, PRESET_THEMES[DEFAULT_THEME])
+        expected = {key: PRESET_THEMES[DEFAULT_THEME][key] for key in REQUIRED_COLOR_KEYS}
+        self.assertEqual(colors, expected)
+
+    def test_theme_colors_include_only_color_keys(self):
+        colors = get_theme_colors(DEFAULT_THEME)
+
+        self.assertEqual(tuple(colors), THEME_COLOR_KEYS)
+        self.assertEqual(THEME_COLOR_KEYS, REQUIRED_COLOR_KEYS)
+        for metadata in ("name", "short_name", "icon"):
+            self.assertNotIn(metadata, colors)
 
     def test_legacy_aliases_point_to_existing_themes(self):
         for legacy, current in LEGACY_THEME_ALIASES.items():
@@ -98,13 +107,6 @@ class LogoColorTests(unittest.TestCase):
             logo_bar_brightness(0, 0.75, center=0.6, amplitude=0.4),
             0.2,
         )
-
-    def test_blend_factor_is_clamped(self):
-        self.assertEqual(blend_color((0, 0, 0), (255, 255, 255), 2), "#ffffff")
-        self.assertEqual(blend_color((0, 0, 0), (255, 255, 255), -1), "#000000")
-
-    def test_tray_base_scales_from_black(self):
-        self.assertEqual(blend_color((0, 0, 0), LOGO_BAR_RGB[0], 0.7), "#b24a4a")
 
 
 class LogoGlowColorTests(unittest.TestCase):

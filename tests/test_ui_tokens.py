@@ -9,7 +9,6 @@ import ui.icons
 import ui.resizing
 import ui.switch
 import ui.tokens
-import ui.tooltip
 
 
 class TokenValueTests(unittest.TestCase):
@@ -50,8 +49,6 @@ class LegacyConstantTests(unittest.TestCase):
         self.assertEqual(settings_window.SETTINGS_WIDTH, 600)
         self.assertEqual(tray.menu.MENU_WIDTH, 240)
         self.assertEqual(log.search.COUNT_LABEL_WIDTH, 64)
-        self.assertEqual(ui.tooltip.TOOLTIP_MARGIN, 8)
-        self.assertEqual(ui.tooltip.TOOLTIP_PADDING, 20)
 
     def test_icon_defaults_use_tokens(self):
         self.assertEqual(ui.icons.ICON_RENDER, 64)

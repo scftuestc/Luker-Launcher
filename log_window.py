@@ -36,6 +36,7 @@ from ui.tokens import (
     CONTROL_HEIGHT_XL,
     CONTROL_HEIGHT_XS,
     DELAY_BLUR_LOG_MS,
+    DELAY_RESTORE_WINDOW_MS,
     FONT_BODY,
     FONT_DISPLAY,
     FONT_HEADING,
@@ -603,7 +604,7 @@ class LogWindow(ctk.CTk):
             is_minimized = win32_api.user32.IsIconic(hwnd)
 
             if self._was_minimized and not is_minimized:
-                self.after(50, self._restore_window)
+                self.after(DELAY_RESTORE_WINDOW_MS, self._restore_window)
 
             self._was_minimized = is_minimized
 

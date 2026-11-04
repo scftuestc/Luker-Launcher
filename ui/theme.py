@@ -19,6 +19,23 @@ ThemeColorKey = Literal[
     'info',
 ]
 
+# COLORS 只承载颜色；name/short_name/icon 属于主题元数据，继续从 PRESET_THEMES 读取
+THEME_COLOR_KEYS: tuple[ThemeColorKey, ...] = (
+    'bg',
+    'card',
+    'card_hover',
+    'border',
+    'text',
+    'text_dim',
+    'text_muted',
+    'accent',
+    'on_accent',
+    'success',
+    'error',
+    'warning',
+    'info',
+)
+
 # 主题图标使用 ui.icons 的 kind 名称（sun/moon/tree/cloud/wave/rose），不再是 emoji
 PRESET_THEMES: dict[str, dict[str, str]] = {
     'summer': {
@@ -194,19 +211,6 @@ def logo_bar_brightness(
     return center + amplitude * math.sin(bar_phase * 2 * math.pi)
 
 
-def blend_color(
-    start: tuple[int, int, int],
-    end: tuple[int, int, int],
-    factor: float,
-) -> str:
-    """按 factor 从 start 插值到 end，返回 #rrggbb；factor 限制在 0..1。"""
-    factor = max(0.0, min(1.0, factor))
-    red = int(start[0] + (end[0] - start[0]) * factor)
-    green = int(start[1] + (end[1] - start[1]) * factor)
-    blue = int(start[2] + (end[2] - start[2]) * factor)
-    return f"#{red:02x}{green:02x}{blue:02x}"
-
-
 def logo_bar_glow_color(index: int, phase: float) -> str:
     """返回 Luker logo 第 index 根柱在给定相位下的呼吸颜色。
 
@@ -247,9 +251,12 @@ def is_light_color(color: str) -> bool:
 
 
 def get_theme_colors(name: str) -> dict[str, str]:
-    """返回主题颜色副本；主题名无效时使用默认主题。"""
+    """返回主题颜色副本；主题名无效时使用默认主题。
+
+    只返回颜色键，避免动画渐变期间把 name/short_name/icon 当作颜色处理。
+    """
     theme = PRESET_THEMES.get(name, PRESET_THEMES[DEFAULT_THEME])
-    return theme.copy()
+    return {key: theme[key] for key in THEME_COLOR_KEYS}
 
 
 def theme_swatch_colors(name: str) -> tuple[str, str, str, str]:
