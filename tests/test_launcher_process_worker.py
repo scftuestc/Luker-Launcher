@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import Mock
 
 from launcher_app import LukerLauncher
 
@@ -40,6 +41,26 @@ class ProcessWorkerTests(unittest.TestCase):
         self.assertTrue(started)
         self.assertTrue(launcher._process_busy)
         self.assertEqual(len(workers), 1)
+
+    def test_process_action_failure_is_logged_and_finishes(self):
+        launcher = self._make_launcher()
+        launcher._exiting = False
+        launcher._ensure_process_manager = lambda: object()
+        launcher._on_log = Mock()
+        launcher._finish_process_action = Mock()
+        launcher._post_ui = lambda callback, key=None, control=False: callback() or True
+        launcher._run_async = lambda worker: worker()
+
+        def action(_manager: object) -> None:
+            raise RuntimeError("boom")
+
+        with self.assertLogs("launcher_app", level="ERROR"):
+            launcher._do_process_action(action)
+
+        launcher._finish_process_action.assert_called_once()
+        self.assertTrue(
+            any("进程操作失败" in call.args[0] for call in launcher._on_log.call_args_list)
+        )
 
 
 if __name__ == "__main__":

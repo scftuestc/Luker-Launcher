@@ -4,7 +4,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
+import process.managers as managers
 from process.managers import LukerProcessManager
 
 
@@ -76,6 +78,36 @@ class ProcessManagerTests(unittest.TestCase):
         manager.stop = lambda: False
         manager.start = lambda: True
         self.assertFalse(manager.restart())
+
+    def test_log_thread_start_failure_terminates_process(self):
+        process = Mock()
+        process.poll.return_value = None
+        process.stdin = None
+        process.stdout = None
+
+        class BrokenThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                raise RuntimeError("can't start new thread")
+
+        manager = LukerProcessManager(str(self.luker_dir))
+        logs: list[str] = []
+        manager.add_log_callback(logs.append)
+
+        with (
+            patch.object(managers.subprocess, "Popen", return_value=process),
+            patch.object(managers, "Thread", BrokenThread),
+            patch.object(managers, "assign_to_job", return_value=True),
+        ):
+            self.assertFalse(manager.start())
+
+        process.terminate.assert_called_once_with()
+        process.kill.assert_called_once_with()
+        self.assertIsNone(manager.process)
+        self.assertFalse(manager.is_running)
+        self.assertTrue(any("启动失败" in line for line in logs))
 
 
 if __name__ == "__main__":

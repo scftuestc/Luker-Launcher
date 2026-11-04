@@ -127,10 +127,12 @@ class AutoOpenRoutingTests(unittest.TestCase):
     def test_auto_open_posts_shared_browser_entry(self):
         launcher = object.__new__(LukerLauncher)
         launcher._running = True
+        launcher._auto_browser_pending = True
         posted = []
         launcher._post_ui = lambda callback: posted.append(callback)
         launcher._on_log = lambda _line: None
         launcher._open_browser_now = lambda: self.fail("自动打开应复用 _on_open_browser")
+        launcher._on_open_browser = Mock()
 
         class FakeResponse:
             def __enter__(self):
@@ -153,8 +155,66 @@ class AutoOpenRoutingTests(unittest.TestCase):
             launcher._schedule_auto_open_browser()
 
         self.assertEqual(len(posted), 1)
-        self.assertEqual(posted[0].__self__, launcher)
-        self.assertIs(posted[0].__func__, LukerLauncher._on_open_browser)
+        posted[0]()
+        launcher._on_open_browser.assert_called_once_with(automatic=True)
+
+
+class BrowserAutoOpenGuardTests(unittest.TestCase):
+    def make_launcher(self, *, pending: bool) -> tuple[LukerLauncher, list]:
+        launcher = object.__new__(LukerLauncher)
+        launcher._auto_browser_pending = pending
+        launcher._browser_busy = False
+        launcher._exiting = False
+        launcher._open_browser_now = Mock()
+        workers: list = []
+        launcher._run_async = workers.append
+        launcher._post_ui = lambda callback, key=None, control=False: True
+        return launcher, workers
+
+    def test_manual_open_cancels_pending_auto(self):
+        launcher, workers = self.make_launcher(pending=True)
+
+        launcher._on_open_browser()
+
+        self.assertFalse(launcher._auto_browser_pending)
+        self.assertEqual(len(workers), 1)
+        workers[0]()
+        launcher._open_browser_now.assert_called_once_with()
+
+        launcher._browser_busy = False
+        launcher._on_open_browser(automatic=True)
+
+        self.assertEqual(len(workers), 1)
+
+    def test_automatic_open_runs_only_once(self):
+        launcher, workers = self.make_launcher(pending=True)
+
+        launcher._on_open_browser(automatic=True)
+
+        self.assertFalse(launcher._auto_browser_pending)
+        self.assertEqual(len(workers), 1)
+
+        launcher._browser_busy = False
+        launcher._on_open_browser(automatic=True)
+
+        self.assertEqual(len(workers), 1)
+
+    def test_schedule_marks_pending_only_in_pwa_mode(self):
+        launcher = object.__new__(LukerLauncher)
+        launcher._auto_browser_pending = False
+        launcher._schedule_auto_open_browser = Mock()
+
+        with patch.object(launcher_app, "config", SimpleNamespace(use_pwa_mode=True)):
+            launcher._schedule_auto_open_browser_if_needed()
+        self.assertTrue(launcher._auto_browser_pending)
+        launcher._schedule_auto_open_browser.assert_called_once_with()
+
+        launcher._auto_browser_pending = False
+        launcher._schedule_auto_open_browser.reset_mock()
+        with patch.object(launcher_app, "config", SimpleNamespace(use_pwa_mode=False)):
+            launcher._schedule_auto_open_browser_if_needed()
+        self.assertFalse(launcher._auto_browser_pending)
+        launcher._schedule_auto_open_browser.assert_not_called()
 
 
 class BrowserOpenDelegationTests(unittest.TestCase):
@@ -406,6 +466,13 @@ class PwaInstalledTests(unittest.TestCase):
         ):
             self.assertFalse(browser.is_pwa_installed("LukerApp"))
 
+    def test_unreadable_edge_directory_returns_false(self):
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "iterdir", side_effect=PermissionError("denied")),
+        ):
+            self.assertFalse(browser.is_pwa_installed("LukerApp"))
+
 
 class OpenInBrowserFallbackTests(unittest.TestCase):
     def test_successful_pwa_does_not_open_default_browser(self):
@@ -441,6 +508,16 @@ class OpenInBrowserFallbackTests(unittest.TestCase):
             patch("webbrowser.open", side_effect=OSError("boom")),
         ):
             self.assertFalse(browser.open_in_browser("http://127.0.0.1:8000"))
+
+    def test_default_browser_false_return_is_reported_as_failure(self):
+        with (
+            patch.object(browser, "open_as_pwa", return_value=False),
+            patch("webbrowser.open", return_value=False),
+            self.assertLogs("core.browser", level="WARNING") as logs,
+        ):
+            self.assertFalse(browser.open_in_browser("http://127.0.0.1:8000"))
+
+        self.assertIn("未能打开", logs.output[0])
 
 
 if __name__ == "__main__":

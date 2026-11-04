@@ -53,23 +53,27 @@ def is_pwa_installed(app_id: str) -> bool:
     """通过 Edge 的 PWA 数据目录判断指定 App ID 是否已安装。"""
     edge_user_data = Path(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\User Data"))
 
-    # 检查 Default 配置文件中的 Web Applications
-    web_app_dir = edge_user_data / "Default" / "Web Applications"
+    try:
+        # 检查 Default 配置文件中的 Web Applications
+        web_app_dir = edge_user_data / "Default" / "Web Applications"
 
-    if web_app_dir.exists():
-        for item in web_app_dir.iterdir():
-            if item.is_dir() and app_id in item.name:
-                return True
+        if web_app_dir.exists():
+            for item in web_app_dir.iterdir():
+                if item.is_dir() and app_id in item.name:
+                    return True
 
-    # 也检查其他可能的配置文件
-    if edge_user_data.exists():
-        for profile_dir in edge_user_data.iterdir():
-            if profile_dir.is_dir() and profile_dir.name.startswith("Profile"):
-                web_app_dir = profile_dir / "Web Applications"
-                if web_app_dir.exists():
-                    for item in web_app_dir.iterdir():
-                        if item.is_dir() and app_id in item.name:
-                            return True
+        # 也检查其他可能的配置文件
+        if edge_user_data.exists():
+            for profile_dir in edge_user_data.iterdir():
+                if profile_dir.is_dir() and profile_dir.name.startswith("Profile"):
+                    web_app_dir = profile_dir / "Web Applications"
+                    if web_app_dir.exists():
+                        for item in web_app_dir.iterdir():
+                            if item.is_dir() and app_id in item.name:
+                                return True
+    except OSError as e:
+        # Edge 正在运行或配置目录受 ACL 限制时，直接回退到 --app 模式
+        logger.warning("读取 Edge PWA 目录失败: %s", e)
 
     return False
 
@@ -276,11 +280,14 @@ def open_in_browser(url: str | None = None, prefer_pwa: bool = True) -> bool:
     import webbrowser
 
     try:
-        webbrowser.open(url)
-        return True
+        opened = webbrowser.open(url)
     except Exception as e:
         logger.warning("浏览器启动失败: %s", e)
         return False
+    if not opened:
+        logger.warning("默认浏览器未能打开 Luker 页面")
+        return False
+    return True
 
 
 if __name__ == "__main__":

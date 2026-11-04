@@ -6,7 +6,6 @@ import tkinter as tk
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from pathlib import Path
 from threading import Thread
 from tkinter import messagebox
 
@@ -56,6 +55,7 @@ class LukerLauncher:
         self._running = False
         self._process_busy = False  # 防止启停/重启操作重入
         self._browser_busy = False  # 防止重复启动 PWA 发现线程
+        self._auto_browser_pending = False  # 自动打开尚未执行时，手动打开可取消
         self._exiting = False  # 退出流程只执行一次
         self._exit_dialog_open = False
         self._tray_ready = False
@@ -177,7 +177,7 @@ class LukerLauncher:
         self._reset_luker_readiness()
         desired_path = config.luker_path
         current = self.process_manager
-        if desired_path and current and str(current.luker_path) != str(Path(desired_path)):
+        if desired_path and current and not same_path(str(current.luker_path), desired_path):
             self._restart_with_path(desired_path)
             return
 
@@ -208,6 +208,9 @@ class LukerLauncher:
                     manager.start()
                     if self._exiting and manager.is_running:
                         manager.stop()
+            except Exception:
+                logger.exception("切换 Luker 路径失败")
+                self._on_log("[错误] 切换 Luker 路径失败，请查看日志")
             finally:
                 if self._post_ui(self._finish_process_action, control=True) is False:
                     self._process_busy = False
@@ -403,7 +406,9 @@ class LukerLauncher:
             return None
 
         path = config.luker_path
-        if self.process_manager is None or str(self.process_manager.luker_path) != str(Path(path)):
+        if self.process_manager is None or not same_path(
+            str(self.process_manager.luker_path), path
+        ):
             if self.process_manager and self.process_manager.is_running:
                 # 运行中不热切换，避免意外中断正在工作的进程
                 return self.process_manager
@@ -434,6 +439,9 @@ class LukerLauncher:
         def worker() -> None:
             try:
                 action(manager)
+            except Exception:
+                logger.exception("执行进程操作失败")
+                self._on_log("[错误] 进程操作失败，请查看日志")
             finally:
                 if self._post_ui(self._finish_process_action, control=True) is False:
                     # UI 泵已停止（通常正在退出），没有主线程来复位忙碌标志
@@ -455,8 +463,18 @@ class LukerLauncher:
             return
         self._post_ui(self._open_settings_window, UI_KEY_SETTINGS)
 
-    def _on_open_browser(self) -> None:
-        """打开浏览器；PWA 发现可能调用 PowerShell，放到后台避免卡住界面。"""
+    def _on_open_browser(self, *, automatic: bool = False) -> None:
+        """打开浏览器；PWA 发现可能调用 PowerShell，放到后台避免卡住界面。
+
+        自动打开只执行一次；手动打开会取消尚未执行的自动请求。
+        """
+        if automatic:
+            if not self._auto_browser_pending:
+                return
+            self._auto_browser_pending = False
+        else:
+            self._auto_browser_pending = False
+
         if self._exiting or self._browser_busy:
             return
 
@@ -667,7 +685,7 @@ class LukerLauncher:
         if (
             manager.is_running
             and configured_path
-            and str(manager.luker_path) != str(Path(configured_path))
+            and not same_path(str(manager.luker_path), configured_path)
         ):
             self._post_update_progress(
                 window,
@@ -985,14 +1003,14 @@ class LukerLauncher:
             window.hide()
             self._on_log("[启动器] 已最小化到系统托盘，单击图标可显示日志窗口")
         else:
-            # 没有托盘时保留窗口作为唯一入口，关闭窗口直接退出
+            # 没有托盘时保留窗口作为唯一入口，关闭按钮仍走确认框
             window.set_tray_available(False)
-            window.on_hide_callback = self._on_exit
             window.show()
-            self._on_log("[错误] 托盘图标创建失败，日志窗口保持显示；关闭窗口将退出")
+            self._on_log("[错误] 托盘图标创建失败，日志窗口保持显示；关闭窗口会询问是否退出")
 
     def _schedule_auto_open_browser_if_needed(self) -> None:
         if config.use_pwa_mode:
+            self._auto_browser_pending = True
             self._schedule_auto_open_browser()
 
     def _cleanup_after_mainloop(self) -> None:
@@ -1022,12 +1040,13 @@ class LukerLauncher:
                 if ready:
                     self._on_log("[启动器] 检测到 Luker 已启动，正在打开沉浸应用窗口...")
                     # 回到主线程复用 _browser_busy，避免自动和手动同时打开
-                    self._post_ui(self._on_open_browser)
+                    self._post_ui(lambda: self._on_open_browser(automatic=True))
                     return
 
                 time.sleep(BROWSER_WAIT_INTERVAL_SECONDS)
 
             if self._running:
+                self._auto_browser_pending = False
                 self._on_log("[启动器] 等待 Luker 启动超时，请手动打开浏览器")
 
         Thread(target=check_and_open, daemon=True).start()

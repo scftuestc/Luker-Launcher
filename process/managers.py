@@ -92,6 +92,17 @@ class _ProcessManagerBase:
             thread.join(timeout=1)
         self._log_thread = None
 
+    def _cleanup_failed_start(self, process: subprocess.Popen[str]) -> None:
+        """启动阶段失败时回收已创建的进程，避免留下没有日志读取线程的子进程。"""
+        with contextlib.suppress(Exception):
+            process.terminate()
+        with contextlib.suppress(Exception):
+            process.wait(timeout=3)
+        if process.poll() is None:
+            with contextlib.suppress(Exception):
+                process.kill()
+        self._close_process_pipes(process)
+
     def start(self) -> bool:
         with self._op_lock:
             if self.is_running:
@@ -103,6 +114,7 @@ class _ProcessManagerBase:
                 self._emit_log(f"{self._tag('错误')} {error}")
                 return False
 
+            process: subprocess.Popen[str] | None = None
             try:
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -142,7 +154,12 @@ class _ProcessManagerBase:
                 self._emit_log(f"{self._tag('信息')} {self.name} 启动中...")
                 return True
 
-            except (OSError, ValueError) as e:
+            except Exception as e:
+                if process is not None:
+                    self._cleanup_failed_start(process)
+                self.process = None
+                self._running = False
+                self._log_thread = None
                 self._emit_log(f"{self._tag('错误')} 启动失败: {e}")
                 return False
 
