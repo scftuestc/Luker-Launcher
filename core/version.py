@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import urllib.error
@@ -250,21 +251,31 @@ def _short_sha(sha: str) -> str:
     return sha[:7] if sha else ""
 
 
+COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+
+
+def is_valid_commit_sha(value: object) -> bool:
+    """判断值是否为完整的 40 位十六进制提交号。"""
+    return isinstance(value, str) and COMMIT_SHA_PATTERN.fullmatch(value) is not None
+
+
 def _commit_from_api(data: object) -> CommitInfo:
     if not isinstance(data, dict):
         raise VersionError("GitHub 提交数据格式异常")
     try:
-        sha = str(data["sha"])
+        sha = data["sha"]
+        if not is_valid_commit_sha(sha):
+            raise ValueError
         commit = data["commit"]
         if not isinstance(commit, dict):
             raise TypeError
         date = str(commit["committer"]["date"])[:10]
         subject = str(commit["message"]).splitlines()[0]
-    except (KeyError, TypeError, IndexError) as error:
+    except (KeyError, TypeError, IndexError, ValueError) as error:
         raise VersionError("GitHub 提交数据格式异常") from error
     return CommitInfo(
-        sha=sha,
-        short_sha=_short_sha(sha),
+        sha=str(sha),
+        short_sha=_short_sha(str(sha)),
         date=date,
         subject=subject,
     )
@@ -726,6 +737,9 @@ def apply_luker_update(
     on_stage: Callable[[str, str], None] | None = None,
 ) -> UpdateResult:
     """切换 Luker 到指定提交并安装依赖；失败时尝试回滚代码。"""
+    # 提交号会直接传给 git，必须是完整哈希，避免被当作选项参数
+    if not is_valid_commit_sha(target.sha):
+        return UpdateResult(False, False, "更新目标提交号格式无效")
 
     def stage(name: str, message: str) -> None:
         if on_stage is not None:

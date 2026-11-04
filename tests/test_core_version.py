@@ -92,6 +92,22 @@ class FakeResponse:
         return self.payload
 
 
+class CommitShaValidationTests(unittest.TestCase):
+    def test_rejects_short_sha(self):
+        with self.assertRaises(VersionError):
+            version._commit_from_api(commit_json("abc"))
+
+    def test_rejects_non_hex_sha(self):
+        with self.assertRaises(VersionError):
+            version._commit_from_api(commit_json("g" * 40))
+
+    def test_accepts_full_sha(self):
+        info = version._commit_from_api(commit_json("a" * 40))
+
+        self.assertEqual(info.sha, "a" * 40)
+        self.assertEqual(info.short_sha, "aaaaaaa")
+
+
 class ShortShaTests(unittest.TestCase):
     def test_short_sha(self):
         self.assertEqual(version._short_sha("abcdef123456"), "abcdef1")
@@ -677,6 +693,21 @@ class ApplyUpdateTests(unittest.TestCase):
         self.assertFalse(result.rolled_back)
         self.assertIn("自动回滚失败", result.message)
         npm.assert_not_called()
+
+    def test_invalid_target_sha_is_rejected_before_git(self):
+        target = replace(self.TARGET, sha="--upload-pack=evil")
+
+        with (
+            patch.object(version, "read_local_version") as local,
+            patch.object(version, "_git_output") as git,
+        ):
+            result = version.apply_luker_update("C:/Luker", target)
+
+        self.assertFalse(result.success)
+        self.assertFalse(result.rolled_back)
+        self.assertIn("提交号", result.message)
+        local.assert_not_called()
+        git.assert_not_called()
 
     def test_dirty_worktree_is_rejected_before_git(self):
         with (
