@@ -59,6 +59,8 @@ class Config:
         self.config_path = (
             Path(config_path) if config_path is not None else get_app_dir() / self.CONFIG_FILE
         )
+        # import 阶段日志系统可能还没初始化，先缓冲错误，等 main 初始化后再上报
+        self._load_error: str | None = None
         self._config: dict[str, Any] = self._load_config()
         self._theme_change_callbacks: list[Callable[[dict[str, str]], None]] = []
         self._blur_change_callbacks: list[Callable[[bool], None]] = []
@@ -69,17 +71,32 @@ class Config:
             return {}
 
         try:
-            with open(self.config_path, encoding='utf-8') as f:
+            # utf-8-sig 同时接受普通 UTF-8 和带 BOM 的文件
+            with open(self.config_path, encoding='utf-8-sig') as f:
                 data = json.load(f)
         except (OSError, UnicodeError, json.JSONDecodeError) as e:
-            logger.warning("读取配置失败，使用默认配置: %s", e)
+            self._load_error = f"读取配置失败，使用默认配置: {e}"
             return {}
 
         if not isinstance(data, dict):
-            logger.warning("配置文件内容不是对象，使用默认配置")
+            self._load_error = "配置文件内容不是对象，使用默认配置"
             return {}
 
         return self._normalize(data)
+
+    @property
+    def load_error(self) -> str | None:
+        """返回尚未上报的配置读取错误。"""
+        return self._load_error
+
+    def report_load_error(self) -> bool:
+        """在日志系统初始化后补报配置读取错误；只输出一次。"""
+        error = self._load_error
+        if error is None:
+            return False
+        self._load_error = None
+        logger.warning("%s", error)
+        return True
 
     @staticmethod
     def _normalize(data: dict[str, Any]) -> dict[str, Any]:

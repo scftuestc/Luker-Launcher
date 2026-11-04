@@ -25,12 +25,20 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config.blur_enabled)
         self.assertEqual(config.close_behavior, DEFAULT_CLOSE_BEHAVIOR)
         self.assertIsNone(config.luker_path)
+        self.assertIsNone(config.load_error)
 
     def test_invalid_json_uses_defaults(self):
         self.config_path.write_text("{not json", encoding="utf-8")
         config = Config(self.config_path)
         self.assertEqual(config.theme_name, DEFAULT_THEME)
         self.assertIsNone(config.luker_path)
+        self.assertIsNotNone(config.load_error)
+
+    def test_invalid_json_does_not_log_before_logging_is_configured(self):
+        self.config_path.write_text("{not json", encoding="utf-8")
+
+        with self.assertNoLogs("config", level="WARNING"):
+            Config(self.config_path)
 
     def test_invalid_utf8_config_uses_defaults(self):
         self.config_path.write_bytes(b'{"theme": "\xff"}')
@@ -39,6 +47,17 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(config.theme_name, DEFAULT_THEME)
         self.assertIsNone(config.luker_path)
+        self.assertIsNotNone(config.load_error)
+
+    def test_utf8_bom_config_is_read_normally(self):
+        self.config_path.write_bytes(
+            b'\xef\xbb\xbf' + json.dumps({"theme": "ocean_cyan"}).encode("utf-8")
+        )
+
+        config = Config(self.config_path)
+
+        self.assertEqual(config.theme_name, "ocean_cyan")
+        self.assertIsNone(config.load_error)
 
     def test_non_object_json_uses_defaults(self):
         self.config_path.write_text("[]", encoding="utf-8")
@@ -47,6 +66,18 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(config.theme_name, DEFAULT_THEME)
         self.assertIsNone(config.luker_path)
+        self.assertIsNotNone(config.load_error)
+
+    def test_report_load_error_emits_warning_only_once(self):
+        self.config_path.write_text("{not json", encoding="utf-8")
+        config = Config(self.config_path)
+
+        with self.assertLogs("config", level="WARNING") as logs:
+            self.assertTrue(config.report_load_error())
+
+        self.assertIn("读取配置失败", logs.output[0])
+        self.assertIsNone(config.load_error)
+        self.assertFalse(config.report_load_error())
 
     def test_normalize_drops_wrong_types(self):
         self._write(

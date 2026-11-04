@@ -91,6 +91,27 @@ class MainStartupTests(unittest.TestCase):
         release_mock.assert_called_once_with()
 
 
+class ConfigErrorReportingTests(unittest.TestCase):
+    def test_reports_load_error_after_logging_setup(self):
+        order: list[str] = []
+
+        with (
+            patch.object(main.logging_setup, 'setup_logging') as setup_mock,
+            patch.object(main, 'setup_dpi_awareness'),
+            patch.object(main.ctk, 'set_appearance_mode'),
+            patch.object(main.ctk, 'set_default_color_theme'),
+            patch.object(main.config, 'report_load_error') as report_mock,
+            patch.object(main.single_instance, 'acquire', return_value=False),
+            patch.object(main, 'windll'),
+        ):
+            setup_mock.side_effect = lambda: order.append('logging')
+            report_mock.side_effect = lambda: order.append('report') or False
+            main.main()
+
+        self.assertEqual(order, ['logging', 'report'])
+        report_mock.assert_called_once_with()
+
+
 class DpiAwarenessTests(unittest.TestCase):
     def test_prefers_per_monitor_v2_context(self):
         with (

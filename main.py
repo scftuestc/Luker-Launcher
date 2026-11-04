@@ -8,7 +8,7 @@ from ctypes import windll
 import customtkinter as ctk
 
 import logging_setup
-from config import APP_VERSION
+from config import APP_VERSION, config
 from launcher_app import LukerLauncher
 from process import single_instance
 from ui.dpi import get_process_dpi_awareness
@@ -57,6 +57,8 @@ def _log_dpi_awareness() -> None:
 def main() -> None:
     # import 阶段不碰任何窗口系统，进入 main() 才正式初始化 GUI 相关设置
     logging_setup.setup_logging()
+    # 配置在 import 阶段读取，错误要等日志系统就绪后才能写进 launcher.log
+    config.report_load_error()
     logger.info("Luker Launcher v%s 启动", APP_VERSION)
 
     setup_dpi_awareness()
