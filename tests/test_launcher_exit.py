@@ -52,7 +52,12 @@ class ExitRequestTests(unittest.TestCase):
         launcher._exiting = False
         launcher._exit_dialog_open = False
         launcher._tray_ready = True
-        launcher._updating = False
+        launcher._update = SimpleNamespace(
+            checking=False,
+            updating=False,
+            version_check_cache=None,
+            version_check_seq=0,
+        )
         launcher.log_window = FakeLogWindow()
         launcher.tray_menu = FakeTrayMenu()
         launcher.tray_icon = FakeTrayIcon()

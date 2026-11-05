@@ -6,6 +6,7 @@ from unittest.mock import patch
 import launcher_app
 from application.lifecycle_state import LifecycleState
 from application.process_coordinator import ProcessCoordinator
+from application.update_coordinator import UpdateCoordinator
 from core.version import (
     CommitInfo,
     LocalVersion,
@@ -144,10 +145,6 @@ class LauncherUpdateTests(unittest.TestCase):
     ) -> tuple[LukerLauncher, FakeManager, FakeSettingsWindow, list[str]]:
         launcher = object.__new__(LukerLauncher)
         launcher._exiting = False
-        launcher._version_checking = False
-        launcher._updating = False
-        launcher._version_check_cache = None
-        launcher._version_check_seq = 0
         launcher._lifecycle = LifecycleState()
         launcher._ui = UiDispatcher(lambda _delay, _callback: None)
         launcher._ui.start()
@@ -170,229 +167,19 @@ class LauncherUpdateTests(unittest.TestCase):
             manager_factory=lambda *args, **kwargs: manager,
         )
         launcher._process.manager = manager
+        launcher._update = UpdateCoordinator(
+            config=SimpleNamespace(luker_path="C:/Luker"),
+            process=launcher._process,
+            status=SimpleNamespace(reset=lambda: None),
+            task_runner=LauncherRunner(launcher),
+            post_ui=launcher._ui,
+            log=logs.append,
+            lifecycle=launcher._lifecycle,
+            settings_provider=lambda: launcher.settings_window,
+        )
         launcher._ensure_process_manager = lambda: manager
         launcher._reset_luker_readiness = lambda: None
         return launcher, manager, launcher.settings_window, logs
-
-    def test_check_runs_in_background_and_delivers_result(self):
-        launcher, manager, window, _ = self.make_launcher()
-        check = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=None,
-            commit=None,
-        )
-        with (
-            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
-            patch.object(
-                launcher_app, "check_luker_versions", return_value=check
-            ) as check_versions,
-        ):
-            self.assertTrue(launcher._request_luker_version_check())
-            launcher._ui.pump()
-
-        check_versions.assert_called_once_with(
-            "C:/Luker",
-            running_path=str(manager.luker_path),
-        )
-        self.assertIs(window.check, check)
-        self.assertFalse(launcher._version_checking)
-
-    def test_check_exception_becomes_error_result(self):
-        launcher, _, window, _ = self.make_launcher()
-        with (
-            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
-            patch.object(
-                launcher_app,
-                "check_luker_versions",
-                side_effect=RuntimeError("boom"),
-            ),
-            patch.object(
-                launcher_app,
-                "read_local_version",
-                return_value=local_version(),
-            ),
-        ):
-            self.assertTrue(launcher._request_luker_version_check())
-            launcher._ui.pump()
-
-        self.assertIsNotNone(window.check)
-        self.assertIn("检查版本失败", window.check.error)
-        self.assertFalse(launcher._version_checking)
-
-    def test_check_logs_release_and_commit_summary(self):
-        launcher, _, _, logs = self.make_launcher()
-        release, commit = remote_targets()
-        check = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=release,
-            commit=commit,
-        )
-        with (
-            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
-            patch.object(launcher_app, "check_luker_versions", return_value=check),
-        ):
-            self.assertTrue(launcher._request_luker_version_check())
-            launcher._ui.pump()
-
-        joined = "\n".join(logs)
-        self.assertIn("正在检查 Luker 版本", joined)
-        self.assertIn(f"当前版本：提交 {'a' * 40} · 2026-10-26", joined)
-        self.assertIn(f"最新发行版：v2.8.0 · 发布于 2026-10-01 · 提交 {'b' * 40}", joined)
-        self.assertIn(f"最新提交：2026-10-26 · {'c' * 40}", joined)
-
-    def test_check_logs_error_when_no_targets(self):
-        launcher, _, _, logs = self.make_launcher()
-        check = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=None,
-            commit=None,
-            error="api failed",
-        )
-        with (
-            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
-            patch.object(launcher_app, "check_luker_versions", return_value=check),
-        ):
-            self.assertTrue(launcher._request_luker_version_check())
-            launcher._ui.pump()
-
-        self.assertIn("[错误] api failed", logs)
-
-    def test_check_logs_warning_when_fetch_fails(self):
-        launcher, _, _, logs = self.make_launcher()
-        release, commit = remote_targets()
-        check = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=release,
-            commit=commit,
-            error="fetch failed",
-        )
-        with (
-            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
-            patch.object(launcher_app, "check_luker_versions", return_value=check),
-        ):
-            self.assertTrue(launcher._request_luker_version_check())
-            launcher._ui.pump()
-
-        self.assertIn("[警告] fetch failed", logs)
-
-    def test_check_is_rejected_when_busy_or_exiting(self):
-        launcher, _, _, _ = self.make_launcher()
-        launcher._version_checking = True
-        self.assertFalse(launcher._request_luker_version_check())
-        launcher._version_checking = False
-        launcher._exiting = True
-        self.assertFalse(launcher._request_luker_version_check())
-        launcher._exiting = False
-        launcher._updating = True
-        self.assertFalse(launcher._request_luker_version_check())
-
-    def test_check_is_rejected_without_settings_window(self):
-        launcher, _, _, _ = self.make_launcher()
-        launcher.settings_window = None
-        self.assertFalse(launcher._request_luker_version_check())
-
-    def test_successful_check_is_cached(self):
-        launcher, _, _, _ = self.make_launcher()
-        release, commit = remote_targets()
-        check = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=release,
-            commit=commit,
-        )
-        with (
-            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
-            patch.object(launcher_app, "check_luker_versions", return_value=check),
-        ):
-            self.assertTrue(launcher._request_luker_version_check())
-            launcher._ui.pump()
-
-        self.assertIs(launcher._version_check_cache, check)
-
-    def test_error_without_targets_is_not_cached(self):
-        launcher, _, window, _ = self.make_launcher()
-        check = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=None,
-            commit=None,
-            error="api failed",
-        )
-        launcher._version_check_seq = 1
-        with patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")):
-            launcher._deliver_version_check(check, 1)
-
-        self.assertIsNone(launcher._version_check_cache)
-        self.assertIs(window.check, check)
-
-    def test_closed_window_still_caches_result(self):
-        launcher, _, _, _ = self.make_launcher()
-        release, commit = remote_targets()
-        check = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=release,
-            commit=commit,
-        )
-        launcher.settings_window = None
-        launcher._version_check_seq = 1
-        with patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")):
-            launcher._deliver_version_check(check, 1)
-
-        self.assertIs(launcher._version_check_cache, check)
-
-    def test_stale_check_result_is_ignored(self):
-        launcher, _, window, _ = self.make_launcher()
-        release, commit = remote_targets()
-        check = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=release,
-            commit=commit,
-        )
-        launcher._version_check_seq = 2
-        with patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")):
-            launcher._deliver_version_check(check, 1)
-
-        self.assertIsNone(launcher._version_check_cache)
-        self.assertIsNone(window.check)
-
-    def test_result_for_other_path_is_ignored(self):
-        launcher, _, window, _ = self.make_launcher()
-        release, commit = remote_targets()
-        check = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=release,
-            commit=commit,
-        )
-        launcher._version_check_seq = 1
-        with patch.object(launcher_app, "config", SimpleNamespace(luker_path="D:/Other")):
-            launcher._deliver_version_check(check, 1)
-
-        self.assertIsNone(launcher._version_check_cache)
-        self.assertIsNone(window.check)
-
-    def test_path_change_clears_cache_and_invalidates_check(self):
-        launcher, _, _, _ = self.make_launcher()
-        launcher._version_checking = True
-        launcher._version_check_cache = VersionCheck(
-            repo_path="C:/Luker",
-            local=local_version(),
-            release=None,
-            commit=None,
-        )
-        launcher._version_check_seq = 1
-
-        launcher._on_luker_path_changed()
-
-        self.assertFalse(launcher._version_checking)
-        self.assertIsNone(launcher._version_check_cache)
-        self.assertEqual(launcher._version_check_seq, 2)
 
     def test_update_stops_applies_and_restarts(self):
         launcher, manager, window, logs = self.make_launcher()

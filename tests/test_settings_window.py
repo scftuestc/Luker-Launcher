@@ -894,13 +894,16 @@ class SettingsWindowTests(unittest.TestCase):
         launcher = object.__new__(LukerLauncher)
         launcher._process = SimpleNamespace(manager=None, busy=False)
         launcher._status = SimpleNamespace(current_state=lambda: LukerState.READY)
+        launcher._update = SimpleNamespace(
+            checking=False,
+            updating=False,
+            version_check_cache=None,
+            version_check_seq=0,
+        )
         launcher._exiting = False
         launcher.log_window = object()
         launcher.settings_window = None
         launcher._tray_anchor = (100, 200)
-        launcher._version_checking = False
-        launcher._version_check_cache = None
-        launcher._version_check_seq = 0
         return launcher
 
     def test_open_passes_cached_check_to_new_window(self):

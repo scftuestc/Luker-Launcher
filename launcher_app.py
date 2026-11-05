@@ -13,6 +13,7 @@ from application.lifecycle_state import LifecycleState
 from application.process_coordinator import ProcessCoordinator
 from application.status_coordinator import StatusCoordinator
 from application.task_runner import TaskRunner
+from application.update_coordinator import UpdateCoordinator
 from config import config
 from core.browser import open_in_browser
 from core.readiness import LukerState
@@ -21,7 +22,6 @@ from core.version import (
     UpdateTarget,
     VersionCheck,
     apply_luker_update,
-    check_luker_versions,
     read_local_version,
     same_path,
 )
@@ -53,10 +53,6 @@ class LukerLauncher:
         self._exiting = False  # 退出流程只执行一次
         self._exit_dialog_open = False
         self._tray_ready = False
-        self._version_checking = False
-        self._updating = False
-        self._version_check_cache: VersionCheck | None = None
-        self._version_check_seq = 0
         self._shutdown_done = False
         # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
         self._ui = UiDispatcher(self._schedule_ui)
@@ -91,6 +87,16 @@ class LukerLauncher:
             lifecycle=self._lifecycle,
             is_running=lambda: self._running,
         )
+        self._update = UpdateCoordinator(
+            config=config,
+            process=self._process,
+            status=self._status,
+            task_runner=self._task_runner,
+            post_ui=self._ui,
+            log=self._on_log,
+            lifecycle=self._lifecycle,
+            settings_provider=lambda: self.settings_window,
+        )
         # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
         self._tray_anchor: tuple[int, int] | None = None
         self.settings_window: SettingsWindow | None = None
@@ -110,6 +116,38 @@ class LukerLauncher:
     @_process_busy.setter
     def _process_busy(self, value: bool) -> None:
         self._process.busy = value
+
+    @property
+    def _version_checking(self) -> bool:
+        return self._update.checking
+
+    @_version_checking.setter
+    def _version_checking(self, value: bool) -> None:
+        self._update.checking = value
+
+    @property
+    def _version_check_cache(self) -> VersionCheck | None:
+        return self._update.version_check_cache
+
+    @_version_check_cache.setter
+    def _version_check_cache(self, value: VersionCheck | None) -> None:
+        self._update.version_check_cache = value
+
+    @property
+    def _version_check_seq(self) -> int:
+        return self._update.version_check_seq
+
+    @_version_check_seq.setter
+    def _version_check_seq(self, value: int) -> None:
+        self._update.version_check_seq = value
+
+    @property
+    def _updating(self) -> bool:
+        return self._update.updating
+
+    @_updating.setter
+    def _updating(self, value: bool) -> None:
+        self._update.updating = value
 
     def _schedule_ui(self, delay_ms: int, callback: Callable[[], None]) -> None:
         """在 Tk 主线程安排下一次 UI 泵；窗口不可用时停止续排。"""
@@ -375,104 +413,10 @@ class LukerLauncher:
         self.settings_window = None
 
     def _on_luker_path_changed(self) -> None:
-        """路径变更后丢弃旧路径的检查结果和进行中的请求。"""
-        self._version_check_seq += 1
-        self._version_check_cache = None
-        self._version_checking = False
+        self._update.path_changed()
 
     def _request_luker_version_check(self) -> bool:
-        """在后台检查本地版本、最新发行版和最新提交。"""
-        if self._version_checking or self._updating or self._exiting:
-            return False
-        window = self.settings_window
-        if window is None:
-            return False
-
-        repo_path = config.luker_path
-        manager = self.process_manager
-        running_path = (
-            str(manager.luker_path) if manager is not None and manager.is_running else None
-        )
-        self._version_checking = True
-        self._version_check_seq += 1
-        seq = self._version_check_seq
-        self._on_log("[启动器] 正在检查 Luker 版本...")
-        failed = False
-
-        def worker() -> None:
-            nonlocal failed
-            try:
-                result = check_luker_versions(repo_path, running_path=running_path)
-            except Exception as error:
-                failed = True
-                logger.exception("检查 Luker 版本失败：%s", error)
-                local = read_local_version(repo_path, running_path=running_path)
-                result = VersionCheck(
-                    repo_path=local.repo_path,
-                    local=local,
-                    release=None,
-                    commit=None,
-                    error=f"检查版本失败：{error}",
-                )
-            finally:
-                if seq == self._version_check_seq:
-                    self._version_checking = False
-            if not failed:
-                self._log_version_check(result)
-            self._post_ui(
-                lambda: self._deliver_version_check(result, seq),
-                control=True,
-            )
-
-        try:
-            self._run_async(worker)
-        except Exception:
-            self._version_checking = False
-            logger.exception("启动 Luker 版本检查线程失败")
-            return False
-        return True
-
-    def _deliver_version_check(self, result: VersionCheck, seq: int) -> None:
-        if seq != self._version_check_seq:
-            return
-        current_path = config.luker_path
-        if not current_path or not same_path(result.repo_path, current_path):
-            return
-        if result.release is not None or result.commit is not None:
-            self._version_check_cache = result
-        window = self.settings_window
-        if window is not None and window.is_alive():
-            window.set_version_check(result)
-
-    def _log_version_check(self, result: VersionCheck) -> None:
-        """把检查结果显示到日志窗口。"""
-        local = result.local
-        if not local.error:
-            head = local.head or local.short_head
-            parts = []
-            if local.current_tag:
-                parts.append(f"Tag {local.current_tag}")
-            if head:
-                parts.append(f"提交 {head}")
-            if local.date:
-                parts.append(local.date)
-            if parts:
-                self._on_log(f"[启动器] 当前版本：{' · '.join(parts)}")
-
-        release = result.release
-        if release is not None:
-            self._on_log(
-                f"[启动器] 最新发行版：{release.tag or release.label} · "
-                f"发布于 {release.published_at or '未知'} · 提交 {release.commit.sha}"
-            )
-
-        commit = result.commit
-        if commit is not None:
-            self._on_log(f"[启动器] 最新提交：{commit.commit.date or '未知'} · {commit.commit.sha}")
-
-        if result.error:
-            has_target = release is not None or commit is not None
-            self._on_log(f"[{'警告' if has_target else '错误'}] {result.error}")
+        return self._update.request_check()
 
     def _post_update_progress(
         self,
