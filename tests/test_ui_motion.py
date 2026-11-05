@@ -1,7 +1,7 @@
 import tkinter as tk
 import unittest
 
-from ui.motion import WindowFade, ease_in_out_cubic, ease_out_cubic, fade_palette
+from luker_launcher.ui.motion import WindowFade, ease_in_out_cubic, ease_out_cubic, fade_palette
 
 
 class FakeWindow:

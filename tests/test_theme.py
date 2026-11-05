@@ -21,7 +21,7 @@ from luker_launcher.theme import (
     theme_supports_blur,
     theme_swatch_colors,
 )
-from ui.icons import THEME_ICON_KINDS
+from luker_launcher.ui.icons import THEME_ICON_KINDS
 
 REQUIRED_COLOR_KEYS = (
     "bg",

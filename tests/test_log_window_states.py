@@ -2,9 +2,9 @@ import datetime
 import unittest
 
 from log.store import LogEntry
-from log_window import LogWindow
 from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import PRESET_THEMES
+from luker_launcher.ui.log_window import LogWindow
 
 
 class FakeOverlay:

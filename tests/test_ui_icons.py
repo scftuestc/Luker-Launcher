@@ -1,6 +1,6 @@
 import unittest
 
-from ui.icons import (
+from luker_launcher.ui.icons import (
     menu_icon,
     render_menu_icon,
     render_theme_icon,

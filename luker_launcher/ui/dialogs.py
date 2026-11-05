@@ -11,9 +11,9 @@ import customtkinter as ctk
 from luker_launcher.config import config, get_app_dir
 from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import shade_color
-from ui.buttons import make_button
-from ui.dpi import format_geometry
-from ui.tokens import (
+from luker_launcher.ui.buttons import make_button
+from luker_launcher.ui.dpi import format_geometry
+from luker_launcher.ui.tokens import (
     CHECK_SIZE,
     CONTROL_HEIGHT_LG,
     FONT_BODY,
@@ -29,7 +29,7 @@ from ui.tokens import (
     WINDOW_DIALOG_HEIGHT,
     WINDOW_DIALOG_WIDTH,
 )
-from ui.window_utils import apply_window_rounding, get_ui_font
+from luker_launcher.ui.window_utils import apply_window_rounding, get_ui_font
 
 logger = logging.getLogger(__name__)
 

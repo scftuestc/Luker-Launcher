@@ -2,7 +2,7 @@ import unittest
 
 import customtkinter as ctk
 
-from ui.dpi import (
+from luker_launcher.ui.dpi import (
     MonitorInfo,
     centered_position,
     clamp_popup_position,

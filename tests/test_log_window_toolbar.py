@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from log_window import LogWindow, auto_scroll_button_colors
+from luker_launcher.ui.log_window import LogWindow, auto_scroll_button_colors
 
 
 class FakeWidget:
@@ -35,7 +35,7 @@ class AutoScrollTests(unittest.TestCase):
         expected.update(text='自动滚动', image='scroll:#111111:16')
 
         with patch(
-            'log_window.toolbar_icon',
+            'luker_launcher.ui.log_window.toolbar_icon',
             side_effect=lambda kind, color, size=16: f'{kind}:{color}:{size}',
         ):
             window._apply_auto_scroll_ui()
@@ -48,7 +48,7 @@ class AutoScrollTests(unittest.TestCase):
         expected.update(text='已暂停', image='pause:#111111:16')
 
         with patch(
-            'log_window.toolbar_icon',
+            'luker_launcher.ui.log_window.toolbar_icon',
             side_effect=lambda kind, color, size=16: f'{kind}:{color}:{size}',
         ):
             window._apply_auto_scroll_ui()
@@ -69,7 +69,7 @@ class AutoScrollTests(unittest.TestCase):
         window = self.make_window(True)
 
         with patch(
-            'log_window.toolbar_icon',
+            'luker_launcher.ui.log_window.toolbar_icon',
             side_effect=lambda kind, color, size=16: f'{kind}:{color}:{size}',
         ):
             window._toggle_scroll()
@@ -83,7 +83,7 @@ class AutoScrollTests(unittest.TestCase):
         window = self.make_window(True)
 
         with patch(
-            'log_window.toolbar_icon',
+            'luker_launcher.ui.log_window.toolbar_icon',
             side_effect=lambda kind, color, size=16: f'{kind}:{color}:{size}',
         ):
             window._refresh_toolbar_icons()
@@ -95,7 +95,7 @@ class AutoScrollTests(unittest.TestCase):
         window = self.make_window(False)
 
         with patch(
-            'log_window.toolbar_icon',
+            'luker_launcher.ui.log_window.toolbar_icon',
             side_effect=lambda kind, color, size=16: f'{kind}:{color}:{size}',
         ):
             window._refresh_toolbar_icons()

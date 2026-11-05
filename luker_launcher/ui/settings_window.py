@@ -7,21 +7,21 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
-from dialogs import select_luker_path
 from luker_launcher.config import config
 from luker_launcher.services.version import TargetInfo, UpdateProgress, UpdateTarget, VersionCheck
 from luker_launcher.theme import PRESET_THEMES, mix_color, shade_color, theme_swatch_colors
-from ui.buttons import make_button
-from ui.dpi import (
+from luker_launcher.ui.buttons import make_button
+from luker_launcher.ui.dialogs import select_luker_path
+from luker_launcher.ui.dpi import (
     discard_window_scaling,
     get_monitor_info,
     plan_window_placement,
     sync_window_scaling,
 )
-from ui.icons import theme_icon
-from ui.motion import WindowFade
-from ui.switch import AnimatedSwitch
-from ui.tokens import (
+from luker_launcher.ui.icons import theme_icon
+from luker_launcher.ui.motion import WindowFade
+from luker_launcher.ui.switch import AnimatedSwitch
+from luker_launcher.ui.tokens import (
     CHECK_SIZE,
     CONTROL_HEIGHT_MD,
     CONTROL_HEIGHT_SM,
@@ -67,7 +67,7 @@ from ui.tokens import (
     WINDOW_SETTINGS_WIDTH,
     WRAP_VERSION_SUMMARY,
 )
-from ui.window_utils import (
+from luker_launcher.ui.window_utils import (
     apply_window_rounding,
     bind_window_drag,
     get_ui_font,

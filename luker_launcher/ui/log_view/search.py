@@ -7,9 +7,9 @@ from collections.abc import Callable
 import customtkinter as ctk
 
 from luker_launcher.theme import mix_color
-from ui.buttons import ButtonRole, button_colors, make_button
-from ui.icons import toolbar_icon
-from ui.tokens import (
+from luker_launcher.ui.buttons import ButtonRole, button_colors, make_button
+from luker_launcher.ui.icons import toolbar_icon
+from luker_launcher.ui.tokens import (
     CONTROL_HEIGHT_MD,
     CONTROL_HEIGHT_XS,
     COUNT_LABEL_WIDTH,

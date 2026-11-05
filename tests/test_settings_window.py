@@ -5,7 +5,6 @@ from typing import ClassVar
 from unittest.mock import Mock, patch
 
 import launcher_app
-import settings_window
 from application.lifecycle_state import LifecycleState
 from launcher_app import LukerLauncher
 from luker_launcher.services.readiness import LukerState
@@ -17,7 +16,9 @@ from luker_launcher.services.version import (
     UpdateTarget,
     VersionCheck,
 )
-from settings_window import (
+from luker_launcher.ui import settings_window
+from luker_launcher.ui.dpi import MonitorInfo
+from luker_launcher.ui.settings_window import (
     _SCROLL_BINDING_SEQUENCES,
     SettingsWindow,
     bind_click_recursive,
@@ -26,7 +27,6 @@ from settings_window import (
     theme_card_hover_colors,
     update_button_state_colors,
 )
-from ui.dpi import MonitorInfo
 
 
 class FakeTkInterpreter:

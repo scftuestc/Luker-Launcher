@@ -2,9 +2,9 @@ import re
 import unittest
 from unittest.mock import patch
 
-import ui.resizing as resizing
-from ui.dpi import MonitorInfo
-from ui.resizing import WindowResizer
+from luker_launcher.ui import resizing
+from luker_launcher.ui.dpi import MonitorInfo
+from luker_launcher.ui.resizing import WindowResizer
 
 
 class FakeEvent:

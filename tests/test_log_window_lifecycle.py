@@ -5,9 +5,9 @@ from unittest.mock import Mock, patch
 
 import customtkinter as ctk
 
-import log_window
-from log_window import LogWindow
 from luker_launcher.services.readiness import LukerState
+from luker_launcher.ui import log_window
+from luker_launcher.ui.log_window import LogWindow
 
 
 class WindowStatePollTests(unittest.TestCase):
@@ -114,7 +114,7 @@ class NativeWindowStateTests(unittest.TestCase):
 
         with (
             patch.object(log_window.win32_api, 'user32') as user32,
-            self.assertLogs('log_window', level='WARNING') as logs,
+            self.assertLogs('luker_launcher.ui.log_window', level='WARNING') as logs,
         ):
             user32.GetParent.side_effect = OSError("boom")
             window._restore_window()

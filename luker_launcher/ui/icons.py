@@ -7,7 +7,7 @@ from typing import Literal
 import customtkinter as ctk
 from PIL import Image, ImageDraw
 
-from ui.tokens import ICON_MENU, ICON_RENDER, ICON_THEME, ICON_TOOLBAR
+from luker_launcher.ui.tokens import ICON_MENU, ICON_RENDER, ICON_THEME, ICON_TOOLBAR
 
 TransportIcon = Literal['play', 'stop']
 MenuIcon = Literal['window', 'play', 'stop', 'refresh', 'globe', 'settings', 'power']

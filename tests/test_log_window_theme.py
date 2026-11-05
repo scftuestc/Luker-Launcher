@@ -1,8 +1,8 @@
 import unittest
 
-from log_window import LogWindow
 from luker_launcher.services.readiness import LukerState
-from ui.buttons import button_colors
+from luker_launcher.ui.buttons import button_colors
+from luker_launcher.ui.log_window import LogWindow
 
 COLORS = {
     'bg': '#000001',
@@ -174,7 +174,7 @@ class ThemeBindingTests(unittest.TestCase):
         window, _, _, _, _ = self.make_window()
         window._bind_theme(BrokenWidget(), fg_color='card')
 
-        with self.assertLogs('log_window', level='ERROR'):
+        with self.assertLogs('luker_launcher.ui.log_window', level='ERROR'):
             window._apply_theme()
 
     def test_blur_change_reruns_setup(self):

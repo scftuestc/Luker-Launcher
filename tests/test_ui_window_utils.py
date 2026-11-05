@@ -2,8 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import ui.window_utils as window_utils
-from ui.window_utils import bind_window_drag, hex_to_colorref, sync_window_blur
+from luker_launcher.ui import window_utils
+from luker_launcher.ui.window_utils import bind_window_drag, hex_to_colorref, sync_window_blur
 
 
 class HexToColorrefTests(unittest.TestCase):
@@ -45,7 +45,7 @@ class BlurTests(unittest.TestCase):
         with (
             patch.object(window_utils.win32_api, "user32") as user32,
             patch.object(window_utils, "apply_blur", side_effect=OSError("boom")),
-            self.assertLogs("ui.window_utils", level="WARNING") as logs,
+            self.assertLogs("luker_launcher.ui.window_utils", level="WARNING") as logs,
         ):
             user32.GetParent.return_value = 1
             window_utils.apply_window_blur(FakeWindow(), "#000000", context="测试窗口")
@@ -84,7 +84,7 @@ class BlurTests(unittest.TestCase):
                 "disable_blur",
                 side_effect=OSError("boom"),
             ),
-            self.assertLogs("ui.window_utils", level="WARNING") as logs,
+            self.assertLogs("luker_launcher.ui.window_utils", level="WARNING") as logs,
         ):
             user32.GetParent.return_value = 1
             window_utils.disable_window_blur(FakeWindow(), context="测试窗口")
@@ -229,7 +229,7 @@ class WindowRoundingTests(unittest.TestCase):
             ),
             patch.object(window_utils.win32_api, 'user32') as user32,
             patch.object(window_utils.win32_api, 'dwmapi') as dwmapi,
-            self.assertLogs('ui.window_utils', level='WARNING') as logs,
+            self.assertLogs('luker_launcher.ui.window_utils', level='WARNING') as logs,
         ):
             user32.GetParent.return_value = 42
             dwmapi.DwmSetWindowAttribute.return_value = -1
@@ -247,7 +247,7 @@ class WindowRoundingTests(unittest.TestCase):
                 return_value=SimpleNamespace(build=22621),
             ),
             patch.object(window_utils.win32_api, 'user32') as user32,
-            self.assertLogs('ui.window_utils', level='WARNING') as logs,
+            self.assertLogs('luker_launcher.ui.window_utils', level='WARNING') as logs,
         ):
             user32.GetParent.side_effect = OSError("boom")
 

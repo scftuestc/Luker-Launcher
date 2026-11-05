@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from log_window import LogWindow
+from luker_launcher.ui.log_window import LogWindow
 
 
 class LogWindowActionTests(unittest.TestCase):

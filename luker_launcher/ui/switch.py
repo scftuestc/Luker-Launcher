@@ -7,20 +7,20 @@ from collections.abc import Callable
 import customtkinter as ctk
 
 from luker_launcher.theme import mix_color
-from ui.ctk_adapter import CtkSwitchAdapter
-from ui.tokens import (
+from luker_launcher.ui.ctk_adapter import CtkSwitchAdapter
+from luker_launcher.ui.tokens import (
     MOTION_SWITCH_INTERVAL_MS as SWITCH_ANIMATION_INTERVAL_MS,
 )
-from ui.tokens import (
+from luker_launcher.ui.tokens import (
     MOTION_SWITCH_STEPS as SWITCH_ANIMATION_STEPS,
 )
-from ui.tokens import (
+from luker_launcher.ui.tokens import (
     MOTION_SWITCH_THUMB_HOVER_MIX as SWITCH_THUMB_HOVER_MIX,
 )
-from ui.tokens import (
+from luker_launcher.ui.tokens import (
     MOTION_SWITCH_TRACK_HOVER_MIX as SWITCH_TRACK_HOVER_MIX,
 )
-from ui.tokens import (
+from luker_launcher.ui.tokens import (
     SWITCH_BORDER_WIDTH,
     SWITCH_CORNER_RADIUS,
     SWITCH_HEIGHT,

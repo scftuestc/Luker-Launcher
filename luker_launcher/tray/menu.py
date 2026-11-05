@@ -18,11 +18,16 @@ from luker_launcher.theme import (
     LOGO_STOPPED_COLOR,
     logo_bar_glow_color,
 )
-from ui.buttons import make_button
-from ui.dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
-from ui.icons import MenuIcon, menu_icon
-from ui.motion import WindowFade
-from ui.tokens import (
+from luker_launcher.ui.buttons import make_button
+from luker_launcher.ui.dpi import (
+    clamp_popup_position,
+    format_geometry,
+    get_monitor_info,
+    sync_window_scaling,
+)
+from luker_launcher.ui.icons import MenuIcon, menu_icon
+from luker_launcher.ui.motion import WindowFade
+from luker_launcher.ui.tokens import (
     DELAY_BLUR_TRAY_MS,
     DELAY_NOACTIVATE_TRAY_MS,
     FONT_MENU_TITLE,
@@ -46,7 +51,7 @@ from ui.tokens import (
     RADIUS_LOGO,
     SEPARATOR_HEIGHT,
 )
-from ui.window_utils import apply_window_rounding, get_ui_font, sync_window_blur
+from luker_launcher.ui.window_utils import apply_window_rounding, get_ui_font, sync_window_blur
 
 logger = logging.getLogger(__name__)
 

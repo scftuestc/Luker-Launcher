@@ -10,9 +10,7 @@ from types import TracebackType
 
 import customtkinter as ctk
 
-from log.display import LogDisplay, configure_log_tags
 from log.pipeline import LogController
-from log.search import SearchBar
 from log.store import LogEntry
 from luker_launcher.config import APP_VERSION, config
 from luker_launcher.infrastructure import win32 as win32_api
@@ -26,11 +24,13 @@ from luker_launcher.theme import (
     mix_color,
     shade_color,
 )
-from ui.buttons import ButtonRole, button_colors, make_button
-from ui.icons import TransportIcon, toolbar_icon, transport_icon
-from ui.motion import StepTicker, WindowFade, ease_in_out_cubic, fade_palette
-from ui.resizing import WindowResizer
-from ui.tokens import (
+from luker_launcher.ui.buttons import ButtonRole, button_colors, make_button
+from luker_launcher.ui.icons import TransportIcon, toolbar_icon, transport_icon
+from luker_launcher.ui.log_view.display import LogDisplay, configure_log_tags
+from luker_launcher.ui.log_view.search import SearchBar
+from luker_launcher.ui.motion import StepTicker, WindowFade, ease_in_out_cubic, fade_palette
+from luker_launcher.ui.resizing import WindowResizer
+from luker_launcher.ui.tokens import (
     CONTROL_HEIGHT_LG,
     CONTROL_HEIGHT_MD,
     CONTROL_HEIGHT_XL,
@@ -71,7 +71,7 @@ from ui.tokens import (
     TITLEBAR_MAIN_HEIGHT,
     TOOLBAR_HEIGHT,
 )
-from ui.window_utils import (
+from luker_launcher.ui.window_utils import (
     apply_window_rounding,
     bind_window_drag,
     get_ui_font,

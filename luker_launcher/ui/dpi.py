@@ -14,7 +14,7 @@ from typing import Literal
 
 import customtkinter as ctk
 
-from ui.tokens import SCREEN_MARGIN_POPUP, SCREEN_MARGIN_WINDOW
+from luker_launcher.ui.tokens import SCREEN_MARGIN_POPUP, SCREEN_MARGIN_WINDOW
 
 logger = logging.getLogger(__name__)
 

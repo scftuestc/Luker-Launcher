@@ -2,8 +2,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import dialogs
-from dialogs import (
+from luker_launcher.services.readiness import LukerState
+from luker_launcher.ui import dialogs
+from luker_launcher.ui.dialogs import (
     DIALOG_HEIGHT,
     DIALOG_WIDTH,
     CloseChoiceDialog,
@@ -11,8 +12,7 @@ from dialogs import (
     dialog_position,
     select_luker_path,
 )
-from luker_launcher.services.readiness import LukerState
-from ui.dpi import format_geometry
+from luker_launcher.ui.dpi import format_geometry
 
 
 class DialogPositionTests(unittest.TestCase):

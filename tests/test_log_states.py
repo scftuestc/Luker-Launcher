@@ -1,8 +1,8 @@
 import unittest
 
-from log_window import empty_log_text, error_banner_colors, truncate_log_text
 from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import PRESET_THEMES, mix_color
+from luker_launcher.ui.log_window import empty_log_text, error_banner_colors, truncate_log_text
 
 
 class EmptyLogTextTests(unittest.TestCase):

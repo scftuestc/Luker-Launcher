@@ -3,11 +3,11 @@ from collections import deque
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import log.display
-import log.search
-from log.display import LogDisplay
-from log.search import LogSearch, SearchBar
 from luker_launcher.theme import mix_color
+from luker_launcher.ui.log_view import display as display_module
+from luker_launcher.ui.log_view import search as search_module
+from luker_launcher.ui.log_view.display import LogDisplay
+from luker_launcher.ui.log_view.search import LogSearch, SearchBar
 
 
 class FakeText:
@@ -189,7 +189,7 @@ class DisplayTrimTests(unittest.TestCase):
         display.entry_bytes = deque([5, 5, 5])
         display.bytes = 15
 
-        with patch.object(log.display, "MAX_LOG_BYTES", 10):
+        with patch.object(display_module, "MAX_LOG_BYTES", 10):
             removed = display.trim()
 
         self.assertEqual(removed, 1)
@@ -203,7 +203,7 @@ class SearchLimitTests(unittest.TestCase):
         text = SearchText(positions)
         search = make_search(text)
 
-        with patch.object(log.search, "MAX_SEARCH_RESULTS", 3):
+        with patch.object(search_module, "MAX_SEARCH_RESULTS", 3):
             search.perform("x")
         return search, text
 

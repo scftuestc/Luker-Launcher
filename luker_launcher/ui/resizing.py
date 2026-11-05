@@ -4,13 +4,13 @@ import tkinter as tk
 
 import customtkinter as ctk
 
-from ui.dpi import (
+from luker_launcher.ui.dpi import (
     format_geometry,
     get_monitor_info,
     plan_window_placement,
     sync_window_scaling,
 )
-from ui.tokens import (
+from luker_launcher.ui.tokens import (
     EDGE_GRAB_PIXELS,
     SCREEN_MARGIN_MAIN,
     WINDOW_MAIN_HEIGHT,

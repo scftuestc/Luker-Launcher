@@ -2,7 +2,7 @@ import queue
 import unittest
 from unittest.mock import patch
 
-from ui.dispatch import UI_QUEUE_POLL_MS, UiDispatcher
+from luker_launcher.ui.dispatch import UI_QUEUE_POLL_MS, UiDispatcher
 
 
 def make_dispatcher(**kwargs) -> UiDispatcher:
@@ -65,7 +65,7 @@ class UiDispatcherTests(unittest.TestCase):
                 "put_nowait",
                 side_effect=[queue.Full, queue.Full],
             ),
-            self.assertLogs("ui.dispatch", level="WARNING") as logs,
+            self.assertLogs("luker_launcher.ui.dispatch", level="WARNING") as logs,
         ):
             accepted = dispatcher.post(lambda: None)
 

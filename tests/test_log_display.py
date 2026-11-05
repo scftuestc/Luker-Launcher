@@ -1,7 +1,12 @@
 import datetime
 import unittest
 
-from log.display import LogDisplay, configure_log_tags, get_tag_for_line, measure_log_indent
+from luker_launcher.ui.log_view.display import (
+    LogDisplay,
+    configure_log_tags,
+    get_tag_for_line,
+    measure_log_indent,
+)
 
 
 class FakeTextbox:

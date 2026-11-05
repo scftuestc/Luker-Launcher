@@ -1,7 +1,6 @@
 import unittest
 from unittest.mock import patch
 
-from log_window import LogWindow
 from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import (
     LOGO_GLOW_INTERVAL_MS,
@@ -9,6 +8,7 @@ from luker_launcher.theme import (
     LOGO_STOPPED_COLOR,
     shade_color,
 )
+from luker_launcher.ui.log_window import LogWindow
 
 COLORS = {
     'bg': '#111111',
@@ -44,7 +44,7 @@ class TransportButtonTests(unittest.TestCase):
         window = self.make_window()
 
         with patch(
-            'log_window.transport_icon',
+            'luker_launcher.ui.log_window.transport_icon',
             side_effect=lambda kind, color: f'{kind}:{color}',
         ):
             window.update_status(LukerState.READY)
@@ -69,7 +69,7 @@ class TransportButtonTests(unittest.TestCase):
         window._is_running = True
 
         with patch(
-            'log_window.transport_icon',
+            'luker_launcher.ui.log_window.transport_icon',
             side_effect=lambda kind, color: f'{kind}:{color}',
         ):
             window.update_status(LukerState.STOPPED)
@@ -85,7 +85,7 @@ class TransportButtonTests(unittest.TestCase):
         window = self.make_window()
 
         with patch(
-            'log_window.transport_icon',
+            'luker_launcher.ui.log_window.transport_icon',
             side_effect=lambda kind, color: f'{kind}:{color}',
         ):
             window.update_status(LukerState.STARTING)
@@ -106,7 +106,7 @@ class TransportButtonTests(unittest.TestCase):
                 window._logo_is_gray = False
 
                 with patch(
-                    'log_window.transport_icon',
+                    'luker_launcher.ui.log_window.transport_icon',
                     side_effect=lambda kind, color: f'{kind}:{color}',
                 ):
                     window.update_status(state)
@@ -122,7 +122,7 @@ class TransportButtonTests(unittest.TestCase):
         window._logo_is_gray = False
 
         with patch(
-            'log_window.transport_icon',
+            'luker_launcher.ui.log_window.transport_icon',
             side_effect=lambda kind, color: f'{kind}:{color}',
         ):
             window.update_status(LukerState.READY)
@@ -135,7 +135,7 @@ class TransportButtonTests(unittest.TestCase):
         window.COLORS = {**COLORS, 'bg': '#abcdef'}
 
         with patch(
-            'log_window.transport_icon',
+            'luker_launcher.ui.log_window.transport_icon',
             side_effect=lambda kind, color: f'{kind}:{color}',
         ):
             window.update_status(LukerState.STOPPED)
@@ -171,7 +171,7 @@ class GlowAnimationTests(unittest.TestCase):
         window, bars, calls = self.make_window(LukerState.READY)
 
         with patch(
-            'log_window.logo_bar_glow_color',
+            'luker_launcher.ui.log_window.logo_bar_glow_color',
             side_effect=lambda index, phase: f'{index}:{phase:.4f}',
         ):
             window._animate_glow()
@@ -189,7 +189,7 @@ class GlowAnimationTests(unittest.TestCase):
         window.after_cancel = canceled.append
 
         with patch(
-            'log_window.logo_bar_glow_color',
+            'luker_launcher.ui.log_window.logo_bar_glow_color',
             side_effect=lambda index, phase: f'{index}:{phase:.4f}',
         ):
             window._restart_glow()

@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call
 
 from luker_launcher.theme import PRESET_THEMES, get_theme_colors
-from ui.ctk_adapter import CtkSwitchAdapter
-from ui.switch import (
+from luker_launcher.ui.ctk_adapter import CtkSwitchAdapter
+from luker_launcher.ui.switch import (
     SWITCH_ANIMATION_STEPS,
     AnimatedSwitch,
     switch_thumb_color,
