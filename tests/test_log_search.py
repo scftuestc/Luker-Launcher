@@ -7,7 +7,7 @@ import log.display
 import log.search
 from log.display import LogDisplay
 from log.search import LogSearch, SearchBar
-from ui.theme import mix_color
+from luker_launcher.theme import mix_color
 
 
 class FakeText:

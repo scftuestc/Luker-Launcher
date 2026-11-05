@@ -4,7 +4,7 @@ import unittest
 from core.readiness import LukerState
 from log.store import LogEntry
 from log_window import LogWindow
-from ui.theme import PRESET_THEMES
+from luker_launcher.theme import PRESET_THEMES
 
 
 class FakeOverlay:

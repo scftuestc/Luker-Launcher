@@ -2,7 +2,7 @@ import re
 import unittest
 from pathlib import Path
 
-from config import APP_VERSION
+from luker_launcher.config import APP_VERSION
 
 VERSION_INFO_PATH = Path(__file__).resolve().parents[1] / "version_info.txt"
 

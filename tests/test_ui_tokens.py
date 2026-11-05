@@ -56,7 +56,7 @@ class LegacyConstantTests(unittest.TestCase):
         self.assertEqual(ui.icons.ICON_MENU, 18)
 
     def test_brand_colors_are_shared(self):
-        from ui.theme import LOGO_STOPPED_COLOR, TRAY_ACTIVE_COLOR, TRAY_ICON_BG
+        from luker_launcher.theme import LOGO_STOPPED_COLOR, TRAY_ACTIVE_COLOR, TRAY_ICON_BG
 
         self.assertEqual(LOGO_STOPPED_COLOR, '#6e7681')
         self.assertEqual(TRAY_ACTIVE_COLOR, '#3fb950')

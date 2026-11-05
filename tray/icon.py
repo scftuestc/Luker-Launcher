@@ -8,7 +8,12 @@ from threading import Event, Lock, Thread, current_thread
 
 from PIL import Image, ImageDraw
 
-from ui.theme import LOGO_BAR_COLORS, LOGO_STOPPED_COLOR, TRAY_ACTIVE_COLOR, TRAY_ICON_BG
+from luker_launcher.theme import (
+    LOGO_BAR_COLORS,
+    LOGO_STOPPED_COLOR,
+    TRAY_ACTIVE_COLOR,
+    TRAY_ICON_BG,
+)
 
 logger = logging.getLogger(__name__)
 

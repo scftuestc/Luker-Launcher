@@ -10,7 +10,7 @@ from pathlib import Path
 from threading import Lock
 
 import win32_api
-from config import config
+from luker_launcher.config import config
 
 logger = logging.getLogger(__name__)
 

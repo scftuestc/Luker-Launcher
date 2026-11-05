@@ -6,8 +6,8 @@ from collections.abc import Callable
 
 import customtkinter as ctk
 
+from luker_launcher.theme import mix_color
 from ui.ctk_adapter import CtkSwitchAdapter
-from ui.theme import mix_color
 from ui.tokens import (
     MOTION_SWITCH_INTERVAL_MS as SWITCH_ANIMATION_INTERVAL_MS,
 )

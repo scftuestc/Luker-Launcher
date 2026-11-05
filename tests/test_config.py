@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from config import DEFAULT_CLOSE_BEHAVIOR, DEFAULT_PORT, Config
-from ui.theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
+from luker_launcher.config import DEFAULT_CLOSE_BEHAVIOR, DEFAULT_PORT, Config
+from luker_launcher.theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES
 
 
 class ConfigTests(unittest.TestCase):
@@ -80,7 +80,7 @@ class ConfigTests(unittest.TestCase):
         self.config_path.write_text("{not json", encoding="utf-8")
         config = Config(self.config_path)
 
-        with self.assertLogs("config", level="WARNING") as logs:
+        with self.assertLogs("luker_launcher.config", level="WARNING") as logs:
             self.assertTrue(config.report_load_error())
 
         self.assertIn("读取配置失败", logs.output[0])
@@ -356,7 +356,7 @@ class ConfigTests(unittest.TestCase):
         config = Config(self.config_path)
         config.luker_path = str(luker_dir)
 
-        with self.assertLogs("config", level="WARNING") as logs:
+        with self.assertLogs("luker_launcher.config", level="WARNING") as logs:
             self.assertEqual(config.get_server_port(), DEFAULT_PORT)
             self.assertEqual(config.get_server_port(), DEFAULT_PORT)
 
@@ -368,7 +368,7 @@ class ConfigTests(unittest.TestCase):
         config = Config(self.config_path)
         config.luker_path = str(luker_dir)
 
-        with self.assertLogs("config", level="WARNING"):
+        with self.assertLogs("luker_launcher.config", level="WARNING"):
             self.assertEqual(config.get_server_port(), DEFAULT_PORT)
 
         (luker_dir / "config.yaml").write_text("port: 8123\n", encoding="utf-8")
@@ -395,7 +395,7 @@ class ConfigTests(unittest.TestCase):
         blocked.mkdir()
         config.config_path = blocked
 
-        with self.assertLogs("config", level="ERROR") as logs:
+        with self.assertLogs("luker_launcher.config", level="ERROR") as logs:
             config.theme_name = "ocean_cyan"
 
         self.assertEqual(config.theme_name, "ocean_cyan")

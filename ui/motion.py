@@ -11,7 +11,7 @@ import logging
 import tkinter as tk
 from collections.abc import Callable, Mapping
 
-from ui.theme import mix_color
+from luker_launcher.theme import mix_color
 from ui.tokens import MOTION_FADE_DURATION_MS, MOTION_FADE_INTERVAL_MS
 
 logger = logging.getLogger(__name__)

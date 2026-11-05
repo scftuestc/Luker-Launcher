@@ -8,11 +8,11 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from config import config, get_app_dir
 from core.readiness import LukerState
+from luker_launcher.config import config, get_app_dir
+from luker_launcher.theme import shade_color
 from ui.buttons import make_button
 from ui.dpi import format_geometry
-from ui.theme import shade_color
 from ui.tokens import (
     CHECK_SIZE,
     CONTROL_HEIGHT_LG,

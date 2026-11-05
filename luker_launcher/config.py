@@ -5,22 +5,20 @@ import json
 import logging
 import os
 import re
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ui.theme import DEFAULT_THEME, LEGACY_THEME_ALIASES, PRESET_THEMES, theme_supports_blur
-from ui.theme import get_theme_colors as _get_theme_colors
+from luker_launcher.paths import get_app_dir
+from luker_launcher.theme import (
+    DEFAULT_THEME,
+    LEGACY_THEME_ALIASES,
+    PRESET_THEMES,
+    theme_supports_blur,
+)
+from luker_launcher.theme import get_theme_colors as _get_theme_colors
 
 logger = logging.getLogger(__name__)
-
-
-def get_app_dir() -> Path:
-    """返回程序所在目录，兼容 PyInstaller 打包后的 exe。"""
-    if getattr(sys, 'frozen', False):
-        return Path(sys.executable).parent
-    return Path(__file__).parent
 
 
 # 修改版本号时同步更新 version_info.txt；tests/test_version.py 会校验一致性

@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, call
 
+from luker_launcher.theme import PRESET_THEMES, get_theme_colors
 from ui.ctk_adapter import CtkSwitchAdapter
 from ui.switch import (
     SWITCH_ANIMATION_STEPS,
@@ -10,7 +11,6 @@ from ui.switch import (
     switch_thumb_hover_color,
     switch_track_colors,
 )
-from ui.theme import PRESET_THEMES, get_theme_colors
 
 
 class CtkSwitchAdapterTests(unittest.TestCase):

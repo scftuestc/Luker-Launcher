@@ -11,17 +11,13 @@ from types import TracebackType
 import customtkinter as ctk
 
 import win32_api
-from config import APP_VERSION, config
 from core.readiness import LukerState
 from log.display import LogDisplay, configure_log_tags
 from log.pipeline import LogController
 from log.search import SearchBar
 from log.store import LogEntry
-from ui.buttons import ButtonRole, button_colors, make_button
-from ui.icons import TransportIcon, toolbar_icon, transport_icon
-from ui.motion import StepTicker, WindowFade, ease_in_out_cubic, fade_palette
-from ui.resizing import WindowResizer
-from ui.theme import (
+from luker_launcher.config import APP_VERSION, config
+from luker_launcher.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,
     LOGO_STOPPED_COLOR,
@@ -30,6 +26,10 @@ from ui.theme import (
     mix_color,
     shade_color,
 )
+from ui.buttons import ButtonRole, button_colors, make_button
+from ui.icons import TransportIcon, toolbar_icon, transport_icon
+from ui.motion import StepTicker, WindowFade, ease_in_out_cubic, fade_palette
+from ui.resizing import WindowResizer
 from ui.tokens import (
     CONTROL_HEIGHT_LG,
     CONTROL_HEIGHT_MD,

@@ -9,8 +9,8 @@ import customtkinter as ctk
 
 import logging_setup
 import win32_api
-from config import APP_VERSION, config
 from launcher_app import LukerLauncher
+from luker_launcher.config import APP_VERSION, config
 from process import single_instance
 from ui.dpi import get_process_dpi_awareness
 

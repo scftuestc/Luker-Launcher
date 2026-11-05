@@ -2,8 +2,7 @@ import colorsys
 import math
 import unittest
 
-from ui.icons import THEME_ICON_KINDS
-from ui.theme import (
+from luker_launcher.theme import (
     DEFAULT_THEME,
     LEGACY_THEME_ALIASES,
     LOGO_BAR_COLORS,
@@ -22,6 +21,7 @@ from ui.theme import (
     theme_supports_blur,
     theme_swatch_colors,
 )
+from ui.icons import THEME_ICON_KINDS
 
 REQUIRED_COLOR_KEYS = (
     "bg",

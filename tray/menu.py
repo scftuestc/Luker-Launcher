@@ -10,18 +10,18 @@ from typing import TypedDict
 import customtkinter as ctk
 
 import win32_api
-from config import config
 from core.readiness import LukerState
-from ui.buttons import make_button
-from ui.dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
-from ui.icons import MenuIcon, menu_icon
-from ui.motion import WindowFade
-from ui.theme import (
+from luker_launcher.config import config
+from luker_launcher.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,
     LOGO_STOPPED_COLOR,
     logo_bar_glow_color,
 )
+from ui.buttons import make_button
+from ui.dpi import clamp_popup_position, format_geometry, get_monitor_info, sync_window_scaling
+from ui.icons import MenuIcon, menu_icon
+from ui.motion import WindowFade
 from ui.tokens import (
     DELAY_BLUR_TRAY_MS,
     DELAY_NOACTIVATE_TRAY_MS,

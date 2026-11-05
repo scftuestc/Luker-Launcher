@@ -8,7 +8,7 @@ import tkinter.font as tkfont
 from ctypes import byref, c_int, sizeof
 
 import win32_api
-from ui.theme import is_light_color
+from luker_launcher.theme import is_light_color
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 import unittest
 
+from luker_launcher.theme import PRESET_THEMES, get_theme_colors, mix_color, shade_color
 from ui.buttons import button_colors
-from ui.theme import PRESET_THEMES, get_theme_colors, mix_color, shade_color
 
 
 class ButtonColorTests(unittest.TestCase):

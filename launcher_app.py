@@ -14,12 +14,12 @@ from application.process_coordinator import ProcessCoordinator
 from application.status_coordinator import StatusCoordinator
 from application.task_runner import TaskRunner
 from application.update_coordinator import UpdateCoordinator
-from config import config
 from core.browser import open_in_browser
 from core.readiness import LukerState
 from core.version import same_path
 from dialogs import ensure_luker_path_configured
 from log_window import LogWindow
+from luker_launcher.config import config
 from settings_window import SettingsWindow
 from tray.icon import TrayIcon
 from tray.menu import TrayMenu

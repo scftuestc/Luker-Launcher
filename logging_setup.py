@@ -9,7 +9,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import TracebackType
 
-from config import get_app_dir
+from luker_launcher.paths import get_app_dir
 
 logger = logging.getLogger(__name__)
 

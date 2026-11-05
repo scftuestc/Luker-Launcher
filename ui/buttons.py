@@ -6,7 +6,7 @@ from typing import Literal
 
 import customtkinter as ctk
 
-from ui.theme import mix_color, shade_color
+from luker_launcher.theme import mix_color, shade_color
 from ui.tokens import (
     BUTTON_SECONDARY_HEIGHT,
     CONTROL_HEIGHT_MD,
