@@ -10,9 +10,7 @@
 
 ## 🍀 关于 Luker
 
-[Luker](https://github.com/funnycups/Luker) 是一个面向进阶用户的 LLM 前端，基于 SillyTavern 并保持数据兼容，角色卡、世界书、预设和聊天记录可以直接沿用。项目主页：<https://luker.cups.moe/>。
-
-本仓库只提供 Windows 托盘启动器，不包含 Luker 本体。使用前请先安装 [Luker](https://github.com/funnycups/Luker) 和 Node.js。
+[Luker](https://github.com/funnycups/Luker) 是基于 SillyTavern 的 LLM 前端，兼容角色卡、世界书、预设和聊天记录。本仓库只提供 Windows 托盘启动器，不包含 Luker 本体；使用前请先安装 Luker 和 Node.js。项目主页：<https://luker.cups.moe/>。
 
 ---
 
@@ -20,11 +18,10 @@
 
 从 [Releases](../../releases) 下载最新的 `Luker-Launcher.exe`。
 
-> **建议**：把 exe 放到 Luker 根目录（与 `Start.bat` 同级）。首次运行会自动识别该目录；已有有效配置时优先使用配置。如果仍提示选择路径，选中这个目录即可。
+> **建议**：放到 Luker 根目录（与 `Start.bat` 同级）。首次运行会自动识别；已有有效配置时优先使用配置。
 
-- 双击运行，无需安装
-- 配置文件 `launcher_config.json` 会生成在 exe 同目录（模板见 `launcher_config.example.json`）
-- 若被 SmartScreen 拦截，点“更多信息” → “仍要运行”
+- 双击运行，无需安装；配置 `launcher_config.json` 生成在 exe 同目录（模板见 `launcher_config.example.json`）。
+- 被 SmartScreen 拦截时，点“更多信息” → “仍要运行”。
 
 **运行要求**：Windows 10 / 11，已安装 Node.js 和 [Luker](https://github.com/funnycups/Luker)。
 
@@ -39,24 +36,12 @@
 | 单击托盘图标 | 显示 / 隐藏日志窗口 |
 | 右键托盘图标 | 启动、停止、重启、打开 Luker 页面、设置、退出 |
 | 最小化日志窗口（─） | 收进系统托盘，Luker 继续运行 |
-| 关闭日志窗口（×） | 按「关闭窗口行为」设置：每次询问、隐藏到托盘或退出程序（默认每次询问） |
-| 托盘菜单 / 日志窗口的 Luker logo | Luker 服务就绪后播放呼吸效果；启动中或已停止时显示为灰色 |
+| 关闭日志窗口（×） | 按“关闭窗口行为”设置：每次询问 / 隐藏到托盘 / 退出程序（默认询问） |
+| 托盘菜单 / 日志窗口的 Luker logo | 服务就绪后播放呼吸效果；启动中或已停止时显示为灰色 |
 
-### 托盘菜单键盘操作
+托盘菜单支持 `↑` / `↓` 或 `Tab` / `Shift+Tab` 移动高亮，`Home` / `End` 跳首尾，`Enter` 执行，`Esc` 关闭并恢复原窗口焦点。`Ctrl+F` 聚焦日志搜索，`Enter` / `Shift+Enter` 或 `F3` / `Shift+F3` 切换结果；只匹配正文，实时日志到达时保留结果和视口。
 
-- 右键打开托盘菜单后，`↑` / `↓` 或 `Tab` / `Shift+Tab` 移动高亮，`Home` / `End` 跳到首尾。
-- `Enter` 执行当前项，`Esc` 关闭菜单；关闭后焦点回到打开菜单前的窗口。
-- 点击菜单外部关闭时不会把焦点抢回原窗口。
-
-### 日志搜索
-
-- `Ctrl+F` 聚焦搜索框，已有内容会全选；`Enter` / `Shift+Enter` 或 `F3` / `Shift+F3` 切换结果，`Esc` 清空。
-- 搜索只匹配日志正文，时间戳和分隔线不参与匹配。
-- 实时日志到达时保留当前结果和视口，不会跳回第一条。
-
-如果托盘创建失败，最小化按钮会被禁用；关闭窗口不会隐藏到托盘，会按设置直接退出，或弹出只含“退出程序/取消”的选择框。
-
-Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置。
+托盘创建失败时，最小化按钮会被禁用；关闭窗口会按设置退出，或弹出仅含“退出程序/取消”的选择框。Luker 端口会自动读取 `config.yaml` 中的 `port`。
 
 ---
 
@@ -72,32 +57,26 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 
 ### Luker 版本管理
 
-设置 → **Luker 管理** 里除了启动路径，还可以检查并切换 Luker 版本：
+设置 → **Luker 管理** 可检查并切换版本：
 
-- **最新发行版**：GitHub 上最新的正式 Release，显示 Tag、发布日期和对应提交的短哈希。
-- **最新提交**：Luker 默认分支的最新提交，显示提交日期和短哈希。
-- 当前版本显示本地 Tag（如果有）、提交短哈希和日期。
-- 界面显示 7 位短哈希，检查结果会把当前版本、最新发行版和最新提交的完整哈希写入日志窗口。
-- 检查结果在启动器本次运行期间保留：关闭设置窗口再打开会直接显示上次结果；更新版本、切换 Luker 路径或退出启动器后需要重新检查。
-- 点击“检查更新”才会访问 GitHub 和 `git fetch`，不会后台轮询。
-
-更新要求 Luker 目录是 Git clone，并已安装 Git 和 npm。点击更新后会停止 Luker、检出目标提交，并执行与 `Start.bat` 相同的 npm 安装参数（`--no-save --no-audit --no-fund --loglevel=error --no-progress --omit=dev --ignore-scripts`），同时设置 `NODE_ENV=production`；如果 Luker 原本在运行，完成后会自动重启，原本停止则保持停止。这里只对齐 npm 安装步骤，不改变启动器启动 Luker 时的环境变量。
-
-更新会固定检出到具体 Tag/提交，建议通过启动器管理 Luker 版本。工作区有已跟踪文件的未提交修改时会禁止更新；未跟踪的 `data/`、`node_modules/` 等用户数据不会被删除。当前版本已经领先最新发行版时，可以确认后回退；当前领先最新提交（存在本地提交）时会禁用更新。更新失败会尝试回滚并恢复原版本；自动回滚失败时不会贸然启动 Luker。
+- 显示当前版本、最新正式 Release 和默认分支最新提交；完整哈希写入日志窗口，检查结果在本次运行期间保留。
+- 只有点击“检查更新”才会访问 GitHub 和 `git fetch`；更新要求 Git clone、Git 和 npm。
+- 更新会停止 Luker、检出目标提交，按 `Start.bat` 参数安装依赖，完成后按原状态重启；有已跟踪文件的未提交修改时禁止更新。
+- 未跟踪的 `data/`、`node_modules/` 不会被删除；失败会尝试回滚，回滚失败时不启动 Luker；当前版本领先最新提交时禁用更新。
 
 ### 配置文件
 
-大部分选项可以在设置窗口修改；需要手动调整时，编辑 exe 同目录的 `launcher_config.json`。可参考仓库中的 [`launcher_config.example.json`](launcher_config.example.json)；空字符串表示未设置，首次运行会提示选择 Luker 安装根目录。
+大部分选项可在设置窗口修改；手动调整时编辑 exe 同目录的 `launcher_config.json`，参考 [`launcher_config.example.json`](launcher_config.example.json)。
 
 | 键 | 说明 |
 | :--- | :--- |
-| `luker_path` | Luker 启动根目录（包含 `Start.bat` 和 `server.js`） |
-| `use_pwa_mode` | 是否使用沉浸应用模式（PWA） |
-| `blur_enabled` | 是否启用毛玻璃效果（雾灰主题固定关闭） |
-| `close_behavior` | 关闭日志窗口时的行为：`ask` 每次询问 / `tray` 隐藏到托盘 / `exit` 退出程序 |
+| `luker_path` | Luker 启动根目录（含 `Start.bat` 和 `server.js`） |
+| `use_pwa_mode` | 沉浸应用模式（PWA） |
+| `blur_enabled` | 毛玻璃效果（雾灰主题固定关闭） |
+| `close_behavior` | `ask` 询问 / `tray` 隐藏到托盘 / `exit` 退出 |
 | `theme` | 主题 ID |
 | `pwa_app_id` | Edge PWA App ID（可选） |
-| `pwa_appx_family_name` | 已安装 PWA 的 APPX PackageFamilyName（可选） |
+| `pwa_appx_family_name` | 已安装 PWA 的 PackageFamilyName（可选） |
 
 ---
 
@@ -105,7 +84,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 
 ### 沉浸应用模式（PWA）是什么？
 
-用 Edge 的 PWA 独立窗口打开 Luker，隐藏地址栏和标签页，更像桌面客户端，标题栏颜色跟随主题。需要 Edge；如果 Luker 没有安装为 PWA，会回退到 Edge 应用窗口或默认浏览器。
+用 Edge 的 PWA 独立窗口打开 Luker，隐藏地址栏和标签页，标题栏颜色跟随主题；未安装 PWA 时回退到 Edge 应用窗口或默认浏览器。
 
 ### 托盘图标不见了？
 
@@ -113,7 +92,7 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 
 ### 启动失败或提示找不到 node？
 
-先在 Luker 目录运行 `Start.bat`，确认 Luker 本身能启动；再检查 `node -v` 是否正常。如果仍然失败，查看 exe 同目录的 `launcher.log`，里面有详细错误信息；如果该目录不可写，日志会写到 `%TEMP%\launcher.log`。
+先在 Luker 目录运行 `Start.bat` 确认 Luker 能启动，再检查 `node -v`；仍失败时查看 exe 同目录的 `launcher.log`，目录不可写时写到 `%TEMP%\launcher.log`。
 
 ---
 
@@ -121,11 +100,9 @@ Luker 端口会自动读取 `config.yaml` 中的 `port`，不需要手动配置�
 
 ### 环境要求
 
-- Windows 10 / 11 x64（依赖 Win32 托盘与窗口接口，不支持其他平台）
-- Python 3.12（本项目以此版本开发和验证）
-- 运行依赖：`pip install -r requirements.txt`
-- 开发与检查：`pip install -r requirements-dev.txt`
-- 打包：`pip install pyinstaller==6.22.2`（与本地发布构建一致）
+- Windows 10 / 11 x64（依赖 Win32 托盘与窗口接口）
+- Python 3.12
+- 运行依赖：`pip install -r requirements.txt`；开发检查：`pip install -r requirements-dev.txt`；打包：`pip install pyinstaller==6.22.2`
 
 ### 运行
 
@@ -137,50 +114,27 @@ python main.py
 ### 代码结构
 
 ```text
-main.py                             薄入口，只调用 luker_launcher.bootstrap.entrypoint
-luker_launcher/
-  bootstrap/entrypoint.py           启动入口：日志、DPI、单实例与主循环
-  application/                      组装根与业务 Coordinator
-    launcher.py                     创建窗口、托盘与各 Coordinator
-    process_coordinator.py          进程启停、路径切换与忙碌标志
-    status_coordinator.py           就绪探测、三态与状态轮询
-    update_coordinator.py           版本检查、更新执行与进度
-    browser_coordinator.py          手动/自动打开浏览器
-    lifecycle_coordinator.py        关闭行为、退出与幂等清理
-    task_runner.py / protocols.py / lifecycle_state.py
-  config.py / theme.py / paths.py   配置、主题数据与应用路径
-  infrastructure/                   Win32 绑定与文件日志
-  services/                         版本、浏览器启动与就绪探测
-  process/                          子进程管理、Job Object 与单实例保护
-  log/                              日志分类、存储与管线
-  ui/                               主窗口、设置窗口、对话框、控件与 DPI
-  ui/log_view/                      日志渲染与搜索控件
-  tray/                             托盘图标与右键菜单
-tests/                              单元测试（含架构依赖检查）
+main.py                 薄入口
+luker_launcher/         启动入口、Coordinator、服务、进程、日志、UI 与托盘
 ```
 
-依赖方向是“入口/组装根 → Coordinator → 服务/进程/UI/托盘 → 配置/主题/基础设施”。`services`、`log` 领域和 `config` 不依赖 UI；`ui` 不依赖 `application`。各包的 `__init__.py` 不做 re-export，避免导入副作用和循环依赖；`tests/test_architecture.py` 会解析 import 并校验这些边界。
+入口/组装根 → Coordinator → 服务/进程/UI/托盘 → 配置/主题/基础设施；`tests/test_architecture.py` 校验依赖方向与导入环。
 
 ### 打包
 
 ```bash
-pip install pyinstaller==6.22.2
 pyinstaller launcher.spec --noconfirm --distpath .
 ```
 
-也可以直接运行 `build.bat`，两种方式生成的 exe 都会放在项目根目录。
+也可直接运行 `build.bat`，两种方式都会在项目根目录生成 exe。
 
 ### 测试与检查
 
 ```bash
-python -m coverage run -m unittest discover -s tests
-python -m coverage report
-mypy .
-ruff check .
-ruff format --check .
+check.bat
 ```
 
-也可以直接运行 `check.bat`，依次执行格式、lint、类型、测试和覆盖率门禁。仓库不包含远程 CI，发布前请在本地执行这套检查。
+依次执行格式、lint、类型、测试和覆盖率门禁；也可单独运行 `python -m coverage run -m unittest discover -s tests`、`mypy .`、`ruff check .`。
 
 ---
 
