@@ -44,15 +44,6 @@ class FakeProcessManager:
         self.is_running = running
 
 
-class FakeReadiness:
-    def __init__(self, state: LukerState = LukerState.READY) -> None:
-        self.state = state
-        self.reset_calls = 0
-
-    def reset(self) -> None:
-        self.reset_calls += 1
-
-
 class ExitRequestTests(unittest.TestCase):
     def make_launcher(
         self,
@@ -62,13 +53,12 @@ class ExitRequestTests(unittest.TestCase):
         launcher._exit_dialog_open = False
         launcher._tray_ready = True
         launcher._updating = False
-        launcher._last_status = None
         launcher.log_window = FakeLogWindow()
         launcher.tray_menu = FakeTrayMenu()
         launcher.tray_icon = FakeTrayIcon()
         launcher._process = SimpleNamespace(manager=None, busy=False)
         launcher.process_manager = FakeProcessManager()
-        launcher._readiness = FakeReadiness()
+        launcher._status = SimpleNamespace(current_state=lambda: LukerState.READY)
         exits: list[str] = []
         launcher._on_exit = lambda: exits.append('exit')
         return launcher, launcher.log_window, launcher.tray_icon, exits
@@ -318,58 +308,6 @@ class ExitRequestTests(unittest.TestCase):
         self.assertEqual(window.hidden, 1)
         self.assertEqual(exits, ['exit'])
         self.assertFalse(launcher._exit_dialog_open)
-
-
-class LukerStateTests(unittest.TestCase):
-    def test_state_is_stopped_without_running_process(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher._process = SimpleNamespace(manager=None, busy=False)
-        launcher.process_manager = FakeProcessManager(running=False)
-        launcher._readiness = FakeReadiness(LukerState.READY)
-
-        self.assertIs(launcher._current_luker_state(), LukerState.STOPPED)
-
-    def test_state_is_starting_when_only_process_is_alive(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher._process = SimpleNamespace(manager=None, busy=False)
-        launcher.process_manager = FakeProcessManager()
-        launcher._readiness = FakeReadiness(LukerState.STARTING)
-
-        self.assertIs(launcher._current_luker_state(), LukerState.STARTING)
-
-    def test_state_is_ready_when_service_is_ready(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher._process = SimpleNamespace(manager=None, busy=False)
-        launcher.process_manager = FakeProcessManager()
-        launcher._readiness = FakeReadiness(LukerState.READY)
-
-        self.assertIs(launcher._current_luker_state(), LukerState.READY)
-
-    def test_apply_state_is_deduplicated(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher._last_status = None
-        window = FakeLogWindow()
-        menu = FakeTrayMenu()
-        launcher.log_window = window
-        launcher.tray_menu = menu
-
-        launcher._apply_luker_state(LukerState.STARTING)
-        launcher._apply_luker_state(LukerState.STARTING)
-        launcher._apply_luker_state(LukerState.READY)
-
-        self.assertEqual(window.states, [LukerState.STARTING, LukerState.READY])
-        self.assertEqual(menu.states, [LukerState.STARTING, LukerState.READY])
-
-    def test_reset_clears_last_status_and_readiness(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher._last_status = LukerState.READY
-        readiness = FakeReadiness()
-        launcher._readiness = readiness
-
-        launcher._reset_luker_readiness()
-
-        self.assertIsNone(launcher._last_status)
-        self.assertEqual(readiness.reset_calls, 1)
 
 
 if __name__ == '__main__':

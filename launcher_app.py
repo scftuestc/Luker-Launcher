@@ -11,10 +11,11 @@ import win32_api
 from application.browser_coordinator import BrowserCoordinator
 from application.lifecycle_state import LifecycleState
 from application.process_coordinator import ProcessCoordinator
+from application.status_coordinator import StatusCoordinator
 from application.task_runner import TaskRunner
 from config import config
 from core.browser import open_in_browser
-from core.readiness import LukerReadinessMonitor, LukerState
+from core.readiness import LukerState
 from core.version import (
     UpdateProgress,
     UpdateTarget,
@@ -34,12 +35,10 @@ from ui.dispatch import UiDispatcher
 
 logger = logging.getLogger(__name__)
 
-STATUS_POLL_INTERVAL = 2
 # 合并键：同一键只保留最后一次请求
 UI_KEY_VISIBILITY = "visibility"
 UI_KEY_TRAY_MENU = "tray_menu"
 UI_KEY_SETTINGS = "settings"
-UI_KEY_LUKER_STATE = "luker_state"
 UI_KEY_EXIT = "exit"
 
 
@@ -59,8 +58,6 @@ class LukerLauncher:
         self._version_check_cache: VersionCheck | None = None
         self._version_check_seq = 0
         self._shutdown_done = False
-        self._last_status: LukerState | None = None  # 上一次通知给界面的运行状态
-        self._readiness: LukerReadinessMonitor | None = None
         # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
         self._ui = UiDispatcher(self._schedule_ui)
         self._lifecycle = LifecycleState()
@@ -74,6 +71,16 @@ class LukerLauncher:
             on_status_reset=self._reset_luker_readiness,
             on_manager_replaced=self._clear_last_status,
             on_finished=self._update_status,
+        )
+        self._status = StatusCoordinator(
+            process=self._process,
+            config=config,
+            post_ui=self._ui,
+            log=self._on_log,
+            apply_state=self._apply_luker_state,
+            update_tray_status=self._update_tray_status,
+            schedule=self._schedule_ui,
+            is_running=lambda: self._running,
         )
         self._browser = BrowserCoordinator(
             config=config,
@@ -132,31 +139,9 @@ class LukerLauncher:
         return self._ui.post(callback, coalesce_key)
 
     def _current_luker_state(self) -> LukerState:
-        """综合进程存活和本地服务探测结果，返回界面使用的三态。"""
-        manager = self.process_manager
-        if manager is None or not manager.is_running:
-            return LukerState.STOPPED
-
-        readiness = self._readiness
-        if readiness is not None and readiness.state is LukerState.READY:
-            return LukerState.READY
-        return LukerState.STARTING
-
-    def _on_luker_state_change(self, _state: LukerState) -> None:
-        """就绪探测线程回调；只唤醒主线程重新计算当前状态。
-
-        回调携带的状态可能已在队列中过期，不能直接应用，否则旧的
-        STARTING 会覆盖新的 READY。
-        """
-        self._post_ui(self._refresh_luker_state, UI_KEY_LUKER_STATE)
-
-    def _refresh_luker_state(self) -> None:
-        self._apply_luker_state(self._current_luker_state())
+        return self._status.current_state()
 
     def _apply_luker_state(self, state: LukerState) -> None:
-        if state is self._last_status:
-            return
-        self._last_status = state
         window = self.log_window
         if window is not None:
             window.update_status(state)
@@ -164,12 +149,12 @@ class LukerLauncher:
         if menu is not None:
             menu.set_luker_state(state)
 
+    def _update_tray_status(self, is_running: bool) -> None:
+        if self.tray_icon:
+            self.tray_icon.update_status(is_running)
+
     def _reset_luker_readiness(self) -> None:
-        """启动/重启前清空旧的就绪结果，避免沿用上一次的 READY。"""
-        self._last_status = None
-        readiness = self._readiness
-        if readiness is not None:
-            readiness.reset()
+        self._status.reset()
 
     def _on_show_window(self) -> None:
         self._post_ui(self._show_window, UI_KEY_VISIBILITY)
@@ -203,7 +188,7 @@ class LukerLauncher:
         self._process.restart()
 
     def _clear_last_status(self) -> None:
-        self._last_status = None
+        self._status.clear_last_state()
 
     def _on_request_exit(self) -> None:
         """日志窗口关闭按钮：按配置隐藏到托盘、退出或询问。"""
@@ -297,9 +282,7 @@ class LukerLauncher:
 
         # 停止进程可能耗时数秒，放到后台，完成后再结束主循环
         def worker() -> None:
-            readiness = self._readiness
-            if readiness is not None:
-                readiness.stop()
+            self._status.stop()
             self._process.stop_all()
             self._post_ui(self._finish_exit, UI_KEY_EXIT)
 
@@ -324,9 +307,7 @@ class LukerLauncher:
         self._shutdown_done = True
         self._running = False
 
-        readiness = self._readiness
-        if readiness is not None:
-            readiness.stop()
+        self._status.stop()
         self._ui.stop()
         if self.tray_icon:
             self.tray_icon.stop()
@@ -752,25 +733,10 @@ class LukerLauncher:
         self.tray_menu.show_at(x, y, previous_foreground)
 
     def _update_status(self) -> None:
-        if not self.process_manager:
-            return
-        is_running = self.process_manager.is_running
-        if self.tray_icon:
-            self.tray_icon.update_status(is_running)
-        self._apply_luker_state(self._current_luker_state())
+        self._status.update()
 
     def _schedule_status_poll(self) -> None:
-        """在 Tk 主线程按固定间隔检查进程状态，不再单独占用监控线程。"""
-        if not self._running:
-            return
-
-        try:
-            self._update_status()
-        except Exception:
-            logger.exception("更新进程状态失败")
-        finally:
-            if self._running and self.log_window:
-                self.log_window.after(STATUS_POLL_INTERVAL * 1000, self._schedule_status_poll)
+        self._status.schedule_poll()
 
     def run(self) -> None:
         """创建窗口、托盘和进程管理器，进入 Tk 主循环。"""
@@ -784,7 +750,7 @@ class LukerLauncher:
         # 启动主线程 UI 队列泵，后台线程才能安全地请求界面操作
         self._ui.start()
         self._ensure_process_manager()
-        self._create_readiness()
+        self._status.start()
         self._create_tray_menu()
         self._create_tray_icon()
 
@@ -809,14 +775,6 @@ class LukerLauncher:
         )
         # 内部警告/错误同步到日志窗口
         logging_setup.add_ui_log_sink(self._on_log)
-
-    def _create_readiness(self) -> None:
-        self._readiness = LukerReadinessMonitor(
-            lambda: bool(self.process_manager and self.process_manager.is_running),
-            config.get_server_url,
-            self._on_luker_state_change,
-        )
-        self._readiness.start()
 
     def _create_tray_menu(self) -> None:
         window = self.log_window

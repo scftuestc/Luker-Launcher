@@ -135,7 +135,7 @@ class ExitTests(unittest.TestCase):
         launcher._ui = FakeDispatcher()
         launcher.log_window = FakeWindow()
         launcher.tray_icon = None
-        launcher._readiness = None
+        launcher._status = type("FakeStatus", (), {"stop": lambda self: None})()
         launcher._shutdown_done = False
         launcher._running = True
 

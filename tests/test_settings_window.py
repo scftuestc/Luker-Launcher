@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 import launcher_app
 import settings_window
+from core.readiness import LukerState
 from core.version import (
     CommitInfo,
     LocalVersion,
@@ -892,6 +893,7 @@ class SettingsWindowTests(unittest.TestCase):
     def _make_launcher() -> LukerLauncher:
         launcher = object.__new__(LukerLauncher)
         launcher._process = SimpleNamespace(manager=None, busy=False)
+        launcher._status = SimpleNamespace(current_state=lambda: LukerState.READY)
         launcher._exiting = False
         launcher.log_window = object()
         launcher.settings_window = None
