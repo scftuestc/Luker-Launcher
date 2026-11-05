@@ -180,7 +180,7 @@ ruff check .
 ruff format --check .
 ```
 
-也可以直接运行 `check.bat`，依次执行格式、lint、类型、测试和覆盖率门禁。仓库不包含远程 CI，发布前请在本地执行这套检查，并按 [Windows 手动冒烟清单](docs/windows-smoke.md) 验证托盘、DPI、启停和打包 exe。
+也可以直接运行 `check.bat`，依次执行格式、lint、类型、测试和覆盖率门禁。仓库不包含远程 CI，发布前请在本地执行这套检查。
 
 ---
 
