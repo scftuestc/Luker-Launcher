@@ -17,10 +17,9 @@ from application.update_coordinator import UpdateCoordinator
 from config import config
 from core.browser import open_in_browser
 from core.readiness import LukerState
-from core.version import UpdateTarget, VersionCheck, same_path
+from core.version import same_path
 from dialogs import ensure_luker_path_configured
 from log_window import LogWindow
-from process.managers import LukerProcessManager
 from settings_window import SettingsWindow
 from tray.icon import TrayIcon
 from tray.menu import TrayMenu
@@ -53,9 +52,9 @@ class LukerLauncher:
             post_ui=self._ui,
             log=self._on_log,
             lifecycle=self._lifecycle,
-            on_status_reset=self._reset_luker_readiness,
-            on_manager_replaced=self._clear_last_status,
-            on_finished=self._update_status,
+            on_status_reset=lambda: self._status.reset(),
+            on_manager_replaced=lambda: self._status.clear_last_state(),
+            on_finished=lambda: self._status.update(),
         )
         self._status = StatusCoordinator(
             process=self._process,
@@ -99,61 +98,13 @@ class LukerLauncher:
             tray_icon_provider=lambda: self.tray_icon,
             tray_ready=lambda: self._tray_ready,
             hide_window=self._hide_window,
-            current_state=self._current_luker_state,
-            is_updating=lambda: self._updating,
+            current_state=self._status.current_state,
+            is_updating=lambda: self._update.updating,
             set_running=self._set_running,
         )
         # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
         self._tray_anchor: tuple[int, int] | None = None
         self.settings_window: SettingsWindow | None = None
-
-    @property
-    def process_manager(self) -> LukerProcessManager | None:
-        return self._process.manager
-
-    @process_manager.setter
-    def process_manager(self, manager: LukerProcessManager | None) -> None:
-        self._process.manager = manager
-
-    @property
-    def _process_busy(self) -> bool:
-        return self._process.busy
-
-    @_process_busy.setter
-    def _process_busy(self, value: bool) -> None:
-        self._process.busy = value
-
-    @property
-    def _version_checking(self) -> bool:
-        return self._update.checking
-
-    @_version_checking.setter
-    def _version_checking(self, value: bool) -> None:
-        self._update.checking = value
-
-    @property
-    def _version_check_cache(self) -> VersionCheck | None:
-        return self._update.version_check_cache
-
-    @_version_check_cache.setter
-    def _version_check_cache(self, value: VersionCheck | None) -> None:
-        self._update.version_check_cache = value
-
-    @property
-    def _version_check_seq(self) -> int:
-        return self._update.version_check_seq
-
-    @_version_check_seq.setter
-    def _version_check_seq(self, value: int) -> None:
-        self._update.version_check_seq = value
-
-    @property
-    def _updating(self) -> bool:
-        return self._update.updating
-
-    @_updating.setter
-    def _updating(self, value: bool) -> None:
-        self._update.updating = value
 
     def _schedule_ui(self, delay_ms: int, callback: Callable[[], None]) -> None:
         """在 Tk 主线程安排下一次 UI 泵；窗口不可用时停止续排。"""
@@ -182,9 +133,6 @@ class LukerLauncher:
             return self._ui.post_control(callback)
         return self._ui.post(callback, coalesce_key)
 
-    def _current_luker_state(self) -> LukerState:
-        return self._status.current_state()
-
     def _apply_luker_state(self, state: LukerState) -> None:
         window = self.log_window
         if window is not None:
@@ -196,9 +144,6 @@ class LukerLauncher:
     def _update_tray_status(self, is_running: bool) -> None:
         if self.tray_icon:
             self.tray_icon.update_status(is_running)
-
-    def _reset_luker_readiness(self) -> None:
-        self._status.reset()
 
     def _on_show_window(self) -> None:
         self._post_ui(self._show_window, UI_KEY_VISIBILITY)
@@ -222,50 +167,13 @@ class LukerLauncher:
         if self.log_window:
             self.log_window.add_log(line)
 
-    def _on_start(self) -> None:
-        self._process.start()
-
-    def _on_stop(self) -> None:
-        self._process.stop()
-
-    def _on_restart(self) -> None:
-        self._process.restart()
-
-    def _clear_last_status(self) -> None:
-        self._status.clear_last_state()
-
-    def _on_request_exit(self) -> None:
-        self._lifecycle_coordinator.request_exit()
-
-    def _on_exit(self) -> None:
-        self._lifecycle_coordinator.exit()
-
     def _set_running(self, value: bool) -> None:
         self._running = value
-
-    def _start_process_worker(
-        self,
-        worker: Callable[[], None],
-        *,
-        on_failure: Callable[[], None] | None = None,
-        context: str = "进程操作",
-    ) -> bool:
-        return self._process.start_worker(worker, on_failure=on_failure, context=context)
-
-    def _ensure_process_manager(self) -> LukerProcessManager | None:
-        return self._process.ensure_manager()
-
-    def _finish_process_action(self) -> None:
-        self._process.finish_action()
 
     def _on_settings(self) -> None:
         if self._lifecycle.exiting:
             return
         self._post_ui(self._open_settings_window, UI_KEY_SETTINGS)
-
-    def _on_open_browser(self, *, automatic: bool = False) -> None:
-        """打开浏览器；具体去重与等待逻辑由 BrowserCoordinator 负责。"""
-        self._browser.open(automatic=automatic)
 
     def _open_settings_window(self) -> None:
         """打开或聚焦设置窗口；已打开时只置前，不移动。"""
@@ -277,38 +185,29 @@ class LukerLauncher:
             window.focus_force()
             return
 
-        cached = self._version_check_cache
+        cached = self._update.version_check_cache
         current_path = config.luker_path
         if cached is not None and (
             not current_path or not same_path(cached.repo_path, current_path)
         ):
-            self._version_check_cache = None
+            self._update.version_check_cache = None
             cached = None
 
         self.settings_window = SettingsWindow(
             self.log_window,
             anchor_point=self._tray_anchor,
             on_close=self._on_settings_closed,
-            on_check_luker_update=self._request_luker_version_check,
-            on_apply_luker_update=self._apply_luker_update,
-            on_luker_path_changed=self._on_luker_path_changed,
+            on_check_luker_update=self._update.request_check,
+            on_apply_luker_update=self._update.apply_update_target,
+            on_luker_path_changed=self._update.path_changed,
             initial_version_check=cached,
-            initial_version_checking=self._version_checking,
+            initial_version_checking=self._update.checking,
         )
         self.settings_window.focus_force()
 
     def _on_settings_closed(self) -> None:
         """设置窗口销毁后清理引用。"""
         self.settings_window = None
-
-    def _on_luker_path_changed(self) -> None:
-        self._update.path_changed()
-
-    def _request_luker_version_check(self) -> bool:
-        return self._update.request_check()
-
-    def _apply_luker_update(self, target: UpdateTarget) -> bool:
-        return self._update.apply_update_target(target)
 
     def _on_show_menu(self, x: int, y: int) -> None:
         if self._lifecycle.exiting:
@@ -329,7 +228,7 @@ class LukerLauncher:
 
         # 记录托盘点击位置，设置窗口按该显示器打开
         self._tray_anchor = (x, y)
-        state = self._current_luker_state()
+        state = self._status.current_state()
         window_visible = self.log_window.is_visible()
         self.tray_menu.update_state(
             state is not LukerState.STOPPED,
@@ -337,12 +236,6 @@ class LukerLauncher:
             state,
         )
         self.tray_menu.show_at(x, y, previous_foreground)
-
-    def _update_status(self) -> None:
-        self._status.update()
-
-    def _schedule_status_poll(self) -> None:
-        self._status.schedule_poll()
 
     def run(self) -> None:
         """创建窗口、托盘和进程管理器，进入 Tk 主循环。"""
@@ -355,7 +248,7 @@ class LukerLauncher:
         self._create_log_window()
         # 启动主线程 UI 队列泵，后台线程才能安全地请求界面操作
         self._ui.start()
-        self._ensure_process_manager()
+        self._process.ensure_manager()
         self._status.start()
         self._create_tray_menu()
         self._create_tray_icon()
@@ -375,9 +268,9 @@ class LukerLauncher:
             on_hide_callback=lambda: (
                 self.tray_icon.set_window_visible(False) if self.tray_icon else None
             ),
-            on_start=self._on_start,
-            on_stop=self._on_stop,
-            on_exit=self._on_request_exit,
+            on_start=self._process.start,
+            on_stop=self._process.stop,
+            on_exit=self._lifecycle_coordinator.request_exit,
         )
         # 内部警告/错误同步到日志窗口
         logging_setup.add_ui_log_sink(self._on_log)
@@ -391,12 +284,12 @@ class LukerLauncher:
             {
                 'show_window': self._on_show_window,
                 'hide_window': self._on_hide_window,
-                'start': self._on_start,
-                'stop': self._on_stop,
-                'restart': self._on_restart,
+                'start': self._process.start,
+                'stop': self._process.stop,
+                'restart': self._process.restart,
                 'settings': self._on_settings,
-                'open_browser': self._on_open_browser,
-                'exit': self._on_exit,
+                'open_browser': self._browser.open,
+                'exit': self._lifecycle_coordinator.exit,
             },
         )
 
@@ -414,7 +307,7 @@ class LukerLauncher:
             return False
         tray_ready = icon.run_detached()
         self._tray_ready = tray_ready
-        self._schedule_status_poll()
+        self._status.schedule_poll()
         return tray_ready
 
     def _start_first_run(self, tray_ready: bool) -> None:
@@ -423,7 +316,7 @@ class LukerLauncher:
             return
 
         self._on_log("[启动器] 正在启动 Luker...")
-        self._on_start()
+        self._process.start()
         if tray_ready:
             window.hide()
             self._on_log("[启动器] 已最小化到系统托盘，单击图标可显示日志窗口")

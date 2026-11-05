@@ -94,7 +94,11 @@ class TrayFailureCloseTests(unittest.TestCase):
         logs: list[str] = []
         started: list[bool] = []
         launcher._on_log = logs.append
-        launcher._on_start = lambda: started.append(True)
+        launcher._process = type(
+            "FakeProcess",
+            (),
+            {"start": lambda self: started.append(True)},
+        )()
 
         class FakeWindow:
             def __init__(self) -> None:

@@ -900,6 +900,9 @@ class SettingsWindowTests(unittest.TestCase):
             updating=False,
             version_check_cache=None,
             version_check_seq=0,
+            request_check=lambda: False,
+            apply_update_target=lambda _target: False,
+            path_changed=lambda: None,
         )
         launcher._lifecycle = LifecycleState()
         launcher.log_window = object()
@@ -910,8 +913,8 @@ class SettingsWindowTests(unittest.TestCase):
     def test_open_passes_cached_check_to_new_window(self):
         launcher = self._make_launcher()
         cached = make_check()
-        launcher._version_check_cache = cached
-        launcher._version_checking = True
+        launcher._update.version_check_cache = cached
+        launcher._update.checking = True
 
         with (
             patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow),
@@ -925,7 +928,7 @@ class SettingsWindowTests(unittest.TestCase):
 
     def test_open_drops_cached_check_for_other_path(self):
         launcher = self._make_launcher()
-        launcher._version_check_cache = make_check()
+        launcher._update.version_check_cache = make_check()
 
         with (
             patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow),
@@ -934,7 +937,7 @@ class SettingsWindowTests(unittest.TestCase):
             launcher._open_settings_window()
 
         self.assertIsNone(FakeSettingsWindow.instances[0].initial_version_check)
-        self.assertIsNone(launcher._version_check_cache)
+        self.assertIsNone(launcher._update.version_check_cache)
 
     def test_open_uses_tray_anchor_and_reuses_alive_window(self):
         launcher = self._make_launcher()
@@ -949,12 +952,12 @@ class SettingsWindowTests(unittest.TestCase):
         self.assertEqual(window.anchor_point, (100, 200))
         self.assertEqual(window.focused, 2)
         self.assertEqual(window.on_close, launcher._on_settings_closed)
-        self.assertEqual(
-            window.on_check_luker_update.__name__,
-            '_request_luker_version_check',
+        self.assertIs(window.on_check_luker_update, launcher._update.request_check)
+        self.assertIs(
+            window.on_apply_luker_update,
+            launcher._update.apply_update_target,
         )
-        self.assertEqual(window.on_apply_luker_update.__name__, '_apply_luker_update')
-        self.assertEqual(window.on_luker_path_changed.__name__, '_on_luker_path_changed')
+        self.assertIs(window.on_luker_path_changed, launcher._update.path_changed)
 
     def test_closed_window_is_recreated(self):
         launcher = self._make_launcher()
