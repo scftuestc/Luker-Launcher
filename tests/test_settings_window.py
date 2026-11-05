@@ -898,8 +898,7 @@ class SettingsWindowTests(unittest.TestCase):
         launcher._update = SimpleNamespace(
             checking=False,
             updating=False,
-            version_check_cache=None,
-            version_check_seq=0,
+            current_check=lambda: None,
             request_check=lambda: False,
             apply_update_target=lambda _target: False,
             path_changed=lambda: None,
@@ -913,31 +912,23 @@ class SettingsWindowTests(unittest.TestCase):
     def test_open_passes_cached_check_to_new_window(self):
         launcher = self._make_launcher()
         cached = make_check()
-        launcher._update.version_check_cache = cached
+        launcher._update.current_check = lambda: cached
         launcher._update.checking = True
 
-        with (
-            patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow),
-            patch.object(launcher_app, "config", SimpleNamespace(luker_path="C:/Luker")),
-        ):
+        with patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow):
             launcher._open_settings_window()
 
         window = FakeSettingsWindow.instances[0]
         self.assertIs(window.initial_version_check, cached)
         self.assertTrue(window.initial_version_checking)
 
-    def test_open_drops_cached_check_for_other_path(self):
+    def test_open_without_valid_cached_check(self):
         launcher = self._make_launcher()
-        launcher._update.version_check_cache = make_check()
 
-        with (
-            patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow),
-            patch.object(launcher_app, "config", SimpleNamespace(luker_path="D:/Other")),
-        ):
+        with patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow):
             launcher._open_settings_window()
 
         self.assertIsNone(FakeSettingsWindow.instances[0].initial_version_check)
-        self.assertIsNone(launcher._update.version_check_cache)
 
     def test_open_uses_tray_anchor_and_reuses_alive_window(self):
         launcher = self._make_launcher()

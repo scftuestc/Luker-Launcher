@@ -427,6 +427,45 @@ class UpdateCoordinatorTests(unittest.TestCase):
         self.assertIsNone(coordinator.version_check_cache)
         self.assertIsNone(self.window.check)
 
+    def test_current_check_returns_cached_result_for_same_path(self):
+        coordinator = self.make_coordinator()
+        result = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=None,
+            commit=None,
+        )
+        coordinator.version_check_cache = result
+
+        self.assertIs(coordinator.current_check(), result)
+        self.assertIs(coordinator.version_check_cache, result)
+
+    def test_current_check_drops_cache_for_other_path(self):
+        coordinator = self.make_coordinator()
+        coordinator.version_check_cache = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=None,
+            commit=None,
+        )
+        self.config.luker_path = "D:/Other"
+
+        self.assertIsNone(coordinator.current_check())
+        self.assertIsNone(coordinator.version_check_cache)
+
+    def test_current_check_drops_cache_without_configured_path(self):
+        coordinator = self.make_coordinator()
+        coordinator.version_check_cache = VersionCheck(
+            repo_path="C:/Luker",
+            local=local_version(),
+            release=None,
+            commit=None,
+        )
+        self.config.luker_path = None
+
+        self.assertIsNone(coordinator.current_check())
+        self.assertIsNone(coordinator.version_check_cache)
+
     def test_path_change_invalidates_cache_and_check(self):
         coordinator = self.make_coordinator()
         coordinator.checking = True

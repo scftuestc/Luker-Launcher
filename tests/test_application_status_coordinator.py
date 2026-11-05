@@ -75,12 +75,10 @@ class StatusCoordinatorTests(unittest.TestCase):
         self.applied: list[LukerState] = []
         self.tray: list[bool] = []
         self.scheduled: list[tuple[int, object]] = []
-        self.logs: list[str] = []
         self.coordinator = StatusCoordinator(
             process=self.process,
             config=FakeConfig(),
             post_ui=self.poster,
-            log=self.logs.append,
             apply_state=self.applied.append,
             update_tray_status=self.tray.append,
             schedule=lambda delay, callback: self.scheduled.append((delay, callback)),

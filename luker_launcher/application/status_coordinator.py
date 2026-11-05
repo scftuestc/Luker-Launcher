@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from luker_launcher.application.process_coordinator import ProcessCoordinator
-from luker_launcher.application.protocols import LogSink, UiPoster
+from luker_launcher.application.protocols import UiPoster
 from luker_launcher.services.readiness import LukerReadinessMonitor, LukerState
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,6 @@ class StatusCoordinator:
         process: ProcessCoordinator,
         config: StatusConfig,
         post_ui: UiPoster,
-        log: LogSink,
         apply_state: Callable[[LukerState], None],
         update_tray_status: Callable[[bool], None],
         schedule: Callable[[int, Callable[[], None]], object],
@@ -41,7 +40,6 @@ class StatusCoordinator:
         self.process = process
         self.config = config
         self.post_ui = post_ui
-        self.log = log
         self.apply = apply_state
         self.update_tray_status = update_tray_status
         self.schedule = schedule

@@ -66,6 +66,17 @@ class UpdateCoordinator:
         self.version_check_cache: VersionCheck | None = None
         self.version_check_seq = 0
 
+    def current_check(self) -> VersionCheck | None:
+        """返回当前路径下仍有效的检查结果；路径变化后丢弃缓存。"""
+        cached = self.version_check_cache
+        if cached is None:
+            return None
+        current_path = self.config.luker_path
+        if not current_path or not same_path(cached.repo_path, current_path):
+            self.version_check_cache = None
+            return None
+        return cached
+
     def path_changed(self) -> None:
         """路径变更后丢弃旧路径的检查结果和进行中的请求。"""
         self.version_check_seq += 1

@@ -17,7 +17,6 @@ from luker_launcher.infrastructure import logging_setup
 from luker_launcher.infrastructure import win32 as win32_api
 from luker_launcher.services.browser import open_in_browser
 from luker_launcher.services.readiness import LukerState
-from luker_launcher.services.version import same_path
 from luker_launcher.tray.icon import TrayIcon
 from luker_launcher.tray.menu import TrayMenu
 from luker_launcher.ui.dialogs import ensure_luker_path_configured
@@ -46,6 +45,8 @@ class LukerLauncher:
         self._ui = UiDispatcher(self._schedule_ui)
         self._lifecycle = LifecycleState()
         self._task_runner = TaskRunner()
+        # 下面的回调只在运行期触发；构造 ProcessCoordinator 时不能回调，
+        # 否则 self._status 尚未赋值。
         self._process = ProcessCoordinator(
             config=config,
             task_runner=self._task_runner,
@@ -60,7 +61,6 @@ class LukerLauncher:
             process=self._process,
             config=config,
             post_ui=self._ui,
-            log=self._on_log,
             apply_state=self._apply_luker_state,
             update_tray_status=self._update_tray_status,
             schedule=self._schedule_ui,
@@ -185,13 +185,7 @@ class LukerLauncher:
             window.focus_force()
             return
 
-        cached = self._update.version_check_cache
-        current_path = config.luker_path
-        if cached is not None and (
-            not current_path or not same_path(cached.repo_path, current_path)
-        ):
-            self._update.version_check_cache = None
-            cached = None
+        cached = self._update.current_check()
 
         self.settings_window = SettingsWindow(
             self.log_window,
