@@ -9,7 +9,8 @@ from application.process_coordinator import ProcessCoordinator
 from application.protocols import LogSink, SettingsView, UiPoster
 from application.status_coordinator import StatusCoordinator
 from application.task_runner import TaskRunner
-from core.version import (
+from luker_launcher.process.managers import LukerProcessManager
+from luker_launcher.services.version import (
     LocalVersion,
     UpdateProgress,
     UpdateResult,
@@ -20,7 +21,6 @@ from core.version import (
     read_local_version,
     same_path,
 )
-from process.managers import LukerProcessManager
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 
 from PIL import Image
 
-import tray.icon as tray_icon
-from tray.icon import TrayIcon
+from luker_launcher.tray import icon as tray_icon
+from luker_launcher.tray.icon import TrayIcon
 
 
 def make_tray(hicon: int | None = 111) -> TrayIcon:

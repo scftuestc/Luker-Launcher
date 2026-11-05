@@ -3,12 +3,12 @@ import unittest
 import dialogs
 import log.search
 import settings_window
-import tray.menu
 import ui.buttons
 import ui.icons
 import ui.resizing
 import ui.switch
 import ui.tokens
+from luker_launcher.tray import menu
 
 
 class TokenValueTests(unittest.TestCase):
@@ -47,7 +47,7 @@ class LegacyConstantTests(unittest.TestCase):
         self.assertEqual(ui.resizing.MIN_HEIGHT, 450)
         self.assertEqual(dialogs.DIALOG_WIDTH, 480)
         self.assertEqual(settings_window.SETTINGS_WIDTH, 600)
-        self.assertEqual(tray.menu.MENU_WIDTH, 240)
+        self.assertEqual(menu.MENU_WIDTH, 240)
         self.assertEqual(log.search.COUNT_LABEL_WIDTH, 64)
 
     def test_icon_defaults_use_tokens(self):

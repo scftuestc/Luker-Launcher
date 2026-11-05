@@ -1,9 +1,9 @@
 import datetime
 import unittest
 
-from core.readiness import LukerState
 from log.store import LogEntry
 from log_window import LogWindow
+from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import PRESET_THEMES
 
 

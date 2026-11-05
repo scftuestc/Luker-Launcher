@@ -2,7 +2,7 @@ import unittest
 
 from application.lifecycle_coordinator import LifecycleCoordinator
 from application.lifecycle_state import LifecycleState
-from core.readiness import LukerState
+from luker_launcher.services.readiness import LukerState
 
 
 class FakeWindow:

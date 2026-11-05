@@ -7,8 +7,8 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-import core.version as version
-from core.version import (
+from luker_launcher.services import version
+from luker_launcher.services.version import (
     CommitInfo,
     LocalVersion,
     UpdateTarget,

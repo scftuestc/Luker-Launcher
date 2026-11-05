@@ -3,7 +3,7 @@ import unittest
 import urllib.error
 from unittest.mock import patch
 
-from core.readiness import LukerReadinessMonitor, LukerState
+from luker_launcher.services.readiness import LukerReadinessMonitor, LukerState
 
 
 def wait_for(predicate, timeout: float = 1.0) -> bool:
@@ -93,14 +93,14 @@ class ReadinessMonitorTests(unittest.TestCase):
         monitor = self.make_monitor(lambda: True, [])
         error = urllib.error.HTTPError('http://x', 503, 'unavailable', None, None)
 
-        with patch('core.readiness.urllib.request.urlopen', side_effect=error):
+        with patch('luker_launcher.services.readiness.urllib.request.urlopen', side_effect=error):
             self.assertTrue(monitor._probe())
 
     def test_connection_error_is_not_ready(self):
         monitor = self.make_monitor(lambda: True, [])
 
         with patch(
-            'core.readiness.urllib.request.urlopen',
+            'luker_launcher.services.readiness.urllib.request.urlopen',
             side_effect=urllib.error.URLError('refused'),
         ):
             self.assertFalse(monitor._probe())

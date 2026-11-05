@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 import customtkinter as ctk
 
 import log_window
-from core.readiness import LukerState
 from log_window import LogWindow
+from luker_launcher.services.readiness import LukerState
 
 
 class WindowStatePollTests(unittest.TestCase):

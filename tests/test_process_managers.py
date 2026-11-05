@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import process.managers as managers
-from process.managers import LukerProcessManager
+from luker_launcher.process import managers
+from luker_launcher.process.managers import LukerProcessManager
 
 
 class ProcessManagerTests(unittest.TestCase):

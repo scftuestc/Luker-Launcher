@@ -1,6 +1,6 @@
 import unittest
 
-from tray.menu import TrayMenu, next_menu_key
+from luker_launcher.tray.menu import TrayMenu, next_menu_key
 
 
 class FakeFrame:

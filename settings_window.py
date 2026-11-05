@@ -7,9 +7,9 @@ from tkinter import messagebox
 
 import customtkinter as ctk
 
-from core.version import TargetInfo, UpdateProgress, UpdateTarget, VersionCheck
 from dialogs import select_luker_path
 from luker_launcher.config import config
+from luker_launcher.services.version import TargetInfo, UpdateProgress, UpdateTarget, VersionCheck
 from luker_launcher.theme import PRESET_THEMES, mix_color, shade_color, theme_swatch_colors
 from ui.buttons import make_button
 from ui.dpi import (

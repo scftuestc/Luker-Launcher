@@ -3,7 +3,7 @@ from pathlib import Path
 
 from application.lifecycle_state import LifecycleState
 from application.update_coordinator import UpdateCoordinator
-from core.version import (
+from luker_launcher.services.version import (
     CommitInfo,
     LocalVersion,
     TargetInfo,

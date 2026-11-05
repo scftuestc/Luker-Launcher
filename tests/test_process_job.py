@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import process.job as job
+from luker_launcher.process import job
 
 
 class JobObjectTests(unittest.TestCase):

@@ -7,8 +7,9 @@ from unittest.mock import Mock, patch
 import launcher_app
 import settings_window
 from application.lifecycle_state import LifecycleState
-from core.readiness import LukerState
-from core.version import (
+from launcher_app import LukerLauncher
+from luker_launcher.services.readiness import LukerState
+from luker_launcher.services.version import (
     CommitInfo,
     LocalVersion,
     TargetInfo,
@@ -16,7 +17,6 @@ from core.version import (
     UpdateTarget,
     VersionCheck,
 )
-from launcher_app import LukerLauncher
 from settings_window import (
     _SCROLL_BINDING_SEQUENCES,
     SettingsWindow,

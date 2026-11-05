@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from core.version import UpdateProgress, VersionCheck
+    from luker_launcher.services.version import UpdateProgress, VersionCheck
 
 LogSink = Callable[[str], None]
 

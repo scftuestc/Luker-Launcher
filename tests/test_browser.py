@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import core.browser as browser
+from luker_launcher.services import browser
 
 VALID_FAMILY_NAME = "127.0.0.1-test_8wekyb3d8bbwe"
 
@@ -399,7 +399,7 @@ class OpenInBrowserFallbackTests(unittest.TestCase):
         with (
             patch.object(browser, "open_as_pwa", return_value=False),
             patch("webbrowser.open", return_value=False),
-            self.assertLogs("core.browser", level="WARNING") as logs,
+            self.assertLogs("luker_launcher.services.browser", level="WARNING") as logs,
         ):
             self.assertFalse(browser.open_in_browser("http://127.0.0.1:8000"))
 

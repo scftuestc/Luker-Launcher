@@ -10,8 +10,8 @@ from application.process_coordinator import ProcessCoordinator
 from application.protocols import LogSink, UiPoster
 from application.status_coordinator import StatusCoordinator
 from application.task_runner import TaskRunner
-from core.readiness import LukerState
 from dialogs import show_close_choice
+from luker_launcher.services.readiness import LukerState
 from ui.dispatch import UiDispatcher
 
 logger = logging.getLogger(__name__)

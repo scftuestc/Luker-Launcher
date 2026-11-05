@@ -12,17 +12,17 @@ from application.process_coordinator import ProcessCoordinator
 from application.status_coordinator import StatusCoordinator
 from application.task_runner import TaskRunner
 from application.update_coordinator import UpdateCoordinator
-from core.browser import open_in_browser
-from core.readiness import LukerState
-from core.version import same_path
 from dialogs import ensure_luker_path_configured
 from log_window import LogWindow
 from luker_launcher.config import config
 from luker_launcher.infrastructure import logging_setup
 from luker_launcher.infrastructure import win32 as win32_api
+from luker_launcher.services.browser import open_in_browser
+from luker_launcher.services.readiness import LukerState
+from luker_launcher.services.version import same_path
+from luker_launcher.tray.icon import TrayIcon
+from luker_launcher.tray.menu import TrayMenu
 from settings_window import SettingsWindow
-from tray.icon import TrayIcon
-from tray.menu import TrayMenu
 from ui.dispatch import UiDispatcher
 
 logger = logging.getLogger(__name__)

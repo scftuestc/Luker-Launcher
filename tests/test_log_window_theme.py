@@ -1,7 +1,7 @@
 import unittest
 
-from core.readiness import LukerState
 from log_window import LogWindow
+from luker_launcher.services.readiness import LukerState
 from ui.buttons import button_colors
 
 COLORS = {

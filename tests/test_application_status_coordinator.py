@@ -1,7 +1,7 @@
 import unittest
 
 from application.status_coordinator import StatusCoordinator
-from core.readiness import LukerState
+from luker_launcher.services.readiness import LukerState
 
 
 class FakeManager:

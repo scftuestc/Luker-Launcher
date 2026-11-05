@@ -6,7 +6,7 @@ from typing import Protocol
 
 from application.process_coordinator import ProcessCoordinator
 from application.protocols import LogSink, UiPoster
-from core.readiness import LukerReadinessMonitor, LukerState
+from luker_launcher.services.readiness import LukerReadinessMonitor, LukerState
 
 logger = logging.getLogger(__name__)
 

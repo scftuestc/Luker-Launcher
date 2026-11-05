@@ -10,13 +10,13 @@ from types import TracebackType
 
 import customtkinter as ctk
 
-from core.readiness import LukerState
 from log.display import LogDisplay, configure_log_tags
 from log.pipeline import LogController
 from log.search import SearchBar
 from log.store import LogEntry
 from luker_launcher.config import APP_VERSION, config
 from luker_launcher.infrastructure import win32 as win32_api
+from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,

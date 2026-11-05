@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-import process.single_instance as single_instance
+from luker_launcher.process import single_instance
 
 
 class SingleInstanceTests(unittest.TestCase):

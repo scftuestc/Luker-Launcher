@@ -7,8 +7,8 @@ from typing import Protocol
 from application.lifecycle_state import LifecycleState
 from application.protocols import LogSink, UiPoster
 from application.task_runner import TaskRunner
-from core.version import same_path
-from process.managers import LukerProcessManager
+from luker_launcher.process.managers import LukerProcessManager
+from luker_launcher.services.version import same_path
 
 logger = logging.getLogger(__name__)
 

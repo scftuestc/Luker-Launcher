@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import dialogs
-from core.readiness import LukerState
 from dialogs import (
     DIALOG_HEIGHT,
     DIALOG_WIDTH,
@@ -12,6 +11,7 @@ from dialogs import (
     dialog_position,
     select_luker_path,
 )
+from luker_launcher.services.readiness import LukerState
 from ui.dpi import format_geometry
 
 

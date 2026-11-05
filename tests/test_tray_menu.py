@@ -2,10 +2,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import tray.menu as tray_menu
-from core.readiness import LukerState
+from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import LOGO_STOPPED_COLOR
-from tray.menu import TrayMenu
+from luker_launcher.tray import menu as tray_menu
+from luker_launcher.tray.menu import TrayMenu
 
 
 class BlurChangeTests(unittest.TestCase):

@@ -9,9 +9,9 @@ from typing import TypedDict
 
 import customtkinter as ctk
 
-from core.readiness import LukerState
 from luker_launcher.config import config
 from luker_launcher.infrastructure import win32 as win32_api
+from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,
