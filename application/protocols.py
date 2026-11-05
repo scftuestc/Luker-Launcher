@@ -1,5 +1,7 @@
 """跨 Coordinator 的最小协议定义。"""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol
 

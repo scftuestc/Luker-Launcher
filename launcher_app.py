@@ -1,16 +1,16 @@
 """启动器应用主体：协调日志窗口、托盘、进程与退出流程。"""
 
 import logging
-import time
 import tkinter as tk
-import urllib.error
-import urllib.request
 from collections.abc import Callable
 from threading import Thread
 from tkinter import messagebox
 
 import logging_setup
 import win32_api
+from application.browser_coordinator import BrowserCoordinator
+from application.lifecycle_state import LifecycleState
+from application.task_runner import TaskRunner
 from config import config
 from core.browser import open_in_browser
 from core.readiness import LukerReadinessMonitor, LukerState
@@ -34,8 +34,6 @@ from ui.dispatch import UiDispatcher
 logger = logging.getLogger(__name__)
 
 STATUS_POLL_INTERVAL = 2
-BROWSER_WAIT_TIMEOUT_SECONDS = 30
-BROWSER_WAIT_INTERVAL_SECONDS = 1
 # 合并键：同一键只保留最后一次请求
 UI_KEY_VISIBILITY = "visibility"
 UI_KEY_TRAY_MENU = "tray_menu"
@@ -54,8 +52,6 @@ class LukerLauncher:
         self.tray_menu: TrayMenu | None = None
         self._running = False
         self._process_busy = False  # 防止启停/重启操作重入
-        self._browser_busy = False  # 防止重复启动 PWA 发现线程
-        self._auto_browser_pending = False  # 自动打开尚未执行时，手动打开可取消
         self._exiting = False  # 退出流程只执行一次
         self._exit_dialog_open = False
         self._tray_ready = False
@@ -68,6 +64,17 @@ class LukerLauncher:
         self._readiness: LukerReadinessMonitor | None = None
         # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
         self._ui = UiDispatcher(self._schedule_ui)
+        self._lifecycle = LifecycleState()
+        self._task_runner = TaskRunner()
+        self._browser = BrowserCoordinator(
+            config=config,
+            task_runner=self._task_runner,
+            post_ui=self._ui,
+            log=self._on_log,
+            open_browser=open_in_browser,
+            lifecycle=self._lifecycle,
+            is_running=lambda: self._running,
+        )
         # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
         self._tray_anchor: tuple[int, int] | None = None
         self.settings_window: SettingsWindow | None = None
@@ -320,6 +327,7 @@ class LukerLauncher:
         if self._exiting:
             return
         self._exiting = True
+        self._lifecycle.exiting = True
         self._running = False
 
         # 停止进程可能耗时数秒，放到后台，完成后再结束主循环
@@ -464,40 +472,8 @@ class LukerLauncher:
         self._post_ui(self._open_settings_window, UI_KEY_SETTINGS)
 
     def _on_open_browser(self, *, automatic: bool = False) -> None:
-        """打开浏览器；PWA 发现可能调用 PowerShell，放到后台避免卡住界面。
-
-        自动打开只执行一次；手动打开会取消尚未执行的自动请求。
-        """
-        if automatic:
-            if not self._auto_browser_pending:
-                return
-            self._auto_browser_pending = False
-        else:
-            self._auto_browser_pending = False
-
-        if self._exiting or self._browser_busy:
-            return
-
-        self._browser_busy = True
-
-        def worker() -> None:
-            try:
-                self._open_browser_now()
-            finally:
-                if self._post_ui(self._finish_browser_open, control=True) is False:
-                    self._browser_busy = False
-
-        try:
-            self._run_async(worker)
-        except Exception:
-            self._browser_busy = False
-            logger.exception("启动浏览器打开线程失败")
-
-    def _finish_browser_open(self) -> None:
-        self._browser_busy = False
-
-    def _open_browser_now(self) -> None:
-        open_in_browser(config.get_server_url(), prefer_pwa=config.use_pwa_mode)
+        """打开浏览器；具体去重与等待逻辑由 BrowserCoordinator 负责。"""
+        self._browser.open(automatic=automatic)
 
     def _open_settings_window(self) -> None:
         """打开或聚焦设置窗口；已打开时只置前，不移动。"""
@@ -1010,44 +986,8 @@ class LukerLauncher:
             self._on_log("[错误] 托盘图标创建失败，日志窗口保持显示；关闭窗口会询问是否退出")
 
     def _schedule_auto_open_browser_if_needed(self) -> None:
-        if config.use_pwa_mode:
-            self._auto_browser_pending = True
-            self._schedule_auto_open_browser()
+        self._browser.schedule_auto_open_if_needed()
 
     def _cleanup_after_mainloop(self) -> None:
         # 与 _finish_exit 共用同一套幂等清理
         self._shutdown()
-
-    def _schedule_auto_open_browser(self) -> None:
-        """延迟打开浏览器，等待 Luker 服务启动"""
-
-        def check_and_open() -> None:
-            url = config.get_server_url()
-            deadline = time.monotonic() + BROWSER_WAIT_TIMEOUT_SECONDS
-
-            while self._running and time.monotonic() < deadline:
-                ready = False
-                try:
-                    # 尝试连接 Luker，响应由 with 负责关闭
-                    with urllib.request.urlopen(url, timeout=BROWSER_WAIT_INTERVAL_SECONDS):
-                        ready = True
-                except urllib.error.HTTPError as e:
-                    # 服务已响应，只是返回了 4xx/5xx，同样说明已经就绪
-                    e.close()
-                    ready = True
-                except (urllib.error.URLError, TimeoutError, OSError):
-                    ready = False
-
-                if ready:
-                    self._on_log("[启动器] 检测到 Luker 已启动，正在打开沉浸应用窗口...")
-                    # 回到主线程复用 _browser_busy，避免自动和手动同时打开
-                    self._post_ui(lambda: self._on_open_browser(automatic=True))
-                    return
-
-                time.sleep(BROWSER_WAIT_INTERVAL_SECONDS)
-
-            if self._running:
-                self._auto_browser_pending = False
-                self._on_log("[启动器] 等待 Luker 启动超时，请手动打开浏览器")
-
-        Thread(target=check_and_open, daemon=True).start()

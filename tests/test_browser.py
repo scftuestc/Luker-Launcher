@@ -7,8 +7,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import core.browser as browser
-import launcher_app
-from launcher_app import LukerLauncher
 
 VALID_FAMILY_NAME = "127.0.0.1-test_8wekyb3d8bbwe"
 
@@ -121,118 +119,6 @@ class PwaDiscoveryTests(unittest.TestCase):
         self.assertEqual(first, (VALID_FAMILY_NAME, "LukerApp"))
         self.assertEqual(second, first)
         run.assert_called_once()
-
-
-class AutoOpenRoutingTests(unittest.TestCase):
-    def test_auto_open_posts_shared_browser_entry(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher._running = True
-        launcher._auto_browser_pending = True
-        posted = []
-        launcher._post_ui = lambda callback: posted.append(callback)
-        launcher._on_log = lambda _line: None
-        launcher._open_browser_now = lambda: self.fail("自动打开应复用 _on_open_browser")
-        launcher._on_open_browser = Mock()
-
-        class FakeResponse:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return False
-
-        class FakeThread:
-            def __init__(self, target, daemon):
-                self._target = target
-
-            def start(self):
-                self._target()
-
-        with (
-            patch.object(launcher_app.urllib.request, "urlopen", return_value=FakeResponse()),
-            patch.object(launcher_app, "Thread", FakeThread),
-        ):
-            launcher._schedule_auto_open_browser()
-
-        self.assertEqual(len(posted), 1)
-        posted[0]()
-        launcher._on_open_browser.assert_called_once_with(automatic=True)
-
-
-class BrowserAutoOpenGuardTests(unittest.TestCase):
-    def make_launcher(self, *, pending: bool) -> tuple[LukerLauncher, list]:
-        launcher = object.__new__(LukerLauncher)
-        launcher._auto_browser_pending = pending
-        launcher._browser_busy = False
-        launcher._exiting = False
-        launcher._open_browser_now = Mock()
-        workers: list = []
-        launcher._run_async = workers.append
-        launcher._post_ui = lambda callback, key=None, control=False: True
-        return launcher, workers
-
-    def test_manual_open_cancels_pending_auto(self):
-        launcher, workers = self.make_launcher(pending=True)
-
-        launcher._on_open_browser()
-
-        self.assertFalse(launcher._auto_browser_pending)
-        self.assertEqual(len(workers), 1)
-        workers[0]()
-        launcher._open_browser_now.assert_called_once_with()
-
-        launcher._browser_busy = False
-        launcher._on_open_browser(automatic=True)
-
-        self.assertEqual(len(workers), 1)
-
-    def test_automatic_open_runs_only_once(self):
-        launcher, workers = self.make_launcher(pending=True)
-
-        launcher._on_open_browser(automatic=True)
-
-        self.assertFalse(launcher._auto_browser_pending)
-        self.assertEqual(len(workers), 1)
-
-        launcher._browser_busy = False
-        launcher._on_open_browser(automatic=True)
-
-        self.assertEqual(len(workers), 1)
-
-    def test_schedule_marks_pending_only_in_pwa_mode(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher._auto_browser_pending = False
-        launcher._schedule_auto_open_browser = Mock()
-
-        with patch.object(launcher_app, "config", SimpleNamespace(use_pwa_mode=True)):
-            launcher._schedule_auto_open_browser_if_needed()
-        self.assertTrue(launcher._auto_browser_pending)
-        launcher._schedule_auto_open_browser.assert_called_once_with()
-
-        launcher._auto_browser_pending = False
-        launcher._schedule_auto_open_browser.reset_mock()
-        with patch.object(launcher_app, "config", SimpleNamespace(use_pwa_mode=False)):
-            launcher._schedule_auto_open_browser_if_needed()
-        self.assertFalse(launcher._auto_browser_pending)
-        launcher._schedule_auto_open_browser.assert_not_called()
-
-
-class BrowserOpenDelegationTests(unittest.TestCase):
-    def test_open_browser_now_delegates_pwa_preference(self):
-        for prefer_pwa in (True, False):
-            with self.subTest(prefer_pwa=prefer_pwa):
-                launcher = object.__new__(LukerLauncher)
-                fake_config = Mock()
-                fake_config.use_pwa_mode = prefer_pwa
-                fake_config.get_server_url.return_value = "http://127.0.0.1:8000"
-
-                with (
-                    patch.object(launcher_app, "config", fake_config),
-                    patch.object(launcher_app, "open_in_browser", return_value=True) as open_mock,
-                ):
-                    launcher._open_browser_now()
-
-                open_mock.assert_called_once_with("http://127.0.0.1:8000", prefer_pwa=prefer_pwa)
 
 
 def pwa_config(**overrides) -> SimpleNamespace:
