@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import launcher_app
+from application.lifecycle_state import LifecycleState
 from launcher_app import LukerLauncher
 
 
@@ -24,14 +25,6 @@ class FakeWindow:
 
     def quit(self) -> None:
         self.quit_called = True
-
-
-class FakeDispatcher:
-    def __init__(self) -> None:
-        self.stopped = False
-
-    def stop(self) -> None:
-        self.stopped = True
 
 
 class UiScheduleTests(unittest.TestCase):
@@ -79,7 +72,7 @@ class UiScheduleTests(unittest.TestCase):
 class TrayMenuRequestTests(unittest.TestCase):
     def test_reads_foreground_handle_before_posting_ui(self):
         launcher = object.__new__(LukerLauncher)
-        launcher._exiting = False
+        launcher._lifecycle = LifecycleState()
         launcher._show_tray_menu = Mock()
         posted: list[tuple[object, object]] = []
         launcher._post_ui = lambda callback, key=None: posted.append((callback, key)) or True
@@ -127,22 +120,6 @@ class TrayFailureCloseTests(unittest.TestCase):
         self.assertEqual(window.on_hide_callback, 'hide-sentinel')
         self.assertEqual(window.on_exit_callback, 'exit-sentinel')
         self.assertIn("询问是否退出", logs[-1])
-
-
-class ExitTests(unittest.TestCase):
-    def test_finish_exit_stops_dispatcher(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher._ui = FakeDispatcher()
-        launcher.log_window = FakeWindow()
-        launcher.tray_icon = None
-        launcher._status = type("FakeStatus", (), {"stop": lambda self: None})()
-        launcher._shutdown_done = False
-        launcher._running = True
-
-        launcher._finish_exit()
-
-        self.assertTrue(launcher._ui.stopped)
-        self.assertTrue(launcher.log_window.quit_called)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 import launcher_app
 import settings_window
+from application.lifecycle_state import LifecycleState
 from core.readiness import LukerState
 from core.version import (
     CommitInfo,
@@ -900,7 +901,7 @@ class SettingsWindowTests(unittest.TestCase):
             version_check_cache=None,
             version_check_seq=0,
         )
-        launcher._exiting = False
+        launcher._lifecycle = LifecycleState()
         launcher.log_window = object()
         launcher.settings_window = None
         launcher._tray_anchor = (100, 200)
@@ -978,7 +979,7 @@ class SettingsWindowTests(unittest.TestCase):
 
     def test_exiting_does_not_open_window(self):
         launcher = self._make_launcher()
-        launcher._exiting = True
+        launcher._lifecycle.exiting = True
 
         with patch.object(launcher_app, "SettingsWindow", FakeSettingsWindow):
             launcher._open_settings_window()

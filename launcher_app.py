@@ -3,12 +3,12 @@
 import logging
 import tkinter as tk
 from collections.abc import Callable
-from threading import Thread
 from tkinter import messagebox
 
 import logging_setup
 import win32_api
 from application.browser_coordinator import BrowserCoordinator
+from application.lifecycle_coordinator import LifecycleCoordinator
 from application.lifecycle_state import LifecycleState
 from application.process_coordinator import ProcessCoordinator
 from application.status_coordinator import StatusCoordinator
@@ -18,7 +18,7 @@ from config import config
 from core.browser import open_in_browser
 from core.readiness import LukerState
 from core.version import UpdateTarget, VersionCheck, same_path
-from dialogs import ensure_luker_path_configured, show_close_choice
+from dialogs import ensure_luker_path_configured
 from log_window import LogWindow
 from process.managers import LukerProcessManager
 from settings_window import SettingsWindow
@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 UI_KEY_VISIBILITY = "visibility"
 UI_KEY_TRAY_MENU = "tray_menu"
 UI_KEY_SETTINGS = "settings"
-UI_KEY_EXIT = "exit"
 
 
 class LukerLauncher:
@@ -43,10 +42,7 @@ class LukerLauncher:
         self.log_window: LogWindow | None = None
         self.tray_menu: TrayMenu | None = None
         self._running = False
-        self._exiting = False  # 退出流程只执行一次
-        self._exit_dialog_open = False
         self._tray_ready = False
-        self._shutdown_done = False
         # 托盘/进程线程不能直接操作 Tk，统一投递到这里由主线程执行
         self._ui = UiDispatcher(self._schedule_ui)
         self._lifecycle = LifecycleState()
@@ -89,6 +85,23 @@ class LukerLauncher:
             log=self._on_log,
             lifecycle=self._lifecycle,
             settings_provider=lambda: self.settings_window,
+        )
+        self._lifecycle_coordinator = LifecycleCoordinator(
+            config=config,
+            process=self._process,
+            status=self._status,
+            ui=self._ui,
+            task_runner=self._task_runner,
+            post_ui=self._ui,
+            log=self._on_log,
+            lifecycle=self._lifecycle,
+            window_provider=lambda: self.log_window,
+            tray_icon_provider=lambda: self.tray_icon,
+            tray_ready=lambda: self._tray_ready,
+            hide_window=self._hide_window,
+            current_state=self._current_luker_state,
+            is_updating=lambda: self._updating,
+            set_running=self._set_running,
         )
         # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
         self._tray_anchor: tuple[int, int] | None = None
@@ -222,130 +235,13 @@ class LukerLauncher:
         self._status.clear_last_state()
 
     def _on_request_exit(self) -> None:
-        """日志窗口关闭按钮：按配置隐藏到托盘、退出或询问。"""
-        if getattr(self, '_updating', False):
-            self._on_log("[警告] 正在更新 Luker，请等待完成后再退出")
-            return
-        if self._exiting or self._exit_dialog_open or not self.log_window:
-            return
-
-        behavior = config.close_behavior
-        allow_hide = self._tray_ready and self.tray_icon is not None
-
-        if behavior == 'exit':
-            self.log_window.hide()
-            self._on_exit()
-            return
-
-        if behavior == 'tray' and allow_hide:
-            self._hide_window()
-            return
-
-        self._exit_dialog_open = True
-        state = self._current_luker_state()
-
-        def on_hide(remember: bool) -> None:
-            self._exit_dialog_open = False
-            if remember:
-                config.close_behavior = 'tray'
-            self._hide_window()
-
-        def on_exit(remember: bool) -> None:
-            self._exit_dialog_open = False
-            if remember:
-                config.close_behavior = 'exit'
-            if self.log_window:
-                self.log_window.hide()
-            self._on_exit()
-
-        def on_cancel() -> None:
-            self._exit_dialog_open = False
-            if self.log_window:
-                self.log_window.focus_force()
-
-        try:
-            show_close_choice(
-                self.log_window,
-                state,
-                allow_hide=allow_hide,
-                on_hide=on_hide,
-                on_exit=on_exit,
-                on_cancel=on_cancel,
-            )
-        except Exception:
-            logger.exception("显示关闭窗口选择框失败，回退到系统对话框")
-            self._exit_dialog_open = False
-            try:
-                if allow_hide:
-                    answer = messagebox.askyesnocancel(
-                        "关闭窗口",
-                        "要隐藏到系统托盘吗？\n选择“否”将退出 Luker Launcher，选择“取消”返回。",
-                        parent=self.log_window,
-                    )
-                    if answer is None:
-                        on_cancel()
-                    elif answer:
-                        on_hide(False)
-                    else:
-                        on_exit(False)
-                else:
-                    confirmed = messagebox.askyesno(
-                        "关闭窗口",
-                        "系统托盘不可用，关闭窗口将退出 Luker Launcher。\n确定要退出吗？",
-                        parent=self.log_window,
-                    )
-                    if confirmed:
-                        on_exit(False)
-                    else:
-                        on_cancel()
-            except Exception:
-                logger.exception("显示系统关闭窗口对话框失败")
+        self._lifecycle_coordinator.request_exit()
 
     def _on_exit(self) -> None:
-        if getattr(self, '_updating', False):
-            self._on_log("[警告] 正在更新 Luker，请等待完成后再退出")
-            return
-        if self._exiting:
-            return
-        self._exiting = True
-        self._lifecycle.exiting = True
-        self._running = False
+        self._lifecycle_coordinator.exit()
 
-        # 停止进程可能耗时数秒，放到后台，完成后再结束主循环
-        def worker() -> None:
-            self._status.stop()
-            self._process.stop_all()
-            self._post_ui(self._finish_exit, UI_KEY_EXIT)
-
-        try:
-            self._run_async(worker)
-        except Exception:
-            logger.exception("启动退出线程失败")
-            self._finish_exit()
-
-    def _finish_exit(self) -> None:
-        """停止托盘并结束 Tk 主循环。"""
-        try:
-            self._shutdown()
-        finally:
-            if self.log_window:
-                self.log_window.quit()
-
-    def _shutdown(self) -> None:
-        """幂等清理：正常退出和 mainloop 返回后的兜底共用同一套逻辑。"""
-        if self._shutdown_done:
-            return
-        self._shutdown_done = True
-        self._running = False
-
-        self._status.stop()
-        self._ui.stop()
-        if self.tray_icon:
-            self.tray_icon.stop()
-
-    def _run_async(self, func: Callable[[], None]) -> None:
-        """在守护线程中执行耗时操作，不阻塞 Tk 主循环。"""
-        Thread(target=func, daemon=True).start()
+    def _set_running(self, value: bool) -> None:
+        self._running = value
 
     def _start_process_worker(
         self,
@@ -363,7 +259,7 @@ class LukerLauncher:
         self._process.finish_action()
 
     def _on_settings(self) -> None:
-        if self._exiting:
+        if self._lifecycle.exiting:
             return
         self._post_ui(self._open_settings_window, UI_KEY_SETTINGS)
 
@@ -373,7 +269,7 @@ class LukerLauncher:
 
     def _open_settings_window(self) -> None:
         """打开或聚焦设置窗口；已打开时只置前，不移动。"""
-        if self._exiting or not self.log_window:
+        if self._lifecycle.exiting or not self.log_window:
             return
 
         window = self.settings_window
@@ -415,7 +311,7 @@ class LukerLauncher:
         return self._update.apply_update_target(target)
 
     def _on_show_menu(self, x: int, y: int) -> None:
-        if self._exiting:
+        if self._lifecycle.exiting:
             return
         # 托盘线程在右键当下记录前台窗口，主线程稍后可能已被任务栏抢走
         try:
@@ -541,5 +437,5 @@ class LukerLauncher:
         self._browser.schedule_auto_open_if_needed()
 
     def _cleanup_after_mainloop(self) -> None:
-        # 与 _finish_exit 共用同一套幂等清理
-        self._shutdown()
+        # 与正常退出共用同一套幂等清理
+        self._lifecycle_coordinator.shutdown()
