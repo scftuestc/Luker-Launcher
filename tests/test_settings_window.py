@@ -891,6 +891,7 @@ class SettingsWindowTests(unittest.TestCase):
     @staticmethod
     def _make_launcher() -> LukerLauncher:
         launcher = object.__new__(LukerLauncher)
+        launcher._process = SimpleNamespace(manager=None, busy=False)
         launcher._exiting = False
         launcher.log_window = object()
         launcher.settings_window = None

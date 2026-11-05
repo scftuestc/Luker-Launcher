@@ -4,6 +4,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import launcher_app
+from application.lifecycle_state import LifecycleState
+from application.process_coordinator import ProcessCoordinator
 from core.version import (
     CommitInfo,
     LocalVersion,
@@ -122,6 +124,17 @@ def remote_targets() -> tuple[TargetInfo, TargetInfo]:
     return release, commit
 
 
+class LauncherRunner:
+    """把进程协调器的后台任务接到测试可替换的 _run_async 上。"""
+
+    def __init__(self, launcher: LukerLauncher) -> None:
+        self.launcher = launcher
+
+    def run(self, func, *, name=None) -> bool:
+        self.launcher._run_async(func)
+        return True
+
+
 class LauncherUpdateTests(unittest.TestCase):
     def make_launcher(
         self,
@@ -131,23 +144,34 @@ class LauncherUpdateTests(unittest.TestCase):
     ) -> tuple[LukerLauncher, FakeManager, FakeSettingsWindow, list[str]]:
         launcher = object.__new__(LukerLauncher)
         launcher._exiting = False
-        launcher._process_busy = False
         launcher._version_checking = False
         launcher._updating = False
         launcher._version_check_cache = None
         launcher._version_check_seq = 0
+        launcher._lifecycle = LifecycleState()
         launcher._ui = UiDispatcher(lambda _delay, _callback: None)
         launcher._ui.start()
         self.addCleanup(launcher._ui.stop)
         launcher._run_async = lambda func: func()
         launcher.settings_window = FakeSettingsWindow()
         manager = FakeManager(running=running, path=manager_path)
-        launcher.process_manager = manager
+        logs: list[str] = []
+        launcher._on_log = logs.append
+        launcher._process = ProcessCoordinator(
+            config=SimpleNamespace(
+                luker_path="C:/Luker",
+                use_pwa_mode=False,
+                get_server_port=lambda: 8000,
+            ),
+            task_runner=LauncherRunner(launcher),
+            post_ui=launcher._ui,
+            log=logs.append,
+            lifecycle=launcher._lifecycle,
+            manager_factory=lambda *args, **kwargs: manager,
+        )
+        launcher._process.manager = manager
         launcher._ensure_process_manager = lambda: manager
         launcher._reset_luker_readiness = lambda: None
-        logs: list[str] = []
-        launcher._on_log = lambda line: logs.append(line)
-        launcher._finish_process_action = lambda: setattr(launcher, "_process_busy", False)
         return launcher, manager, launcher.settings_window, logs
 
     def test_check_runs_in_background_and_delivers_result(self):

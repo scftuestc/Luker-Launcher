@@ -1,7 +1,5 @@
 import tkinter as tk
 import unittest
-from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import launcher_app
@@ -129,44 +127,6 @@ class TrayFailureCloseTests(unittest.TestCase):
         self.assertEqual(window.on_hide_callback, 'hide-sentinel')
         self.assertEqual(window.on_exit_callback, 'exit-sentinel')
         self.assertIn("询问是否退出", logs[-1])
-
-
-class PathComparisonTests(unittest.TestCase):
-    def test_ensure_manager_reuses_manager_for_case_insensitive_path(self):
-        launcher = object.__new__(LukerLauncher)
-        manager = SimpleNamespace(luker_path=Path("C:/Luker"), is_running=False)
-        launcher.process_manager = manager
-        launcher._last_status = None
-        fake_config = SimpleNamespace(
-            luker_path="c:\\luker",
-            use_pwa_mode=False,
-            get_server_port=lambda: 8000,
-        )
-
-        with (
-            patch.object(launcher_app, 'config', fake_config),
-            patch.object(launcher_app, 'LukerProcessManager') as manager_cls,
-        ):
-            result = launcher._ensure_process_manager()
-
-        self.assertIs(result, manager)
-        manager_cls.assert_not_called()
-
-    def test_restart_reuses_manager_for_case_insensitive_path(self):
-        launcher = object.__new__(LukerLauncher)
-        launcher._process_busy = False
-        launcher._exiting = False
-        launcher._reset_luker_readiness = lambda: None
-        launcher.process_manager = SimpleNamespace(luker_path=Path("C:/Luker"))
-        launcher._restart_with_path = Mock()
-        actions: list[object] = []
-        launcher._do_process_action = actions.append
-
-        with patch.object(launcher_app, 'config', SimpleNamespace(luker_path="c:\\luker")):
-            launcher._on_restart()
-
-        launcher._restart_with_path.assert_not_called()
-        self.assertEqual(len(actions), 1)
 
 
 class ExitTests(unittest.TestCase):

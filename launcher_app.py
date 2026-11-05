@@ -10,6 +10,7 @@ import logging_setup
 import win32_api
 from application.browser_coordinator import BrowserCoordinator
 from application.lifecycle_state import LifecycleState
+from application.process_coordinator import ProcessCoordinator
 from application.task_runner import TaskRunner
 from config import config
 from core.browser import open_in_browser
@@ -46,12 +47,10 @@ class LukerLauncher:
     """协调日志窗口、托盘菜单和 Luker 进程管理器的应用主体。"""
 
     def __init__(self) -> None:
-        self.process_manager: LukerProcessManager | None = None
         self.tray_icon: TrayIcon | None = None
         self.log_window: LogWindow | None = None
         self.tray_menu: TrayMenu | None = None
         self._running = False
-        self._process_busy = False  # 防止启停/重启操作重入
         self._exiting = False  # 退出流程只执行一次
         self._exit_dialog_open = False
         self._tray_ready = False
@@ -66,6 +65,16 @@ class LukerLauncher:
         self._ui = UiDispatcher(self._schedule_ui)
         self._lifecycle = LifecycleState()
         self._task_runner = TaskRunner()
+        self._process = ProcessCoordinator(
+            config=config,
+            task_runner=self._task_runner,
+            post_ui=self._ui,
+            log=self._on_log,
+            lifecycle=self._lifecycle,
+            on_status_reset=self._reset_luker_readiness,
+            on_manager_replaced=self._clear_last_status,
+            on_finished=self._update_status,
+        )
         self._browser = BrowserCoordinator(
             config=config,
             task_runner=self._task_runner,
@@ -78,6 +87,22 @@ class LukerLauncher:
         # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
         self._tray_anchor: tuple[int, int] | None = None
         self.settings_window: SettingsWindow | None = None
+
+    @property
+    def process_manager(self) -> LukerProcessManager | None:
+        return self._process.manager
+
+    @process_manager.setter
+    def process_manager(self, manager: LukerProcessManager | None) -> None:
+        self._process.manager = manager
+
+    @property
+    def _process_busy(self) -> bool:
+        return self._process.busy
+
+    @_process_busy.setter
+    def _process_busy(self, value: bool) -> None:
+        self._process.busy = value
 
     def _schedule_ui(self, delay_ms: int, callback: Callable[[], None]) -> None:
         """在 Tk 主线程安排下一次 UI 泵；窗口不可用时停止续排。"""
@@ -169,75 +194,15 @@ class LukerLauncher:
             self.log_window.add_log(line)
 
     def _on_start(self) -> None:
-        if self._process_busy or self._exiting:
-            return
-        self._reset_luker_readiness()
-        self._do_process_action(lambda manager: manager.start())
+        self._process.start()
 
     def _on_stop(self) -> None:
-        self._do_process_action(lambda manager: manager.stop())
+        self._process.stop()
 
     def _on_restart(self) -> None:
-        if self._process_busy or self._exiting:
-            return
+        self._process.restart()
 
-        self._reset_luker_readiness()
-        desired_path = config.luker_path
-        current = self.process_manager
-        if desired_path and current and not same_path(str(current.luker_path), desired_path):
-            self._restart_with_path(desired_path)
-            return
-
-        self._do_process_action(lambda manager: manager.restart())
-
-    def _restart_with_path(self, path: str) -> None:
-        """路径变化时先停旧进程，再创建并启动新管理器。"""
-        self._reset_luker_readiness()
-        old_manager = self.process_manager
-
-        def worker() -> None:
-            try:
-                if old_manager and not old_manager.stop():
-                    self._on_log("[错误] 旧 Luker 进程未停止，已取消切换路径")
-                    return
-                if self._exiting:
-                    return
-
-                manager = LukerProcessManager(
-                    path,
-                    let_luker_open_browser=not config.use_pwa_mode,
-                    server_port=config.get_server_port(),
-                )
-                manager.add_log_callback(self._on_log)
-                self._post_ui(lambda: self._adopt_process_manager(manager), control=True)
-                # 先切换 UI 持有的管理器，再启动；退出过程中不再拉起新进程
-                if not self._exiting:
-                    manager.start()
-                    if self._exiting and manager.is_running:
-                        manager.stop()
-            except Exception:
-                logger.exception("切换 Luker 路径失败")
-                self._on_log("[错误] 切换 Luker 路径失败，请查看日志")
-            finally:
-                if self._post_ui(self._finish_process_action, control=True) is False:
-                    self._process_busy = False
-
-        self._start_process_worker(worker, context="路径切换")
-
-    def _adopt_process_manager(self, manager: LukerProcessManager) -> None:
-        if self._exiting:
-            # 退出已开始，拒绝接管；新实例交给后台线程停止
-            logger.debug("退出中，拒绝接管新的进程管理器")
-
-            def stop_incoming() -> None:
-                manager.stop()
-
-            try:
-                self._run_async(stop_incoming)
-            except Exception:
-                logger.exception("停止退出期间创建的进程管理器失败")
-            return
-        self.process_manager = manager
+    def _clear_last_status(self) -> None:
         self._last_status = None
 
     def _on_request_exit(self) -> None:
@@ -335,7 +300,7 @@ class LukerLauncher:
             readiness = self._readiness
             if readiness is not None:
                 readiness.stop()
-            self._stop_all_process_managers()
+            self._process.stop_all()
             self._post_ui(self._finish_exit, UI_KEY_EXIT)
 
         try:
@@ -343,25 +308,6 @@ class LukerLauncher:
         except Exception:
             logger.exception("启动退出线程失败")
             self._finish_exit()
-
-    def _stop_all_process_managers(self) -> None:
-        """停止当前所有管理器，并覆盖退出期间新接管的实例。
-
-        `_on_exit` 不再对管理器列表做快照；每轮重新读取，最多三轮，
-        避免路径切换在退出过程中安装的新实例逃过清理。
-        """
-        seen: set[int] = set()
-        for _ in range(3):
-            manager = self.process_manager
-            if manager is None:
-                return
-            if id(manager) in seen:
-                return
-            seen.add(id(manager))
-            try:
-                manager.stop()
-            except Exception:
-                logger.exception("停止进程失败")
 
     def _finish_exit(self) -> None:
         """停止托盘并结束 Tk 主循环。"""
@@ -396,75 +342,13 @@ class LukerLauncher:
         on_failure: Callable[[], None] | None = None,
         context: str = "进程操作",
     ) -> bool:
-        """启动一次进程操作；线程创建失败时复位 busy 并执行 on_failure。"""
-        self._process_busy = True
-        try:
-            self._run_async(worker)
-        except Exception:
-            self._process_busy = False
-            logger.exception("%s线程启动失败", context)
-            if on_failure is not None:
-                on_failure()
-            return False
-        return True
+        return self._process.start_worker(worker, on_failure=on_failure, context=context)
 
     def _ensure_process_manager(self) -> LukerProcessManager | None:
-        """确保进程管理器与当前配置的 Luker 路径保持一致。"""
-        if not config.luker_path:
-            return None
-
-        path = config.luker_path
-        if self.process_manager is None or not same_path(
-            str(self.process_manager.luker_path), path
-        ):
-            if self.process_manager and self.process_manager.is_running:
-                # 运行中不热切换，避免意外中断正在工作的进程
-                return self.process_manager
-
-            self.process_manager = LukerProcessManager(
-                path,
-                let_luker_open_browser=not config.use_pwa_mode,
-                server_port=config.get_server_port(),
-            )
-            self.process_manager.add_log_callback(self._on_log)
-            self._last_status = None
-        else:
-            self.process_manager.let_luker_open_browser = not config.use_pwa_mode
-            self.process_manager.server_port = config.get_server_port()
-
-        return self.process_manager
-
-    def _do_process_action(self, action: Callable[[LukerProcessManager], bool]) -> None:
-        """在后台线程执行进程操作，避免停止/重启时阻塞界面。"""
-        if self._process_busy or self._exiting:
-            return
-
-        manager = self._ensure_process_manager()
-        if manager is None:
-            self._on_log("[错误] 未配置 Luker 路径")
-            return
-
-        def worker() -> None:
-            try:
-                action(manager)
-            except Exception:
-                logger.exception("执行进程操作失败")
-                self._on_log("[错误] 进程操作失败，请查看日志")
-            finally:
-                if self._post_ui(self._finish_process_action, control=True) is False:
-                    # UI 泵已停止（通常正在退出），没有主线程来复位忙碌标志
-                    self._process_busy = False
-
-        self._start_process_worker(worker)
+        return self._process.ensure_manager()
 
     def _finish_process_action(self) -> None:
-        """结束一次进程操作：复位 busy 并刷新状态。
-
-        每个把 busy 置 True 的操作都必须且只能在 finally 中投递一次本方法；
-        漏投或重复投递会让后续启停操作失去保护。
-        """
-        self._process_busy = False
-        self._update_status()
+        self._process.finish_action()
 
     def _on_settings(self) -> None:
         if self._exiting:

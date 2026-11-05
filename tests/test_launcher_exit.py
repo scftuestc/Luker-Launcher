@@ -66,6 +66,7 @@ class ExitRequestTests(unittest.TestCase):
         launcher.log_window = FakeLogWindow()
         launcher.tray_menu = FakeTrayMenu()
         launcher.tray_icon = FakeTrayIcon()
+        launcher._process = SimpleNamespace(manager=None, busy=False)
         launcher.process_manager = FakeProcessManager()
         launcher._readiness = FakeReadiness()
         exits: list[str] = []
@@ -322,6 +323,7 @@ class ExitRequestTests(unittest.TestCase):
 class LukerStateTests(unittest.TestCase):
     def test_state_is_stopped_without_running_process(self):
         launcher = object.__new__(LukerLauncher)
+        launcher._process = SimpleNamespace(manager=None, busy=False)
         launcher.process_manager = FakeProcessManager(running=False)
         launcher._readiness = FakeReadiness(LukerState.READY)
 
@@ -329,6 +331,7 @@ class LukerStateTests(unittest.TestCase):
 
     def test_state_is_starting_when_only_process_is_alive(self):
         launcher = object.__new__(LukerLauncher)
+        launcher._process = SimpleNamespace(manager=None, busy=False)
         launcher.process_manager = FakeProcessManager()
         launcher._readiness = FakeReadiness(LukerState.STARTING)
 
@@ -336,6 +339,7 @@ class LukerStateTests(unittest.TestCase):
 
     def test_state_is_ready_when_service_is_ready(self):
         launcher = object.__new__(LukerLauncher)
+        launcher._process = SimpleNamespace(manager=None, busy=False)
         launcher.process_manager = FakeProcessManager()
         launcher._readiness = FakeReadiness(LukerState.READY)
 
