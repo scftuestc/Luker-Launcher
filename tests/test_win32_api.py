@@ -2,7 +2,7 @@ import ctypes
 import unittest
 from ctypes import wintypes
 
-import win32_api
+from luker_launcher.infrastructure import win32 as win32_api
 
 
 class NativeBindingTests(unittest.TestCase):

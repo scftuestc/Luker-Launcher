@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import logging_setup
+from luker_launcher.infrastructure import logging_setup
 
 
 class LoggingSetupTests(unittest.TestCase):

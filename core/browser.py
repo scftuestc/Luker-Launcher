@@ -9,8 +9,8 @@ import time
 from pathlib import Path
 from threading import Lock
 
-import win32_api
 from luker_launcher.config import config
+from luker_launcher.infrastructure import win32 as win32_api
 
 logger = logging.getLogger(__name__)
 

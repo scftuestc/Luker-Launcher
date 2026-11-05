@@ -5,8 +5,6 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox
 
-import logging_setup
-import win32_api
 from application.browser_coordinator import BrowserCoordinator
 from application.lifecycle_coordinator import LifecycleCoordinator
 from application.lifecycle_state import LifecycleState
@@ -20,6 +18,8 @@ from core.version import same_path
 from dialogs import ensure_luker_path_configured
 from log_window import LogWindow
 from luker_launcher.config import config
+from luker_launcher.infrastructure import logging_setup
+from luker_launcher.infrastructure import win32 as win32_api
 from settings_window import SettingsWindow
 from tray.icon import TrayIcon
 from tray.menu import TrayMenu

@@ -7,10 +7,10 @@ from ctypes import windll
 
 import customtkinter as ctk
 
-import logging_setup
-import win32_api
 from launcher_app import LukerLauncher
 from luker_launcher.config import APP_VERSION, config
+from luker_launcher.infrastructure import logging_setup
+from luker_launcher.infrastructure import win32 as win32_api
 from process import single_instance
 from ui.dpi import get_process_dpi_awareness
 
