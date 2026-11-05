@@ -1,5 +1,7 @@
+import tempfile
 import tkinter as tk
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -8,6 +10,23 @@ import customtkinter as ctk
 from luker_launcher.services.readiness import LukerState
 from luker_launcher.ui import log_window
 from luker_launcher.ui.log_window import LogWindow
+
+
+class WindowIconTests(unittest.TestCase):
+    def test_icon_is_loaded_from_bundle_resource_path(self):
+        window = object.__new__(LogWindow)
+        window.iconbitmap = Mock()
+        window.iconphoto = Mock()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            icon = Path(temp_dir) / "icon.ico"
+            icon.write_bytes(b"")
+            with patch.object(log_window, "resource_path", return_value=icon) as resource:
+                window._set_window_icon()
+
+        resource.assert_called_once_with("icon.ico")
+        window.iconbitmap.assert_called_once_with(str(icon))
+        window.iconphoto.assert_not_called()
 
 
 class WindowStatePollTests(unittest.TestCase):

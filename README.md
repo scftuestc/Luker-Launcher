@@ -137,20 +137,29 @@ python main.py
 ### 代码结构
 
 ```text
-main.py / launcher_app.py           入口与应用协调
-config.py / logging_setup.py        配置读写与文件日志
-log_window.py / settings_window.py  主窗口与设置窗口
-dialogs.py                          退出确认与路径选择
-
-log/                                日志存储、管线、渲染与搜索
-tray/                               托盘图标与右键菜单
-ui/                                 主题、按钮、图标、窗口效果、DPI 与 UI 调度
-process/                            子进程管理、Job Object 与单实例保护
-core/                               Luker 就绪探测与浏览器启动
-tests/                              单元测试
+main.py                             薄入口，只调用 luker_launcher.bootstrap.entrypoint
+luker_launcher/
+  bootstrap/entrypoint.py           启动入口：日志、DPI、单实例与主循环
+  application/                      组装根与业务 Coordinator
+    launcher.py                     创建窗口、托盘与各 Coordinator
+    process_coordinator.py          进程启停、路径切换与忙碌标志
+    status_coordinator.py           就绪探测、三态与状态轮询
+    update_coordinator.py           版本检查、更新执行与进度
+    browser_coordinator.py          手动/自动打开浏览器
+    lifecycle_coordinator.py        关闭行为、退出与幂等清理
+    task_runner.py / protocols.py / lifecycle_state.py
+  config.py / theme.py / paths.py   配置、主题数据与应用路径
+  infrastructure/                   Win32 绑定与文件日志
+  services/                         版本、浏览器启动与就绪探测
+  process/                          子进程管理、Job Object 与单实例保护
+  log/                              日志分类、存储与管线
+  ui/                               主窗口、设置窗口、对话框、控件与 DPI
+  ui/log_view/                      日志渲染与搜索控件
+  tray/                             托盘图标与右键菜单
+tests/                              单元测试（含架构依赖检查）
 ```
 
-依赖方向是“根窗口/协调器 → 功能包 → `ui`/`config`”。`ui.theme` 只包含主题数据与颜色数学，不反向依赖 `config`、窗口或协调器；各包的 `__init__.py` 不做 re-export，避免导入副作用和循环依赖。
+依赖方向是“入口/组装根 → Coordinator → 服务/进程/UI/托盘 → 配置/主题/基础设施”。`services`、`log` 领域和 `config` 不依赖 UI；`ui` 不依赖 `application`。各包的 `__init__.py` 不做 re-export，避免导入副作用和循环依赖；`tests/test_architecture.py` 会解析 import 并校验这些边界。
 
 ### 打包
 

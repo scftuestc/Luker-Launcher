@@ -3,7 +3,6 @@
 import contextlib
 import logging
 import math
-import os
 import tkinter as tk
 from collections.abc import Callable, Sequence
 from types import TracebackType
@@ -14,6 +13,7 @@ from luker_launcher.config import APP_VERSION, config
 from luker_launcher.infrastructure import win32 as win32_api
 from luker_launcher.log.pipeline import LogController
 from luker_launcher.log.store import LogEntry
+from luker_launcher.paths import resource_path
 from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import (
     LOGO_GLOW_INTERVAL_MS,
@@ -237,12 +237,12 @@ class LogWindow(ctk.CTk):
 
     def _set_window_icon(self) -> None:
         try:
-            icon_path = os.path.join(os.path.dirname(__file__), 'icon.ico')
-            if os.path.exists(icon_path):
-                self.iconbitmap(icon_path)
+            icon_path = resource_path('icon.ico')
+            if icon_path.exists():
+                self.iconbitmap(str(icon_path))
             else:
-                png_path = os.path.join(os.path.dirname(__file__), 'icon.png')
-                if os.path.exists(png_path):
+                png_path = resource_path('icon.png')
+                if png_path.exists():
                     from PIL import Image, ImageTk
 
                     img = Image.open(png_path)
