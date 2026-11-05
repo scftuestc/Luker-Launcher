@@ -1,7 +1,7 @@
 import unittest
 
-from application.lifecycle_coordinator import LifecycleCoordinator
-from application.lifecycle_state import LifecycleState
+from luker_launcher.application.lifecycle_coordinator import LifecycleCoordinator
+from luker_launcher.application.lifecycle_state import LifecycleState
 from luker_launcher.services.readiness import LukerState
 
 
@@ -290,7 +290,7 @@ class LifecycleCoordinatorTests(unittest.TestCase):
             RuntimeError("boom")
         )
 
-        with self.assertLogs("application.lifecycle_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.lifecycle_coordinator", level="ERROR"):
             coordinator.request_exit()
 
         self.assertEqual(self.messagebox.calls, ["yesnocancel"])
@@ -306,7 +306,7 @@ class LifecycleCoordinatorTests(unittest.TestCase):
             RuntimeError("boom")
         )
 
-        with self.assertLogs("application.lifecycle_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.lifecycle_coordinator", level="ERROR"):
             coordinator.request_exit()
 
         self.assertEqual(self.messagebox.calls, ["yesno"])
@@ -330,7 +330,7 @@ class LifecycleCoordinatorTests(unittest.TestCase):
     def test_exit_thread_failure_finishes_immediately(self):
         coordinator = self.make_coordinator(runner_started=False)
 
-        with self.assertLogs("application.lifecycle_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.lifecycle_coordinator", level="ERROR"):
             coordinator.exit()
 
         self.assertTrue(self.lifecycle.exiting)

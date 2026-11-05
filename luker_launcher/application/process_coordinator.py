@@ -4,9 +4,9 @@ import logging
 from collections.abc import Callable
 from typing import Protocol
 
-from application.lifecycle_state import LifecycleState
-from application.protocols import LogSink, UiPoster
-from application.task_runner import TaskRunner
+from luker_launcher.application.lifecycle_state import LifecycleState
+from luker_launcher.application.protocols import LogSink, UiPoster
+from luker_launcher.application.task_runner import TaskRunner
 from luker_launcher.process.managers import LukerProcessManager
 from luker_launcher.services.version import same_path
 

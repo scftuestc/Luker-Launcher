@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import Mock, patch
 
-import launcher_app
-from launcher_app import LukerLauncher
+from luker_launcher.application import launcher as launcher_app
+from luker_launcher.application.launcher import LukerLauncher
 
 
 class LauncherCompositionTests(unittest.TestCase):

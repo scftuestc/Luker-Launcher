@@ -2,8 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import log.pipeline
-from log.pipeline import (
+from luker_launcher.log import pipeline
+from luker_launcher.log.pipeline import (
     ACTIVE_POLL_MS,
     LIVE_SEARCH_REFRESH_MS,
     BoundedLogQueue,
@@ -117,7 +117,7 @@ class LogControllerReplayTests(unittest.TestCase):
         seed(fixture, "a", "b", "c")
         fixture.state.viewable = True
 
-        with patch.object(log.pipeline, "REPLAY_BATCH_SIZE", 2):
+        with patch.object(pipeline, "REPLAY_BATCH_SIZE", 2):
             fixture.controller.refresh()
 
             self.assertTrue(fixture.controller.replaying)
@@ -125,7 +125,7 @@ class LogControllerReplayTests(unittest.TestCase):
             self.assertEqual(len(fixture.scheduled), 1)
 
             delay, first_chunk = fixture.scheduled.pop(0)
-            self.assertEqual(delay, log.pipeline.REPLAY_YIELD_MS)
+            self.assertEqual(delay, pipeline.REPLAY_YIELD_MS)
             first_chunk()
             self.assertEqual([entry.text for entry in fixture.batches[0]], ["a", "b"])
 

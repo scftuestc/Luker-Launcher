@@ -1,7 +1,7 @@
 import datetime
 import unittest
 
-from log.store import LogStore
+from luker_launcher.log.store import LogStore
 
 
 class LogStoreTests(unittest.TestCase):

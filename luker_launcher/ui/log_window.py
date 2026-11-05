@@ -10,10 +10,10 @@ from types import TracebackType
 
 import customtkinter as ctk
 
-from log.pipeline import LogController
-from log.store import LogEntry
 from luker_launcher.config import APP_VERSION, config
 from luker_launcher.infrastructure import win32 as win32_api
+from luker_launcher.log.pipeline import LogController
+from luker_launcher.log.store import LogEntry
 from luker_launcher.services.readiness import LukerState
 from luker_launcher.theme import (
     LOGO_GLOW_INTERVAL_MS,

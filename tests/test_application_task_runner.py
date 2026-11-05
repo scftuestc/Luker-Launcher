@@ -2,8 +2,8 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from application.lifecycle_state import LifecycleState
-from application.task_runner import TaskRunner
+from luker_launcher.application.lifecycle_state import LifecycleState
+from luker_launcher.application.task_runner import TaskRunner
 
 
 class TaskRunnerTests(unittest.TestCase):
@@ -18,8 +18,8 @@ class TaskRunnerTests(unittest.TestCase):
         runner = TaskRunner()
 
         with (
-            patch("application.task_runner.Thread") as thread_cls,
-            self.assertLogs("application.task_runner", level="ERROR"),
+            patch("luker_launcher.application.task_runner.Thread") as thread_cls,
+            self.assertLogs("luker_launcher.application.task_runner", level="ERROR"),
         ):
             thread_cls.side_effect = RuntimeError("can't start new thread")
             self.assertFalse(runner.run(lambda: None))

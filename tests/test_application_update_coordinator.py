@@ -1,8 +1,8 @@
 import unittest
 from pathlib import Path
 
-from application.lifecycle_state import LifecycleState
-from application.update_coordinator import UpdateCoordinator
+from luker_launcher.application.lifecycle_state import LifecycleState
+from luker_launcher.application.update_coordinator import UpdateCoordinator
 from luker_launcher.services.version import (
     CommitInfo,
     LocalVersion,
@@ -286,7 +286,7 @@ class UpdateCoordinatorTests(unittest.TestCase):
         coordinator.check_versions = failing
 
         self.assertTrue(coordinator.request_check())
-        with self.assertLogs("application.update_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.update_coordinator", level="ERROR"):
             self.runner.workers[0]()
         self.poster.run_controls()
 
@@ -448,7 +448,7 @@ class UpdateCoordinatorTests(unittest.TestCase):
         coordinator = self.make_coordinator()
         self.runner.started = False
 
-        with self.assertLogs("application.update_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.update_coordinator", level="ERROR"):
             self.assertFalse(coordinator.request_check())
 
         self.assertFalse(coordinator.checking)
@@ -533,7 +533,7 @@ class UpdateExecutionTests(unittest.TestCase):
 
         self.manager.start = failing_start
 
-        with self.assertLogs("application.update_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.update_coordinator", level="ERROR"):
             coordinator.apply_update_target(TARGET)
             self.run_worker()
 
@@ -552,7 +552,7 @@ class UpdateExecutionTests(unittest.TestCase):
 
         self.manager.start = failing_start
 
-        with self.assertLogs("application.update_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.update_coordinator", level="ERROR"):
             coordinator.apply_update_target(TARGET)
             self.run_worker()
 

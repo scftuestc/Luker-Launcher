@@ -1,8 +1,8 @@
 import unittest
 from pathlib import Path
 
-from application.lifecycle_state import LifecycleState
-from application.process_coordinator import ProcessCoordinator
+from luker_launcher.application.lifecycle_state import LifecycleState
+from luker_launcher.application.process_coordinator import ProcessCoordinator
 
 
 class FakeConfig:
@@ -352,7 +352,7 @@ class ProcessCoordinatorTests(unittest.TestCase):
         def action(_manager):
             raise RuntimeError("boom")
 
-        with self.assertLogs("application.process_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.process_coordinator", level="ERROR"):
             coordinator.run_action(action)
             runner.workers[0]()
 
@@ -365,7 +365,7 @@ class ProcessCoordinatorTests(unittest.TestCase):
         failures: list[str] = []
         self.runner.started = False
 
-        with self.assertLogs("application.process_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.process_coordinator", level="ERROR"):
             started = coordinator.start_worker(
                 lambda: None,
                 on_failure=lambda: failures.append("failed"),

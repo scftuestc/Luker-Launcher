@@ -2,8 +2,8 @@ import unittest
 import urllib.error
 from unittest.mock import MagicMock, patch
 
-from application.browser_coordinator import BrowserCoordinator, is_server_ready
-from application.lifecycle_state import LifecycleState
+from luker_launcher.application.browser_coordinator import BrowserCoordinator, is_server_ready
+from luker_launcher.application.lifecycle_state import LifecycleState
 
 
 class FakeConfig:
@@ -160,7 +160,7 @@ class BrowserCoordinatorTests(unittest.TestCase):
         coordinator, _, runner, _, _ = make_coordinator()
         runner.started = False
 
-        with self.assertLogs("application.browser_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.browser_coordinator", level="ERROR"):
             coordinator.open()
 
         self.assertFalse(coordinator.busy)
@@ -213,7 +213,7 @@ class ServerReadyTests(unittest.TestCase):
         response.__enter__.return_value = response
 
         with patch(
-            "application.browser_coordinator.urllib.request.urlopen",
+            "luker_launcher.application.browser_coordinator.urllib.request.urlopen",
             return_value=response,
         ):
             self.assertTrue(is_server_ready("http://127.0.0.1:8000"))
@@ -228,14 +228,14 @@ class ServerReadyTests(unittest.TestCase):
         )
 
         with patch(
-            "application.browser_coordinator.urllib.request.urlopen",
+            "luker_launcher.application.browser_coordinator.urllib.request.urlopen",
             side_effect=error,
         ):
             self.assertTrue(is_server_ready("http://127.0.0.1:8000"))
 
     def test_connection_error_is_not_ready(self):
         with patch(
-            "application.browser_coordinator.urllib.request.urlopen",
+            "luker_launcher.application.browser_coordinator.urllib.request.urlopen",
             side_effect=urllib.error.URLError("refused"),
         ):
             self.assertFalse(is_server_ready("http://127.0.0.1:8000"))

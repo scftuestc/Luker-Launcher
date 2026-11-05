@@ -1,6 +1,6 @@
 import unittest
 
-from application.status_coordinator import StatusCoordinator
+from luker_launcher.application.status_coordinator import StatusCoordinator
 from luker_launcher.services.readiness import LukerState
 
 
@@ -201,7 +201,7 @@ class StatusCoordinatorTests(unittest.TestCase):
         coordinator = self.coordinator
         coordinator.update = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
 
-        with self.assertLogs("application.status_coordinator", level="ERROR"):
+        with self.assertLogs("luker_launcher.application.status_coordinator", level="ERROR"):
             coordinator.schedule_poll()
 
         self.assertEqual(len(self.scheduled), 1)

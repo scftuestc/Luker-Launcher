@@ -5,11 +5,11 @@ from collections.abc import Callable
 from tkinter import messagebox
 from typing import Any, Protocol
 
-from application.lifecycle_state import LifecycleState
-from application.process_coordinator import ProcessCoordinator
-from application.protocols import LogSink, UiPoster
-from application.status_coordinator import StatusCoordinator
-from application.task_runner import TaskRunner
+from luker_launcher.application.lifecycle_state import LifecycleState
+from luker_launcher.application.process_coordinator import ProcessCoordinator
+from luker_launcher.application.protocols import LogSink, UiPoster
+from luker_launcher.application.status_coordinator import StatusCoordinator
+from luker_launcher.application.task_runner import TaskRunner
 from luker_launcher.services.readiness import LukerState
 from luker_launcher.ui.dialogs import show_close_choice
 from luker_launcher.ui.dispatch import UiDispatcher

@@ -1,9 +1,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-import launcher_app
-import main
-from launcher_app import LukerLauncher
+import luker_launcher.bootstrap.entrypoint as main
+from luker_launcher.application import launcher as launcher_app
+from luker_launcher.application.launcher import LukerLauncher
 
 
 class MainStartupTests(unittest.TestCase):
@@ -118,7 +118,7 @@ class DpiAwarenessTests(unittest.TestCase):
         with (
             patch.object(main, 'windll') as windll_mock,
             patch.object(main, 'get_process_dpi_awareness', return_value=2),
-            self.assertLogs('main', level='INFO') as logs,
+            self.assertLogs('luker_launcher.bootstrap.entrypoint', level='INFO') as logs,
         ):
             main.setup_dpi_awareness()
 
@@ -154,7 +154,7 @@ class DpiAwarenessTests(unittest.TestCase):
     def test_reports_unknown_awareness(self):
         with (
             patch.object(main, 'get_process_dpi_awareness', return_value=None),
-            self.assertLogs('main', level='WARNING') as logs,
+            self.assertLogs('luker_launcher.bootstrap.entrypoint', level='WARNING') as logs,
         ):
             main._log_dpi_awareness()
 
@@ -172,7 +172,7 @@ class FirstRunCancelTests(unittest.TestCase):
                 return_value=False,
             ),
             patch.object(launcher_app.messagebox, 'showinfo') as showinfo,
-            self.assertLogs('launcher_app', level='ERROR') as logs,
+            self.assertLogs('luker_launcher.application.launcher', level='ERROR') as logs,
         ):
             launcher.run()
 

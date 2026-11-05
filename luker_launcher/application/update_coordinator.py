@@ -4,11 +4,11 @@ import logging
 from collections.abc import Callable
 from typing import Protocol
 
-from application.lifecycle_state import LifecycleState
-from application.process_coordinator import ProcessCoordinator
-from application.protocols import LogSink, SettingsView, UiPoster
-from application.status_coordinator import StatusCoordinator
-from application.task_runner import TaskRunner
+from luker_launcher.application.lifecycle_state import LifecycleState
+from luker_launcher.application.process_coordinator import ProcessCoordinator
+from luker_launcher.application.protocols import LogSink, SettingsView, UiPoster
+from luker_launcher.application.status_coordinator import StatusCoordinator
+from luker_launcher.application.task_runner import TaskRunner
 from luker_launcher.process.managers import LukerProcessManager
 from luker_launcher.services.version import (
     LocalVersion,

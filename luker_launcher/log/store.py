@@ -4,7 +4,7 @@ import datetime
 from collections import deque
 from dataclasses import dataclass
 
-from log.classify import get_tag_for_line
+from luker_launcher.log.classify import get_tag_for_line
 
 # 每个日志源在内存中保留的最大条数
 MAX_LOG_ENTRIES = 3000

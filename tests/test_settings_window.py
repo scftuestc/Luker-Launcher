@@ -4,9 +4,9 @@ from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import Mock, patch
 
-import launcher_app
-from application.lifecycle_state import LifecycleState
-from launcher_app import LukerLauncher
+from luker_launcher.application import launcher as launcher_app
+from luker_launcher.application.launcher import LukerLauncher
+from luker_launcher.application.lifecycle_state import LifecycleState
 from luker_launcher.services.readiness import LukerState
 from luker_launcher.services.version import (
     CommitInfo,

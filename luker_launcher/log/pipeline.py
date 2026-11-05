@@ -4,7 +4,7 @@ from collections import deque
 from collections.abc import Callable, Sequence
 from threading import Lock
 
-from log.store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry, LogStore
+from luker_launcher.log.store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry, LogStore
 
 # 每条队列每轮最多处理的日志行数
 MAX_LOG_LINES_PER_CYCLE = 10

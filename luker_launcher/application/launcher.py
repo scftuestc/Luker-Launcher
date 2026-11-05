@@ -5,13 +5,13 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox
 
-from application.browser_coordinator import BrowserCoordinator
-from application.lifecycle_coordinator import LifecycleCoordinator
-from application.lifecycle_state import LifecycleState
-from application.process_coordinator import ProcessCoordinator
-from application.status_coordinator import StatusCoordinator
-from application.task_runner import TaskRunner
-from application.update_coordinator import UpdateCoordinator
+from luker_launcher.application.browser_coordinator import BrowserCoordinator
+from luker_launcher.application.lifecycle_coordinator import LifecycleCoordinator
+from luker_launcher.application.lifecycle_state import LifecycleState
+from luker_launcher.application.process_coordinator import ProcessCoordinator
+from luker_launcher.application.status_coordinator import StatusCoordinator
+from luker_launcher.application.task_runner import TaskRunner
+from luker_launcher.application.update_coordinator import UpdateCoordinator
 from luker_launcher.config import config
 from luker_launcher.infrastructure import logging_setup
 from luker_launcher.infrastructure import win32 as win32_api

@@ -2,9 +2,9 @@ import tkinter as tk
 import unittest
 from unittest.mock import Mock, patch
 
-import launcher_app
-from application.lifecycle_state import LifecycleState
-from launcher_app import LukerLauncher
+from luker_launcher.application import launcher as launcher_app
+from luker_launcher.application.launcher import LukerLauncher
+from luker_launcher.application.lifecycle_state import LifecycleState
 
 
 class FakeWindow:

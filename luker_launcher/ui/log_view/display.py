@@ -8,8 +8,8 @@ from collections.abc import Callable, Mapping, Sequence
 
 import customtkinter as ctk
 
-from log.classify import get_tag_for_line
-from log.store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry
+from luker_launcher.log.classify import get_tag_for_line
+from luker_launcher.log.store import MAX_LOG_BYTES, MAX_LOG_ENTRIES, LogEntry
 from luker_launcher.theme import mix_color
 
 _TAG_COLOR_KEYS = {
