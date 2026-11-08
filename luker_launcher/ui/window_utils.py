@@ -228,15 +228,38 @@ def bind_window_drag(window: tk.Tk | tk.Toplevel, *widgets: tk.Misc) -> None:
         widget.bind('<B1-Motion>', drag)
 
 
+def _first_available_font(families: list[str], fallback: str) -> str:
+    available = tkfont.families()
+    for family in families:
+        if family in available:
+            return family
+    return fallback
+
+
 def get_ui_font() -> str:
     """返回统一界面字体，优先微软雅黑 UI。"""
-    ui_fonts = [
-        'Microsoft YaHei UI',
+    return _first_available_font(
+        [
+            'Microsoft YaHei UI',
+            'Microsoft YaHei',
+            'Segoe UI',
+        ],
         'Microsoft YaHei',
-        'Segoe UI',
-    ]
-    available = tkfont.families()
-    for font in ui_fonts:
-        if font in available:
-            return font
-    return 'Microsoft YaHei'
+    )
+
+
+def get_motto_font() -> str:
+    """返回座右铭用的书法字体；系统缺少时回退到界面字体。"""
+    return _first_available_font(
+        [
+            '华文行楷',
+            'STXingkai',
+            '方正舒体',
+            'FZShuTi',
+            '华文楷体',
+            'STKaiti',
+            '楷体',
+            'KaiTi',
+        ],
+        get_ui_font(),
+    )

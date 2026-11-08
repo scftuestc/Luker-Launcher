@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from luker_launcher.services.readiness import LukerState
+from luker_launcher.theme import PRESET_THEMES
 from luker_launcher.ui import log_window
 from luker_launcher.ui.buttons import button_colors
 from luker_launcher.ui.log_window import LogWindow
@@ -57,6 +58,8 @@ class FakePanel:
     def __init__(self) -> None:
         self.removed = 0
         self.shown = 0
+        self.width = 264
+        self.height = 400
 
     def grid_remove(self) -> None:
         self.removed += 1
@@ -64,13 +67,35 @@ class FakePanel:
     def grid(self) -> None:
         self.shown += 1
 
+    def winfo_width(self) -> int:
+        return self.width
+
+    def winfo_height(self) -> int:
+        return self.height
+
 
 class FakeLabel:
     def __init__(self) -> None:
         self.options: dict[str, object] = {}
+        self.mapped = True
+        self.reqheight = 40
+        self.removed = 0
+        self.shown = 0
 
     def configure(self, **options: object) -> None:
         self.options.update(options)
+
+    def winfo_ismapped(self) -> bool:
+        return self.mapped
+
+    def winfo_reqheight(self) -> int:
+        return self.reqheight
+
+    def grid(self) -> None:
+        self.shown += 1
+
+    def grid_remove(self) -> None:
+        self.removed += 1
 
 
 class FakeCTkImage:
@@ -79,21 +104,27 @@ class FakeCTkImage:
 
 
 class ThemeArtTests(unittest.TestCase):
-    def make_window(self) -> tuple[LogWindow, FakePanel, FakeLabel]:
+    def make_window(self) -> tuple[LogWindow, FakePanel, FakeLabel, FakeLabel]:
         window = object.__new__(LogWindow)
         panel = FakePanel()
         label = FakeLabel()
+        motto = FakeLabel()
         window._character_panel = panel
         window._character_label = label
+        window._motto_label = motto
+        window._character_source = None
+        window._character_display_size = None
+        window._character_fit_job = None
         window._character_image = None
-        return window, panel, label
+        return window, panel, label, motto
 
-    def test_deepseek_theme_shows_character(self):
-        window, panel, label = self.make_window()
+    def test_deepseek_theme_shows_character_and_motto(self):
+        window, panel, label, motto = self.make_window()
+        source = SimpleNamespace(size=(528, 704))
 
         with (
             patch.object(log_window, 'config', SimpleNamespace(theme_name='deepseek')),
-            patch.object(log_window, 'theme_log_image', return_value=object()),
+            patch.object(log_window, 'theme_log_image', return_value=source),
             patch.object(log_window.ctk, 'CTkImage', FakeCTkImage),
         ):
             window._apply_theme_art()
@@ -101,9 +132,12 @@ class ThemeArtTests(unittest.TestCase):
         self.assertEqual(panel.shown, 1)
         self.assertIsNotNone(window._character_image)
         self.assertIn('image', label.options)
+        self.assertEqual(motto.options['text'], PRESET_THEMES['deepseek']['motto'])
+        self.assertEqual(motto.shown, 1)
+        self.assertEqual(window._character_display_size, (252, 336))
 
     def test_theme_without_art_hides_character_panel(self):
-        window, panel, _ = self.make_window()
+        window, panel, _, motto = self.make_window()
 
         with (
             patch.object(log_window, 'config', SimpleNamespace(theme_name='summer')),
@@ -113,6 +147,25 @@ class ThemeArtTests(unittest.TestCase):
 
         self.assertEqual(panel.removed, 1)
         self.assertIsNone(window._character_image)
+        self.assertEqual(motto.options['text'], '')
+        self.assertEqual(motto.removed, 1)
+
+
+class CharacterFitTests(unittest.TestCase):
+    def test_fits_native_aspect_into_panel(self):
+        self.assertEqual(
+            log_window.fit_character_size((528, 704), 264, 400, 56, 4),
+            (252, 336),
+        )
+
+    def test_shrinks_when_panel_is_short(self):
+        self.assertEqual(
+            log_window.fit_character_size((528, 704), 264, 188, 56, 4),
+            (93, 124),
+        )
+
+    def test_zero_native_size_is_clamped(self):
+        self.assertEqual(log_window.fit_character_size((0, 0), 264, 400, 56, 4), (1, 1))
 
 
 class ThemeBindingTests(unittest.TestCase):

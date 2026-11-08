@@ -8,6 +8,7 @@ from collections.abc import Callable, Sequence
 from types import TracebackType
 
 import customtkinter as ctk
+from PIL import Image
 
 from luker_launcher.config import APP_VERSION, config
 from luker_launcher.infrastructure import win32 as win32_api
@@ -35,6 +36,8 @@ from luker_launcher.ui.theme_assets import theme_log_image
 from luker_launcher.ui.tokens import (
     CHARACTER_IMAGE_HEIGHT,
     CHARACTER_IMAGE_WIDTH,
+    CHARACTER_MOTTO_WRAP,
+    CHARACTER_PANEL_PADDING,
     CHARACTER_PANEL_WIDTH,
     CONTROL_HEIGHT_LG,
     CONTROL_HEIGHT_MD,
@@ -45,11 +48,13 @@ from luker_launcher.ui.tokens import (
     FONT_BODY,
     FONT_DISPLAY,
     FONT_HEADING,
+    FONT_MOTTO,
     FONT_SMALL,
     FONT_TITLE,
     GAP_BRAND,
     GAP_GRID,
     GAP_INLINE,
+    GAP_INLINE_SM,
     GAP_SECTION,
     GAP_WINDOW,
     GAP_XS,
@@ -79,6 +84,7 @@ from luker_launcher.ui.tokens import (
 from luker_launcher.ui.window_utils import (
     apply_window_rounding,
     bind_window_drag,
+    get_motto_font,
     get_ui_font,
     sync_window_blur,
 )
@@ -120,6 +126,27 @@ def truncate_log_text(text: str, limit: int = 56) -> str:
     if len(compact) <= limit:
         return compact
     return compact[: max(1, limit - 1)].rstrip() + "…"
+
+
+def fit_character_size(
+    native_size: tuple[int, int],
+    panel_width: int,
+    panel_height: int,
+    reserved_height: int,
+    padding: int,
+) -> tuple[int, int]:
+    """在扣除座右铭和内边距后的区域内等比缩放角色立绘。"""
+    native_width, native_height = native_size
+    if native_width <= 0 or native_height <= 0:
+        return (1, 1)
+
+    available_width = max(1, panel_width - padding * 2)
+    available_height = max(1, panel_height - reserved_height - padding * 2)
+    scale = min(available_width / native_width, available_height / native_height)
+    return (
+        max(1, round(native_width * scale)),
+        max(1, round(native_height * scale)),
+    )
 
 
 def error_banner_colors(colors: dict[str, str]) -> dict[str, str]:
@@ -187,18 +214,20 @@ class LogWindow(ctk.CTk):
         config.add_theme_change_callback(self._on_theme_change)
         config.add_blur_change_callback(self._on_blur_change)
         self.UI_FONT = get_ui_font()
+        self.MOTTO_FONT = get_motto_font()
 
     def _init_window(self) -> None:
         self.withdraw()
 
         self.overrideredirect(True)
+        self.resizable(False, False)
         apply_window_rounding(self, context="日志窗口")
 
         self.title("Luker 日志")
         self.protocol('WM_DELETE_WINDOW', self._on_close)
         self.bind('<Alt-F4>', lambda _event: self._on_close())
         # 按主屏工作区和当前缩放限制初始尺寸，避免 150% 下落入任务栏
-        self._resizer = WindowResizer(self)
+        self._resizer = WindowResizer(self, resizable=False)
         self._resizer.apply_initial_geometry()
 
         self._set_window_icon()
@@ -231,6 +260,10 @@ class LogWindow(ctk.CTk):
         self._replaying = False
         self._overlay_job: str | None = None
         self._error_reveal_job: str | None = None
+
+        self._character_source: Image.Image | None = None
+        self._character_display_size: tuple[int, int] | None = None
+        self._character_fit_job: str | None = None
 
     def _report_callback_exception(
         self,
@@ -769,6 +802,8 @@ class LogWindow(ctk.CTk):
         )
         self._character_panel.grid(row=0, column=1, sticky="ns", padx=(GAP_GRID, 0))
         self._character_panel.grid_propagate(False)
+        self._character_panel.columnconfigure(0, weight=1)
+        self._character_panel.rowconfigure(0, weight=1)
         self._bind_theme(self._character_panel, fg_color='card')
 
         self._character_label = ctk.CTkLabel(
@@ -776,7 +811,34 @@ class LogWindow(ctk.CTk):
             text="",
             fg_color="transparent",
         )
-        self._character_label.pack(anchor="n")
+        self._character_label.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=CHARACTER_PANEL_PADDING,
+            pady=(CHARACTER_PANEL_PADDING, 0),
+        )
+        self._motto_label = ctk.CTkLabel(
+            self._character_panel,
+            text="",
+            font=ctk.CTkFont(family=self.MOTTO_FONT, size=FONT_MOTTO),
+            text_color=self.COLORS['text_dim'],
+            justify="center",
+            wraplength=CHARACTER_MOTTO_WRAP,
+        )
+        self._motto_label.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=PAD_CARD_COMPACT,
+            pady=(GAP_INLINE_SM, PAD_CARD_COMPACT),
+        )
+        self._bind_theme(self._motto_label, text_color='text_dim')
+        self._character_panel.bind(
+            '<Configure>',
+            self._on_character_panel_configure,
+            add='+',
+        )
         self._character_image: ctk.CTkImage | None = None
 
         # 错误横幅默认不占位，出现错误时才 pack 到文本区上方
@@ -867,25 +929,98 @@ class LogWindow(ctk.CTk):
         configure_log_tags(self._get_textbox(), self.COLORS)
 
     def _apply_theme_art(self) -> None:
-        """按当前主题显示或隐藏右侧角色立绘。"""
+        """按当前主题显示或隐藏右侧角色立绘和座右铭。"""
         panel = self.__dict__.get('_character_panel')
         label = self.__dict__.get('_character_label')
         if panel is None or label is None:
             return
 
         theme = PRESET_THEMES.get(config.theme_name, {})
+        motto_label = self.__dict__.get('_motto_label')
+        motto = theme.get('motto', '')
+        if motto_label is not None:
+            motto_label.configure(text=motto)
+            if motto:
+                motto_label.grid()
+            else:
+                motto_label.grid_remove()
+
         image = theme_log_image(theme)
         if image is None:
+            self._character_source = None
+            self._character_display_size = None
+            self._character_image = None
             panel.grid_remove()
             return
 
-        self._character_image = ctk.CTkImage(
-            light_image=image,
-            dark_image=image,
-            size=(CHARACTER_IMAGE_WIDTH, CHARACTER_IMAGE_HEIGHT),
-        )
-        label.configure(image=self._character_image)
+        self._character_source = image
+        self._character_display_size = None
+        self._character_image = None
         panel.grid()
+        self._fit_character_art()
+
+    def _on_character_panel_configure(self, _event: tk.Event) -> None:
+        self._schedule_character_fit()
+
+    def _schedule_character_fit(self) -> None:
+        if self._character_fit_job is not None:
+            with contextlib.suppress(tk.TclError):
+                self.after_cancel(self._character_fit_job)
+        try:
+            self._character_fit_job = self.after_idle(self._run_character_fit)
+        except tk.TclError:
+            self._character_fit_job = None
+
+    def _run_character_fit(self) -> None:
+        self._character_fit_job = None
+        self._fit_character_art()
+
+    def _fit_character_art(self) -> None:
+        """按面板实际高度等比放大立绘，填满座右铭上方的空间。"""
+        panel = self.__dict__.get('_character_panel')
+        label = self.__dict__.get('_character_label')
+        source = self.__dict__.get('_character_source')
+        if panel is None or label is None or source is None:
+            return
+
+        try:
+            panel_width = panel.winfo_width()
+            panel_height = panel.winfo_height()
+        except (AttributeError, tk.TclError):
+            panel_width = panel_height = 0
+
+        if panel_width <= 1 or panel_height <= 1:
+            size = (CHARACTER_IMAGE_WIDTH, CHARACTER_IMAGE_HEIGHT)
+        else:
+            reserved_height = 0
+            motto_label = self.__dict__.get('_motto_label')
+            if motto_label is not None:
+                try:
+                    mapped = bool(motto_label.winfo_ismapped())
+                    if mapped:
+                        reserved_height = (
+                            motto_label.winfo_reqheight() + GAP_INLINE_SM + PAD_CARD_COMPACT
+                        )
+                except (AttributeError, tk.TclError):
+                    reserved_height = 0
+            size = fit_character_size(
+                source.size,
+                panel_width,
+                panel_height,
+                reserved_height,
+                CHARACTER_PANEL_PADDING,
+            )
+
+        if size == self._character_display_size:
+            return
+        self._character_display_size = size
+        self._character_image = ctk.CTkImage(
+            light_image=source,
+            dark_image=source,
+            size=size,
+        )
+        with contextlib.suppress(tk.TclError):
+            label.configure(image=self._character_image)
 
     def _on_replay_state_change(self, active: bool) -> None:
         self._replaying = active

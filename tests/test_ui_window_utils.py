@@ -6,6 +6,28 @@ from luker_launcher.ui import window_utils
 from luker_launcher.ui.window_utils import bind_window_drag, hex_to_colorref, sync_window_blur
 
 
+class MottoFontTests(unittest.TestCase):
+    def test_prefers_calligraphy_font(self):
+        with patch.object(
+            window_utils.tkfont,
+            'families',
+            return_value=['Microsoft YaHei UI', '华文行楷'],
+        ):
+            self.assertEqual(window_utils.get_motto_font(), '华文行楷')
+
+    def test_falls_back_to_ui_font(self):
+        with patch.object(
+            window_utils.tkfont,
+            'families',
+            return_value=['Microsoft YaHei UI'],
+        ):
+            self.assertEqual(window_utils.get_motto_font(), 'Microsoft YaHei UI')
+
+    def test_falls_back_to_default_when_nothing_is_installed(self):
+        with patch.object(window_utils.tkfont, 'families', return_value=[]):
+            self.assertEqual(window_utils.get_motto_font(), 'Microsoft YaHei')
+
+
 class HexToColorrefTests(unittest.TestCase):
     def test_converts_rgb_with_default_alpha(self):
         self.assertEqual(hex_to_colorref("#112233"), 0xDD332211)

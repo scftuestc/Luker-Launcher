@@ -113,11 +113,13 @@ class WindowResizerTests(unittest.TestCase):
     def make_resizer(
         self,
         monitor: MonitorInfo | None = None,
+        *,
+        resizable: bool = True,
     ) -> tuple[FakeWindow, WindowResizer]:
         if monitor is not None:
             self.monitor_mock.return_value = monitor
         window = FakeWindow()
-        resizer = WindowResizer(window)
+        resizer = WindowResizer(window, resizable=resizable)
         resizer.apply_initial_geometry()
         return window, resizer
 
@@ -139,6 +141,47 @@ class WindowResizerTests(unittest.TestCase):
 
         self.assertEqual(window.geometry_specs[-1], '878x453+24+24')
         self.assertEqual(window.minsize_args, (700, 450))
+
+    def test_fixed_window_locks_initial_size(self):
+        window, _ = self.make_resizer(resizable=False)
+
+        self.assertEqual(window.geometry_specs[-1], '960x640+480+200')
+        self.assertEqual(window.minsize_args, (960, 640))
+        self.assertEqual(window.maxsize_args, (960, 640))
+
+    def test_fixed_window_binds_only_monitor_fit(self):
+        window = FakeWindow()
+        resizer = WindowResizer(window, resizable=False)
+
+        resizer.bind_events()
+
+        self.assertEqual(set(window.binds), {'<Configure>'})
+
+    def test_fixed_window_ignores_edge_resize(self):
+        window, resizer = self.make_resizer(resizable=False)
+        resizer._edge = 'e'
+
+        resizer._start_resize(FakeEvent(window, x_root=10, y_root=10))
+
+        self.assertIsNone(resizer._drag_start)
+
+    def test_fixed_window_restores_requested_size_after_small_monitor(self):
+        window, resizer = self.make_resizer(resizable=False)
+        window.x, window.y = 0, 0
+        self.monitor_mock.return_value = MonitorInfo(0, 0, 1366, 728, 144)
+
+        resizer.fit_to_current_monitor()
+
+        self.assertTrue(window.geometry_specs[-1].startswith('878x453'))
+        self.assertEqual(window.minsize_args, (878, 453))
+        self.assertEqual(window.maxsize_args, (878, 453))
+
+        self.monitor_mock.return_value = MonitorInfo(0, 0, 1920, 1040, 96)
+        resizer.fit_to_current_monitor()
+
+        self.assertTrue(window.geometry_specs[-1].startswith('960x640'))
+        self.assertEqual(window.minsize_args, (960, 640))
+        self.assertEqual(window.maxsize_args, (960, 640))
 
     def test_same_monitor_does_not_touch_geometry(self):
         window, resizer = self.make_resizer()

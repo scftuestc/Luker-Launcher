@@ -57,6 +57,7 @@ class WindowResizer:
         min_height: int = MIN_HEIGHT,
         margin: int = SCREEN_MARGIN,
         edge_pixels: int = EDGE_GRAB_PIXELS,
+        resizable: bool = True,
     ) -> None:
         self._window = window
         self._width = width
@@ -65,6 +66,7 @@ class WindowResizer:
         self._min_height = min_height
         self._margin = margin
         self._edge_pixels = edge_pixels
+        self._resizable = resizable
 
         self._edge: str | None = None
         self._drag_start: tuple[int, int, int, int, int, int] | None = None
@@ -94,18 +96,24 @@ class WindowResizer:
         self._logical_width = placement.logical_width
         self._logical_height = placement.logical_height
         self._window.geometry(placement.geometry)
-        # 最小尺寸保存为逻辑值，拖拽时按当前缩放换算
-        self._window.minsize(self._min_logical_width, self._min_logical_height)
-        # 防止 CTk 在 DPI 变化后把最大尺寸锁死为当前尺寸
-        self._window.maxsize(10000, 10000)
+        if self._resizable:
+            # 最小尺寸保存为逻辑值，拖拽时按当前缩放换算
+            self._window.minsize(self._min_logical_width, self._min_logical_height)
+            # 防止 CTk 在 DPI 变化后把最大尺寸锁死为当前尺寸
+            self._window.maxsize(10000, 10000)
+        else:
+            # 固定窗口：最小和最大尺寸锁到启动时的实际尺寸
+            self._window.minsize(self._logical_width, self._logical_height)
+            self._window.maxsize(self._logical_width, self._logical_height)
         self._monitor_signature = monitor.signature()
 
     def bind_events(self) -> None:
         """绑定缩放光标、拖拽和跨屏适配所需的窗口事件。"""
-        self._window.bind('<Motion>', self._check_edge)
-        self._window.bind('<Button-1>', self._start_resize)
-        self._window.bind('<B1-Motion>', self._do_resize)
-        self._window.bind('<ButtonRelease-1>', self._end_resize)
+        if self._resizable:
+            self._window.bind('<Motion>', self._check_edge)
+            self._window.bind('<Button-1>', self._start_resize)
+            self._window.bind('<B1-Motion>', self._do_resize)
+            self._window.bind('<ButtonRelease-1>', self._end_resize)
         self._window.bind('<Configure>', self._on_configure, add='+')
 
     def fit_to_current_monitor(self) -> None:
@@ -120,11 +128,14 @@ class WindowResizer:
 
         self._monitor_signature = signature
         scale = sync_window_scaling(self._window, monitor.scale)
+        # 固定窗口始终按请求尺寸重新规划；可缩放窗口沿用用户拖拽后的尺寸。
+        requested_width = self._logical_width if self._resizable else self._width
+        requested_height = self._logical_height if self._resizable else self._height
         # 使用保存的逻辑尺寸，避免 CTk 自动缩放后的物理尺寸被重复缩小。
         # 最小尺寸也按当前显示器重算，否则旧的 minsize 会阻止窗口缩进工作区。
         placement = plan_window_placement(
-            self._logical_width,
-            self._logical_height,
+            requested_width,
+            requested_height,
             monitor,
             scale,
             margin=self._margin,
@@ -137,8 +148,12 @@ class WindowResizer:
         self._min_logical_width = placement.minimum_width
         self._min_logical_height = placement.minimum_height
 
-        self._window.minsize(self._min_logical_width, self._min_logical_height)
-        self._window.maxsize(10000, 10000)
+        if self._resizable:
+            self._window.minsize(self._min_logical_width, self._min_logical_height)
+            self._window.maxsize(10000, 10000)
+        else:
+            self._window.minsize(placement.logical_width, placement.logical_height)
+            self._window.maxsize(placement.logical_width, placement.logical_height)
         self._window.geometry(placement.geometry)
         self._logical_width = placement.logical_width
         self._logical_height = placement.logical_height
@@ -155,6 +170,8 @@ class WindowResizer:
 
     def _check_edge(self, event: tk.Event) -> None:
         """根据指针位置显示缩放光标，并记录当前边缘。"""
+        if not self._resizable:
+            return
         if event.widget is not self._window:
             self._window.configure(cursor='')
             self._edge = None
@@ -187,7 +204,7 @@ class WindowResizer:
         self._edge = edge
 
     def _start_resize(self, event: tk.Event) -> None:
-        if event.widget is not self._window or not self._edge:
+        if not self._resizable or event.widget is not self._window or not self._edge:
             return
         self._drag_start = (
             event.x_root,
@@ -199,7 +216,7 @@ class WindowResizer:
         )
 
     def _do_resize(self, event: tk.Event) -> None:
-        if not self._edge or self._drag_start is None:
+        if not self._resizable or not self._edge or self._drag_start is None:
             return
         if event.widget is not self._window:
             return
