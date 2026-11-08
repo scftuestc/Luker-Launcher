@@ -21,14 +21,21 @@ from luker_launcher.ui.dpi import MonitorInfo
 from luker_launcher.ui.settings_window import (
     _SCROLL_BINDING_SEQUENCES,
     SettingsWindow,
+    _ThemeCardHover,
     bind_click_recursive,
     bind_hover_recursive,
     clear_scroll_bindings,
+    pointer_inside,
+    theme_card_art_size,
     theme_card_hover_colors,
     theme_card_scale,
     update_button_state_colors,
 )
-from luker_launcher.ui.tokens import THEME_CARD_HOVER_SCALE, THEME_CARD_IDLE_SCALE
+from luker_launcher.ui.tokens import (
+    THEME_CARD_ART_SIZE,
+    THEME_CARD_HOVER_SCALE,
+    THEME_CARD_IDLE_SCALE,
+)
 
 
 class FakeTkInterpreter:
@@ -239,13 +246,18 @@ class ThemeHoverJobTests(unittest.TestCase):
     def test_cancel_all_hover_jobs(self):
         window = object.__new__(SettingsWindow)
         window._theme_hover_jobs = {'first', 'second'}
+        window._theme_hover_reconcile_job = 'reconcile'
+        state = SimpleNamespace(reset=Mock())
+        window._theme_hover_states = [state]
         cancelled: list[str] = []
         window.after_cancel = cancelled.append
 
         window._cancel_theme_hover_jobs()
 
-        self.assertCountEqual(cancelled, ['first', 'second'])
+        state.reset.assert_called_once_with()
+        self.assertCountEqual(cancelled, ['reconcile', 'first', 'second'])
         self.assertEqual(window._theme_hover_jobs, set())
+        self.assertIsNone(window._theme_hover_reconcile_job)
 
     def test_cancel_update_button_fade(self):
         window = object.__new__(SettingsWindow)
@@ -794,6 +806,152 @@ class ThemeCardScaleTests(unittest.TestCase):
         self.assertEqual(theme_card_scale(2), THEME_CARD_HOVER_SCALE)
 
 
+class ThemeCardArtSizeTests(unittest.TestCase):
+    def test_art_grows_with_card_scale(self):
+        self.assertEqual(theme_card_art_size(-1), THEME_CARD_ART_SIZE)
+        self.assertEqual(theme_card_art_size(0), THEME_CARD_ART_SIZE)
+        self.assertEqual(theme_card_art_size(1), 106)
+        self.assertEqual(theme_card_art_size(2), 106)
+        self.assertEqual(theme_card_art_size(0.5), 103)
+
+
+class PointerWidget:
+    def __init__(self, master: "PointerWidget | None" = None, target: object = None) -> None:
+        self.master = master
+        self.target = target
+
+    def winfo_pointerxy(self) -> tuple[int, int]:
+        return (10, 20)
+
+    def winfo_containing(self, _x: int, _y: int) -> object:
+        return self.target
+
+
+class PointerInsideTests(unittest.TestCase):
+    def test_descendant_counts_as_inside(self):
+        card = PointerWidget()
+        child = PointerWidget(card)
+        leaf = PointerWidget(child)
+        card.target = leaf
+
+        self.assertTrue(pointer_inside(card))
+
+    def test_unrelated_widget_is_outside(self):
+        card = PointerWidget()
+        sibling = PointerWidget()
+        card.target = sibling
+
+        self.assertFalse(pointer_inside(card))
+
+    def test_missing_window_under_pointer_is_outside(self):
+        card = PointerWidget()
+
+        self.assertFalse(pointer_inside(card))
+
+
+class FakeHoverCard:
+    def __init__(self) -> None:
+        self.place: dict[str, object] = {}
+        self.options: dict[str, object] = {}
+        self.exists = True
+
+    def place_configure(self, **options: object) -> None:
+        self.place.update(options)
+
+    def configure(self, **options: object) -> None:
+        self.options.update(options)
+
+    def winfo_exists(self) -> bool:
+        return self.exists
+
+
+class FakeHoverLabel:
+    def __init__(self) -> None:
+        self.options: dict[str, object] = {}
+
+    def configure(self, **options: object) -> None:
+        self.options.update(options)
+
+
+class FakeHoverWindow:
+    def __init__(self) -> None:
+        self._destroyed = False
+        self._theme_hover_jobs: set[str] = set()
+        self.jobs: dict[str, object] = {}
+        self.delays: dict[str, int] = {}
+        self.cancelled: list[str] = []
+        self._next_job = 0
+
+    def after(self, delay: int, callback: object) -> str:
+        self._next_job += 1
+        job = f'job{self._next_job}'
+        self.jobs[job] = callback
+        self.delays[job] = delay
+        return job
+
+    def after_idle(self, callback: object) -> str:
+        return self.after(0, callback)
+
+    def after_cancel(self, job: str) -> None:
+        self.cancelled.append(job)
+        self.jobs.pop(job, None)
+
+
+class ThemeCardHoverTests(unittest.TestCase):
+    colors: ClassVar[dict[str, str]] = {
+        'card': '#101010',
+        'card_hover': '#202020',
+        'accent': '#303030',
+        'border': '#404040',
+    }
+
+    def make_state(
+        self,
+    ) -> tuple[_ThemeCardHover, FakeHoverWindow, FakeHoverCard, FakeHoverLabel, list[object]]:
+        window = FakeHoverWindow()
+        card = FakeHoverCard()
+        label = FakeHoverLabel()
+        images: list[object] = [object() for _ in range(7)]
+        state = _ThemeCardHover(window, card, self.colors, False, label, images)  # type: ignore[arg-type]
+        return state, window, card, label, images
+
+    def test_reset_restores_idle_geometry_and_first_frame(self):
+        state, _, card, label, images = self.make_state()
+        state.progress = 4
+
+        state.reset()
+
+        self.assertEqual(card.place, {'relwidth': 0.94, 'relheight': 0.94})
+        self.assertEqual(card.options, {'fg_color': '#101010', 'border_color': '#404040'})
+        self.assertIs(label.options['image'], images[0])
+        self.assertEqual(state.progress, 0)
+        self.assertEqual(state.target, 0)
+
+    def test_tick_advances_scale_and_art_frame(self):
+        state, window, card, label, images = self.make_state()
+        state.target = 6
+
+        with patch.object(settings_window, 'pointer_inside', return_value=True):
+            state._tick()
+
+        self.assertEqual(state.progress, 1)
+        self.assertEqual(card.place, {'relwidth': 0.95, 'relheight': 0.95})
+        self.assertIs(label.options['image'], images[1])
+        self.assertIsNotNone(state._job)
+        self.assertEqual(window.delays[state._job], 18)
+
+    def test_tick_reverses_when_pointer_leaves(self):
+        state, _, card, _, _ = self.make_state()
+        state.progress = 5
+        state.target = 6
+
+        with patch.object(settings_window, 'pointer_inside', return_value=False):
+            state._tick()
+
+        self.assertEqual(state.progress, 4)
+        self.assertAlmostEqual(float(card.place['relwidth']), 0.98)
+
+
 class SettingsInteractionTests(unittest.TestCase):
     def test_selecting_current_theme_is_a_noop(self):
         window = object.__new__(SettingsWindow)
@@ -887,6 +1045,8 @@ class RebuildOrderTests(unittest.TestCase):
         window._destroyed = False
         window.COLORS = {'bg': '#123456'}
         window._theme_hover_jobs = set()
+        window._theme_hover_states = []
+        window._theme_hover_reconcile_job = None
         window._update_button_job = None
         window._theme_card_images = []
         window._theme_cards = {}
