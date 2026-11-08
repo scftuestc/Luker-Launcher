@@ -30,3 +30,6 @@ launcher_config.json
 # 运行日志
 launcher.log
 launcher.log.*
+
+# 原始二创素材，不进入版本库
+AI-gijika/

@@ -59,11 +59,29 @@ class ThemeAssetTests(unittest.TestCase):
         self.assertIsNotNone(card)
         self.assertIsNotNone(character)
         self.assertEqual(card.size, (320, 320))
-        self.assertEqual(character.size, (240, 320))
+        self.assertEqual(character.size, (528, 704))
         self.assertEqual(card.mode, "RGBA")
         self.assertEqual(character.mode, "RGBA")
         self.assertEqual(card.getchannel("A").getextrema(), (0, 255))
         self.assertEqual(character.getchannel("A").getextrema(), (0, 255))
+
+    def test_card_art_fades_out_on_all_four_edges(self):
+        card = theme_assets.load_theme_image(DEEPSEEK_CARD)
+        self.assertIsNotNone(card)
+        alpha = card.getchannel("A")
+
+        for point in ((0, 160), (319, 160), (160, 0), (160, 319)):
+            self.assertLessEqual(alpha.getpixel(point), 4, point)
+        self.assertGreater(alpha.getpixel((160, 160)), 200)
+
+    def test_character_art_has_rounded_transparent_corners(self):
+        character = theme_assets.load_theme_image(DEEPSEEK_CHARACTER)
+        self.assertIsNotNone(character)
+        alpha = character.getchannel("A")
+
+        for point in ((0, 0), (527, 0), (0, 703), (527, 703)):
+            self.assertEqual(alpha.getpixel(point), 0, point)
+        self.assertGreater(alpha.getpixel((264, 352)), 200)
 
 
 if __name__ == "__main__":
