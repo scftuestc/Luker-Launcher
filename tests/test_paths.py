@@ -13,6 +13,10 @@ class SourcePathTests(unittest.TestCase):
         self.assertEqual(paths.get_app_dir(), root)
         self.assertEqual(paths.get_bundle_dir(), root)
         self.assertTrue(paths.resource_path("icon.ico").is_file())
+        self.assertTrue(paths.resource_path("luker_launcher/assets/deepseek/card.png").is_file())
+        self.assertTrue(
+            paths.resource_path("luker_launcher/assets/deepseek/character.png").is_file()
+        )
 
 
 class FrozenPathTests(unittest.TestCase):

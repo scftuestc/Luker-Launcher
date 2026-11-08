@@ -6,6 +6,8 @@ a = Analysis(
     binaries=[],
     datas=[
         ('icon.ico', '.'),  # 包含图标文件
+        ('luker_launcher/assets/deepseek/card.png', 'luker_launcher/assets/deepseek'),
+        ('luker_launcher/assets/deepseek/character.png', 'luker_launcher/assets/deepseek'),
     ],
     hiddenimports=[
         'PIL._tkinter_finder',

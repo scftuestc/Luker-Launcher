@@ -59,12 +59,12 @@ class ConfigTests(unittest.TestCase):
 
     def test_utf8_bom_config_is_read_normally(self):
         self.config_path.write_bytes(
-            b'\xef\xbb\xbf' + json.dumps({"theme": "ocean_cyan"}).encode("utf-8")
+            b'\xef\xbb\xbf' + json.dumps({"theme": "deepseek"}).encode("utf-8")
         )
 
         config = Config(self.config_path)
 
-        self.assertEqual(config.theme_name, "ocean_cyan")
+        self.assertEqual(config.theme_name, "deepseek")
         self.assertIsNone(config.load_error)
 
     def test_non_object_json_uses_defaults(self):
@@ -229,16 +229,16 @@ class ConfigTests(unittest.TestCase):
 
     def test_save_is_atomic_and_roundtrips(self):
         config = Config(self.config_path)
-        config.theme_name = "ocean_cyan"
+        config.theme_name = "deepseek"
         config.use_pwa_mode = True
 
         saved = json.loads(self.config_path.read_text(encoding="utf-8"))
-        self.assertEqual(saved["theme"], "ocean_cyan")
+        self.assertEqual(saved["theme"], "deepseek")
         self.assertTrue(saved["use_pwa_mode"])
         self.assertFalse(self.config_path.with_name(self.config_path.name + ".tmp").exists())
 
         reloaded = Config(self.config_path)
-        self.assertEqual(reloaded.theme_name, "ocean_cyan")
+        self.assertEqual(reloaded.theme_name, "deepseek")
         self.assertTrue(reloaded.use_pwa_mode)
 
     def test_theme_colors_are_copies(self):
@@ -396,9 +396,9 @@ class ConfigTests(unittest.TestCase):
         config.config_path = blocked
 
         with self.assertLogs("luker_launcher.config", level="ERROR") as logs:
-            config.theme_name = "ocean_cyan"
+            config.theme_name = "deepseek"
 
-        self.assertEqual(config.theme_name, "ocean_cyan")
+        self.assertEqual(config.theme_name, "deepseek")
         self.assertIn("保存配置失败", logs.output[0])
 
     def test_unknown_keys_are_dropped_when_saving(self):

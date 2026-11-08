@@ -36,6 +36,12 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("version='version_info.txt'", text)
         for name in ("main.py", "icon.ico", "version_info.txt"):
             self.assertTrue((ROOT / name).is_file(), name)
+        for name in (
+            "luker_launcher/assets/deepseek/card.png",
+            "luker_launcher/assets/deepseek/character.png",
+        ):
+            self.assertIn(name, text)
+            self.assertTrue((ROOT / name).is_file(), name)
 
     def test_check_bat_keeps_all_quality_gates(self):
         text = (ROOT / "check.bat").read_text(encoding="utf-8")

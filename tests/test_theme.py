@@ -63,7 +63,7 @@ class ThemeTests(unittest.TestCase):
 
         self.assertEqual(tuple(colors), THEME_COLOR_KEYS)
         self.assertEqual(THEME_COLOR_KEYS, REQUIRED_COLOR_KEYS)
-        for metadata in ("name", "short_name", "icon"):
+        for metadata in ("name", "short_name", "icon", "card_image", "log_image"):
             self.assertNotIn(metadata, colors)
 
     def test_legacy_aliases_point_to_existing_themes(self):
@@ -74,6 +74,19 @@ class ThemeTests(unittest.TestCase):
 
     def test_cloud_gray_alias_migrates_to_mist_gray(self):
         self.assertEqual(LEGACY_THEME_ALIASES["cloud_gray"], "mist_gray")
+
+    def test_ocean_cyan_alias_migrates_to_deepseek(self):
+        self.assertEqual(LEGACY_THEME_ALIASES["ocean_cyan"], "deepseek")
+
+    def test_deepseek_theme_declares_card_and_log_art(self):
+        theme = PRESET_THEMES["deepseek"]
+
+        self.assertEqual(theme["short_name"], "无忧蓝")
+        self.assertEqual(theme["card_image"], "luker_launcher/assets/deepseek/card.png")
+        self.assertEqual(
+            theme["log_image"],
+            "luker_launcher/assets/deepseek/character.png",
+        )
 
     def test_returned_theme_is_a_copy(self):
         colors = get_theme_colors(DEFAULT_THEME)
