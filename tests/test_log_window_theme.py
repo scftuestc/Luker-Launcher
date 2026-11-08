@@ -1,6 +1,9 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from luker_launcher.services.readiness import LukerState
+from luker_launcher.ui import log_window
 from luker_launcher.ui.buttons import button_colors
 from luker_launcher.ui.log_window import LogWindow
 
@@ -48,6 +51,68 @@ class FakeSearch:
 
     def refresh_colors(self) -> None:
         self.refresh_count += 1
+
+
+class FakePanel:
+    def __init__(self) -> None:
+        self.removed = 0
+        self.shown = 0
+
+    def grid_remove(self) -> None:
+        self.removed += 1
+
+    def grid(self) -> None:
+        self.shown += 1
+
+
+class FakeLabel:
+    def __init__(self) -> None:
+        self.options: dict[str, object] = {}
+
+    def configure(self, **options: object) -> None:
+        self.options.update(options)
+
+
+class FakeCTkImage:
+    def __init__(self, **kwargs: object) -> None:
+        self.kwargs = kwargs
+
+
+class ThemeArtTests(unittest.TestCase):
+    def make_window(self) -> tuple[LogWindow, FakePanel, FakeLabel]:
+        window = object.__new__(LogWindow)
+        panel = FakePanel()
+        label = FakeLabel()
+        window._character_panel = panel
+        window._character_label = label
+        window._character_image = None
+        return window, panel, label
+
+    def test_deepseek_theme_shows_character(self):
+        window, panel, label = self.make_window()
+
+        with (
+            patch.object(log_window, 'config', SimpleNamespace(theme_name='deepseek')),
+            patch.object(log_window, 'theme_log_image', return_value=object()),
+            patch.object(log_window.ctk, 'CTkImage', FakeCTkImage),
+        ):
+            window._apply_theme_art()
+
+        self.assertEqual(panel.shown, 1)
+        self.assertIsNotNone(window._character_image)
+        self.assertIn('image', label.options)
+
+    def test_theme_without_art_hides_character_panel(self):
+        window, panel, _ = self.make_window()
+
+        with (
+            patch.object(log_window, 'config', SimpleNamespace(theme_name='summer')),
+            patch.object(log_window, 'theme_log_image', return_value=None),
+        ):
+            window._apply_theme_art()
+
+        self.assertEqual(panel.removed, 1)
+        self.assertIsNone(window._character_image)
 
 
 class ThemeBindingTests(unittest.TestCase):
@@ -158,6 +223,16 @@ class ThemeBindingTests(unittest.TestCase):
         self.assertEqual(search.refresh_count, 1)
         self.assertEqual(textbox.tags['error']['foreground'], COLORS['error'])
         self.assertEqual(textbox.tags['separator']['foreground'], COLORS['accent'])
+
+    def test_apply_theme_refreshes_theme_art_after_bindings(self):
+        window, _, _, _, calls = self.make_window()
+        window._is_running = True
+        window._luker_state = LukerState.READY
+        window._apply_theme_art = lambda: calls.append('art')
+
+        window._apply_theme()
+
+        self.assertEqual(calls, ['blur', 'art', 'icons', 'status:ready'])
 
     def test_apply_theme_reapplies_button_roles(self):
         window, _, _, _, _ = self.make_window()

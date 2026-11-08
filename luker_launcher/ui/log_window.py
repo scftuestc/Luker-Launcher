@@ -19,6 +19,7 @@ from luker_launcher.theme import (
     LOGO_GLOW_INTERVAL_MS,
     LOGO_GLOW_STEP,
     LOGO_STOPPED_COLOR,
+    PRESET_THEMES,
     ThemeColorKey,
     logo_bar_glow_color,
     mix_color,
@@ -30,7 +31,11 @@ from luker_launcher.ui.log_view.display import LogDisplay, configure_log_tags
 from luker_launcher.ui.log_view.search import SearchBar
 from luker_launcher.ui.motion import StepTicker, WindowFade, ease_in_out_cubic, fade_palette
 from luker_launcher.ui.resizing import WindowResizer
+from luker_launcher.ui.theme_assets import theme_log_image
 from luker_launcher.ui.tokens import (
+    CHARACTER_IMAGE_HEIGHT,
+    CHARACTER_IMAGE_WIDTH,
+    CHARACTER_PANEL_WIDTH,
     CONTROL_HEIGHT_LG,
     CONTROL_HEIGHT_MD,
     CONTROL_HEIGHT_XL,
@@ -353,6 +358,7 @@ class LogWindow(ctk.CTk):
             self._setup_blur()
 
             self._apply_theme_bindings(self.COLORS)
+            self._apply_theme_art()
             self._refresh_toolbar_icons()
 
             # 动态状态依赖静态颜色，必须放在绑定之后
@@ -742,9 +748,40 @@ class LogWindow(ctk.CTk):
         self._log_card = self._make_card(parent, corner_radius=RADIUS_CARD_LG)
         self._log_card.pack(fill="both", expand=True, pady=(0, GAP_WINDOW))
 
+        body = ctk.CTkFrame(self._log_card, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=PAD_CARD_COMPACT, pady=PAD_CARD_COMPACT)
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(0, weight=1)
+
+        self._text_panel = ctk.CTkFrame(
+            body,
+            fg_color=self.COLORS['card'],
+            corner_radius=RADIUS_CARD,
+        )
+        self._text_panel.grid(row=0, column=0, sticky="nsew")
+        self._bind_theme(self._text_panel, fg_color='card')
+
+        self._character_panel = ctk.CTkFrame(
+            body,
+            fg_color=self.COLORS['card'],
+            width=CHARACTER_PANEL_WIDTH,
+            corner_radius=RADIUS_CARD,
+        )
+        self._character_panel.grid(row=0, column=1, sticky="ns", padx=(GAP_GRID, 0))
+        self._character_panel.grid_propagate(False)
+        self._bind_theme(self._character_panel, fg_color='card')
+
+        self._character_label = ctk.CTkLabel(
+            self._character_panel,
+            text="",
+            fg_color="transparent",
+        )
+        self._character_label.pack(anchor="n")
+        self._character_image: ctk.CTkImage | None = None
+
         # 错误横幅默认不占位，出现错误时才 pack 到文本区上方
         self._error_banner = ctk.CTkFrame(
-            self._log_card,
+            self._text_panel,
             fg_color=self.COLORS['card'],
             corner_radius=RADIUS_CONTROL,
             border_width=1,
@@ -784,7 +821,7 @@ class LogWindow(ctk.CTk):
         self._apply_error_banner_colors()
 
         self.log_text = ctk.CTkTextbox(
-            self._log_card,
+            self._text_panel,
             fg_color="transparent",
             text_color=self.COLORS['text'],
             font=ctk.CTkFont(family=self.UI_FONT, size=FONT_BODY),
@@ -802,7 +839,7 @@ class LogWindow(ctk.CTk):
         self._get_textbox().configure(state="disabled")
 
         # 空/加载遮罩：覆盖在文本区中央，不写入 Text，避免污染搜索和计数
-        self._overlay = ctk.CTkFrame(self._log_card, fg_color="transparent")
+        self._overlay = ctk.CTkFrame(self._text_panel, fg_color="transparent")
         self._overlay_title = ctk.CTkLabel(
             self._overlay,
             text="",
@@ -826,7 +863,29 @@ class LogWindow(ctk.CTk):
         self._overlay.lift()
         self._overlay.place_forget()
 
+        self._apply_theme_art()
         configure_log_tags(self._get_textbox(), self.COLORS)
+
+    def _apply_theme_art(self) -> None:
+        """按当前主题显示或隐藏右侧角色立绘。"""
+        panel = self.__dict__.get('_character_panel')
+        label = self.__dict__.get('_character_label')
+        if panel is None or label is None:
+            return
+
+        theme = PRESET_THEMES.get(config.theme_name, {})
+        image = theme_log_image(theme)
+        if image is None:
+            panel.grid_remove()
+            return
+
+        self._character_image = ctk.CTkImage(
+            light_image=image,
+            dark_image=image,
+            size=(CHARACTER_IMAGE_WIDTH, CHARACTER_IMAGE_HEIGHT),
+        )
+        label.configure(image=self._character_image)
+        panel.grid()
 
     def _on_replay_state_change(self, active: bool) -> None:
         self._replaying = active
