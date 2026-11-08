@@ -25,8 +25,10 @@ from luker_launcher.ui.settings_window import (
     bind_hover_recursive,
     clear_scroll_bindings,
     theme_card_hover_colors,
+    theme_card_scale,
     update_button_state_colors,
 )
+from luker_launcher.ui.tokens import THEME_CARD_HOVER_SCALE, THEME_CARD_IDLE_SCALE
 
 
 class FakeTkInterpreter:
@@ -780,6 +782,18 @@ class UpdateUiTests(unittest.TestCase):
         self.assertEqual(window._status_color(None), "#222222")
 
 
+class ThemeCardScaleTests(unittest.TestCase):
+    def test_scale_moves_from_idle_to_hover(self):
+        self.assertEqual(theme_card_scale(-1), THEME_CARD_IDLE_SCALE)
+        self.assertEqual(theme_card_scale(0), THEME_CARD_IDLE_SCALE)
+        self.assertAlmostEqual(
+            theme_card_scale(0.5),
+            (THEME_CARD_IDLE_SCALE + THEME_CARD_HOVER_SCALE) / 2,
+        )
+        self.assertEqual(theme_card_scale(1), THEME_CARD_HOVER_SCALE)
+        self.assertEqual(theme_card_scale(2), THEME_CARD_HOVER_SCALE)
+
+
 class SettingsInteractionTests(unittest.TestCase):
     def test_selecting_current_theme_is_a_noop(self):
         window = object.__new__(SettingsWindow)
@@ -812,21 +826,35 @@ class SettingsInteractionTests(unittest.TestCase):
         self.assertEqual(fitted, [True])
         self.assertFalse(window._pending_fit)
 
-    def test_theme_change_keeps_only_latest_rebuild(self):
+    def test_theme_change_fades_out_then_rebuilds_latest_theme(self):
         window = object.__new__(SettingsWindow)
         window._destroyed = False
-        window._rebuild_job = 'old'
-        canceled: list[object] = []
-        scheduled: list[tuple[int, object]] = []
-        window.after_cancel = canceled.append
-        window.after = lambda delay, callback: scheduled.append((delay, callback)) or 'new'
+        window._theme_hover_jobs = set()
+        window._update_button_job = None
+        window._blur_job = None
+        window._theme_target_colors = None
+        window.attributes = lambda _name: 0.92
+        fade = SimpleNamespace(calls=[])
+        fade.start = lambda start, end, *, duration_ms, on_done=None: fade.calls.append(
+            (start, end, duration_ms, on_done)
+        )
+        window._fade = fade
+        rebuilt: list[bool] = []
+        window._rebuild_ui = lambda: rebuilt.append(True)
 
-        window._on_theme_change({'bg': '#000000'})
+        with patch.object(settings_window, 'config', SimpleNamespace(blur_enabled=True)):
+            window._on_theme_change({'bg': '#000000'})
+            window._on_theme_change({'bg': '#111111'})
 
-        self.assertEqual(window.COLORS, {'bg': '#000000'})
-        self.assertEqual(canceled, ['old'])
-        self.assertEqual(scheduled, [(0, window._rebuild_ui)])
-        self.assertEqual(window._rebuild_job, 'new')
+            self.assertEqual(window._theme_target_colors, {'bg': '#111111'})
+            self.assertEqual(fade.calls[0][:3], (0.92, 0.0, 64))
+            self.assertEqual(fade.calls[1][:3], (0.92, 0.0, 64))
+
+            window._theme_fade_out_done()
+
+        self.assertEqual(window.COLORS, {'bg': '#111111'})
+        self.assertEqual(rebuilt, [True])
+        self.assertEqual(fade.calls[2][:3], (0.0, 0.92, 64))
 
     def test_setup_blur_is_skipped_after_destroy(self):
         window = object.__new__(SettingsWindow)
@@ -860,6 +888,8 @@ class RebuildOrderTests(unittest.TestCase):
         window.COLORS = {'bg': '#123456'}
         window._theme_hover_jobs = set()
         window._update_button_job = None
+        window._theme_card_images = []
+        window._theme_cards = {}
         calls = []
         window.winfo_exists = lambda: True
         window.winfo_children = lambda: [FakeChild(calls)]

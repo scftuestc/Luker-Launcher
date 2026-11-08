@@ -6,6 +6,7 @@ from collections.abc import Callable
 from tkinter import messagebox
 
 import customtkinter as ctk
+from PIL import Image
 
 from luker_launcher.config import config
 from luker_launcher.services.version import TargetInfo, UpdateProgress, UpdateTarget, VersionCheck
@@ -21,6 +22,7 @@ from luker_launcher.ui.dpi import (
 from luker_launcher.ui.icons import theme_icon
 from luker_launcher.ui.motion import WindowFade
 from luker_launcher.ui.switch import AnimatedSwitch
+from luker_launcher.ui.theme_assets import theme_card_image
 from luker_launcher.ui.tokens import (
     CHECK_SIZE,
     CONTROL_HEIGHT_MD,
@@ -47,6 +49,7 @@ from luker_launcher.ui.tokens import (
     MOTION_HOVER_INTERVAL_MS,
     MOTION_HOVER_STEPS,
     MOTION_SETTINGS_FADE_MS,
+    MOTION_THEME_FADE_MS,
     MOTION_WINDOW_ALPHA,
     MOTION_WINDOW_FADE_START,
     PAD_CARD,
@@ -61,6 +64,11 @@ from luker_launcher.ui.tokens import (
     RADIUS_SWATCH,
     SEPARATOR_HEIGHT,
     SWATCH_HEIGHT,
+    THEME_CARD_ART_SIZE,
+    THEME_CARD_HEIGHT,
+    THEME_CARD_HOVER_SCALE,
+    THEME_CARD_IDLE_SCALE,
+    THEME_CARD_PREVIEW_HEIGHT,
     TITLEBAR_SETTINGS_HEIGHT,
     WINDOW_SETTINGS_HEIGHT,
     WINDOW_SETTINGS_MARGIN,
@@ -146,6 +154,12 @@ def theme_card_hover_colors(
     return fill, border
 
 
+def theme_card_scale(progress: float) -> float:
+    """主题卡片从静止到悬停的缩放比例。"""
+    factor = max(0.0, min(1.0, progress))
+    return THEME_CARD_IDLE_SCALE + (THEME_CARD_HOVER_SCALE - THEME_CARD_IDLE_SCALE) * factor
+
+
 def update_button_state_colors(
     colors: dict[str, str],
     progress: float,
@@ -179,8 +193,10 @@ class SettingsWindow(ctk.CTkToplevel):
         self._on_apply_luker_update = on_apply_luker_update
         self._on_luker_path_changed = on_luker_path_changed
         self._blur_job: str | None = None
-        self._rebuild_job: str | None = None
+        self._theme_target_colors: dict[str, str] | None = None
         self._theme_hover_jobs: set[str] = set()
+        self._theme_card_images: list[ctk.CTkImage] = []
+        self._theme_cards: dict[str, ctk.CTkFrame] = {}
         self._update_button_tone: float | None = None
         self._update_button_target = 0.0
         self._update_button_job: str | None = None
@@ -285,12 +301,10 @@ class SettingsWindow(ctk.CTkToplevel):
             self._destroyed = True
             self._cancel_theme_hover_jobs()
             self._cancel_update_button_fade()
-            for job in (self._blur_job, self._rebuild_job):
-                if job is not None:
-                    with contextlib.suppress(tk.TclError):
-                        self.after_cancel(job)
+            if self._blur_job is not None:
+                with contextlib.suppress(tk.TclError):
+                    self.after_cancel(self._blur_job)
             self._blur_job = None
-            self._rebuild_job = None
             fade = self.__dict__.get('_fade')
             if fade is not None:
                 fade.cancel()
@@ -416,13 +430,46 @@ class SettingsWindow(ctk.CTkToplevel):
     def _on_theme_change(self, new_colors: dict[str, str]) -> None:
         if self._destroyed:
             return
-        self.COLORS = new_colors
-        # 延后重建，避免在主题卡片的点击回调里销毁当前控件；
-        # 连续切换时只保留最后一次，避免排队多次整窗重建。
-        if self._rebuild_job is not None:
+        self._theme_target_colors = new_colors
+        self._cancel_theme_hover_jobs()
+        self._cancel_update_button_fade()
+        self._cancel_blur_job()
+        fade = self.__dict__.get('_fade')
+        if fade is None:
+            self.COLORS = new_colors
+            self._rebuild_ui()
+            return
+        try:
+            current_alpha = float(self.attributes('-alpha'))
+        except (tk.TclError, TypeError, ValueError):
+            current_alpha = MOTION_WINDOW_ALPHA if config.blur_enabled else 1.0
+        # 先淡出，再重建，最后淡入；连续切换时 WindowFade 会取消上一段。
+        fade.start(
+            current_alpha,
+            0.0,
+            duration_ms=MOTION_THEME_FADE_MS,
+            on_done=self._theme_fade_out_done,
+        )
+
+    def _cancel_blur_job(self) -> None:
+        if self._blur_job is not None:
             with contextlib.suppress(tk.TclError):
-                self.after_cancel(self._rebuild_job)
-        self._rebuild_job = self.after(0, self._rebuild_ui)
+                self.after_cancel(self._blur_job)
+            self._blur_job = None
+
+    def _theme_fade_out_done(self) -> None:
+        if self._destroyed:
+            return
+        target = self._theme_target_colors
+        if target is None:
+            return
+        self.COLORS = target
+        self._rebuild_ui()
+        fade = self.__dict__.get('_fade')
+        if fade is None:
+            return
+        target_alpha = MOTION_WINDOW_ALPHA if config.blur_enabled else 1.0
+        fade.start(0.0, target_alpha, duration_ms=MOTION_THEME_FADE_MS)
 
     def _build_ui(self) -> None:
         main = ctk.CTkFrame(self, fg_color="transparent")
@@ -607,8 +654,22 @@ class SettingsWindow(ctk.CTkToplevel):
         row = 0
         col = 0
         for theme_id, colors in PRESET_THEMES.items():
-            card = self._create_theme_card(grid, theme_id, colors, current_theme == theme_id)
-            card.grid(row=row, column=col, padx=GAP_GRID, pady=GAP_GRID, sticky="nsew")
+            container = ctk.CTkFrame(
+                grid,
+                fg_color="transparent",
+                height=THEME_CARD_HEIGHT,
+            )
+            container.grid(row=row, column=col, padx=GAP_GRID, pady=GAP_GRID, sticky="nsew")
+            container.grid_propagate(False)
+            card = self._create_theme_card(container, theme_id, colors, current_theme == theme_id)
+            self._theme_cards[theme_id] = card
+            card.place(
+                relx=0.5,
+                rely=0.5,
+                anchor="center",
+                relwidth=THEME_CARD_IDLE_SCALE,
+                relheight=THEME_CARD_IDLE_SCALE,
+            )
 
             col += 1
             if col >= 3:
@@ -637,7 +698,11 @@ class SettingsWindow(ctk.CTkToplevel):
         inner.pack(fill="both", expand=True, padx=PAD_CARD_COMPACT, pady=PAD_CARD_COMPACT)
 
         self._build_theme_card_header(inner, colors)
-        self._build_theme_swatches(inner, theme_id)
+        art = theme_card_image(colors)
+        if art is not None:
+            self._build_theme_card_art(inner, art)
+        else:
+            self._build_theme_swatches(inner, theme_id)
         self._build_theme_card_status(inner, colors, is_selected)
 
         progress = 0
@@ -645,13 +710,12 @@ class SettingsWindow(ctk.CTkToplevel):
         job: str | None = None
 
         def apply_hover() -> None:
-            fill, border = theme_card_hover_colors(
-                colors,
-                is_selected,
-                progress / THEME_HOVER_STEPS,
-            )
+            factor = progress / THEME_HOVER_STEPS
+            fill, border = theme_card_hover_colors(colors, is_selected, factor)
+            scale = theme_card_scale(factor)
             with contextlib.suppress(tk.TclError):
                 card.configure(fg_color=fill, border_color=border)
+                card.place_configure(relwidth=scale, relheight=scale)
 
         def tick() -> None:
             nonlocal progress, job
@@ -725,13 +789,42 @@ class SettingsWindow(ctk.CTkToplevel):
             height=ICON_BOX,
         ).pack(side="left", padx=(GAP_GRID, 0))
 
-    def _build_theme_swatches(self, parent: tk.Misc, theme_id: str) -> None:
-        preview = ctk.CTkFrame(parent, fg_color="transparent")
+    def _build_theme_card_art(self, parent: tk.Misc, image: Image.Image) -> None:
+        preview = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+            height=THEME_CARD_PREVIEW_HEIGHT,
+        )
         preview.pack(fill="x", pady=(0, GAP_GRID))
+        preview.pack_propagate(False)
 
+        ctk_image = ctk.CTkImage(
+            light_image=image,
+            dark_image=image,
+            size=(THEME_CARD_ART_SIZE, THEME_CARD_ART_SIZE),
+        )
+        self._theme_card_images.append(ctk_image)
+        ctk.CTkLabel(
+            preview,
+            text="",
+            image=ctk_image,
+            fg_color="transparent",
+        ).place(relx=0.5, rely=0.5, anchor="center")
+
+    def _build_theme_swatches(self, parent: tk.Misc, theme_id: str) -> None:
+        preview = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+            height=THEME_CARD_PREVIEW_HEIGHT,
+        )
+        preview.pack(fill="x", pady=(0, GAP_GRID))
+        preview.pack_propagate(False)
+
+        row = ctk.CTkFrame(preview, fg_color="transparent")
+        row.place(relx=0.5, rely=0.5, anchor="center", relwidth=1.0)
         for index, color in enumerate(theme_swatch_colors(theme_id)):
             ctk.CTkFrame(
-                preview,
+                row,
                 height=SWATCH_HEIGHT,
                 fg_color=color,
                 corner_radius=RADIUS_SWATCH,
@@ -741,7 +834,7 @@ class SettingsWindow(ctk.CTkToplevel):
                 sticky="ew",
                 padx=(0 if index == 0 else GAP_INLINE_SM, 0),
             )
-            preview.columnconfigure(index, weight=1)
+            row.columnconfigure(index, weight=1)
 
     def _build_theme_card_status(
         self,
@@ -756,7 +849,7 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=colors['accent'],
             height=HINT_SIZE,
             anchor="w",
-        ).pack(fill="x", pady=(GAP_INLINE_SM, 0))
+        ).pack(fill="x", side="bottom", pady=(GAP_INLINE_SM, 0))
 
     def _select_theme(self, theme_id: str) -> None:
         if theme_id in PRESET_THEMES and theme_id != config.theme_name:
@@ -770,7 +863,6 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _rebuild_ui(self) -> None:
         """按当前主题重建整个设置界面，让卡片、文字和选中状态一起刷新。"""
-        self._rebuild_job = None
         if self._destroyed or not self.winfo_exists():
             return
 
@@ -779,6 +871,8 @@ class SettingsWindow(ctk.CTkToplevel):
         for child in self.winfo_children():
             child.destroy()
 
+        self._theme_card_images.clear()
+        self._theme_cards.clear()
         clear_scroll_bindings(self)
         # 透明 frame 在创建时继承根窗口背景，必须先更新根背景再重建
         self.configure(fg_color=self.COLORS['bg'])
