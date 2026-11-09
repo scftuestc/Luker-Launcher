@@ -1049,7 +1049,6 @@ class RebuildOrderTests(unittest.TestCase):
         window._theme_hover_reconcile_job = None
         window._update_button_job = None
         window._theme_card_images = []
-        window._theme_cards = {}
         calls = []
         window.winfo_exists = lambda: True
         window.winfo_children = lambda: [FakeChild(calls)]

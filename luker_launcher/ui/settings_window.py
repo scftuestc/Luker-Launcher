@@ -373,7 +373,6 @@ class SettingsWindow(ctk.CTkToplevel):
         self._theme_hover_states: list[_ThemeCardHover] = []
         self._theme_hover_reconcile_job: str | None = None
         self._theme_card_images: list[ctk.CTkImage] = []
-        self._theme_cards: dict[str, ctk.CTkFrame] = {}
         self._update_button_tone: float | None = None
         self._update_button_target = 0.0
         self._update_button_job: str | None = None
@@ -870,7 +869,6 @@ class SettingsWindow(ctk.CTkToplevel):
                 colors,
                 current_theme == theme_id,
             )
-            self._theme_cards[theme_id] = card
             self._theme_hover_states.append(state)
             card.place(
                 relx=0.5,
@@ -1025,7 +1023,6 @@ class SettingsWindow(ctk.CTkToplevel):
             child.destroy()
 
         self._theme_card_images.clear()
-        self._theme_cards.clear()
         self._theme_hover_states.clear()
         clear_scroll_bindings(self)
         # 透明 frame 在创建时继承根窗口背景，必须先更新根背景再重建
