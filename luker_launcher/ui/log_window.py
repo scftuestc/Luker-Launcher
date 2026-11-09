@@ -27,6 +27,7 @@ from luker_launcher.theme import (
     shade_color,
 )
 from luker_launcher.ui.buttons import ButtonRole, button_colors, make_button
+from luker_launcher.ui.character_art import render_character
 from luker_launcher.ui.icons import TransportIcon, toolbar_icon, transport_icon
 from luker_launcher.ui.log_view.display import LogDisplay, configure_log_tags
 from luker_launcher.ui.log_view.search import SearchBar
@@ -1041,9 +1042,10 @@ class LogWindow(ctk.CTk):
             return
         self._character_display_size = size
         self._character_display_scale = scale
+        rendered = render_character(source, size, scale)
         self._character_image = ctk.CTkImage(
-            light_image=source,
-            dark_image=source,
+            light_image=rendered,
+            dark_image=rendered,
             size=size,
         )
         with contextlib.suppress(tk.TclError):

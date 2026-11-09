@@ -58,7 +58,7 @@ class FakePanel:
     def __init__(self) -> None:
         self.removed = 0
         self.shown = 0
-        self.width = 264
+        self.width = 320
         self.height = 400
         self.scaling = 1.0
 
@@ -130,6 +130,11 @@ class ThemeArtTests(unittest.TestCase):
         with (
             patch.object(log_window, 'config', SimpleNamespace(theme_name='deepseek')),
             patch.object(log_window, 'theme_log_image', return_value=source),
+            patch.object(
+                log_window,
+                'render_character',
+                side_effect=lambda image, _size, _scale: image,
+            ),
             patch.object(log_window.ctk, 'CTkImage', FakeCTkImage),
         ):
             window._apply_theme_art()
@@ -215,31 +220,45 @@ class CharacterScalingTests(unittest.TestCase):
     def test_150_percent_converts_physical_panel_to_logical(self):
         window, _, _ = self.make_window(
             scaling=1.5,
-            panel_size=(396, 618),
+            panel_size=(480, 618),
             motto_height=60,
         )
 
-        with patch.object(log_window.ctk, 'CTkImage', FakeCTkImage):
+        with (
+            patch.object(
+                log_window,
+                'render_character',
+                side_effect=lambda image, _size, _scale: image,
+            ),
+            patch.object(log_window.ctk, 'CTkImage', FakeCTkImage),
+        ):
             window._fit_character_art()
 
-        self.assertEqual(window._character_display_size, (256, 341))
+        self.assertEqual(window._character_display_size, (261, 348))
 
     def test_125_percent_converts_physical_panel_to_logical(self):
         window, _, _ = self.make_window(
             scaling=1.25,
-            panel_size=(330, 515),
+            panel_size=(400, 515),
             motto_height=50,
         )
 
-        with patch.object(log_window.ctk, 'CTkImage', FakeCTkImage):
+        with (
+            patch.object(
+                log_window,
+                'render_character',
+                side_effect=lambda image, _size, _scale: image,
+            ),
+            patch.object(log_window.ctk, 'CTkImage', FakeCTkImage),
+        ):
             window._fit_character_art()
 
-        self.assertEqual(window._character_display_size, (256, 341))
+        self.assertEqual(window._character_display_size, (261, 348))
 
     def test_scaling_change_rebuilds_image_when_logical_size_is_unchanged(self):
         window, panel, motto = self.make_window(
             scaling=1.0,
-            panel_size=(264, 400),
+            panel_size=(320, 400),
             motto_height=40,
         )
         created: list[FakeCTkImage] = []
@@ -249,13 +268,20 @@ class CharacterScalingTests(unittest.TestCase):
             created.append(image)
             return image
 
-        with patch.object(log_window.ctk, 'CTkImage', make_image):
+        with (
+            patch.object(
+                log_window,
+                'render_character',
+                side_effect=lambda image, _size, _scale: image,
+            ),
+            patch.object(log_window.ctk, 'CTkImage', make_image),
+        ):
             window._fit_character_art()
             self.assertEqual(window._character_display_size, (252, 336))
             self.assertEqual(len(created), 1)
 
             panel.scaling = 2.0
-            panel.width, panel.height = 528, 800
+            panel.width, panel.height = 640, 800
             motto.reqheight = 80
             window._fit_character_art()
 
