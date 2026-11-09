@@ -149,6 +149,18 @@ def fit_character_size(
     )
 
 
+def widget_scaling(widget: object) -> float:
+    """返回控件缩放系数；Tk 的 winfo_* 是物理像素，CTkImage 尺寸是逻辑像素。"""
+    getter = getattr(widget, '_get_widget_scaling', None)
+    if not callable(getter):
+        return 1.0
+    try:
+        scale = float(getter())
+    except (AttributeError, TypeError, ValueError, tk.TclError):
+        return 1.0
+    return scale if scale > 0 else 1.0
+
+
 def error_banner_colors(colors: dict[str, str]) -> dict[str, str]:
     """错误横幅的混合底色和描边；文字色由绑定单独处理。"""
     return {
@@ -263,6 +275,7 @@ class LogWindow(ctk.CTk):
 
         self._character_source: Image.Image | None = None
         self._character_display_size: tuple[int, int] | None = None
+        self._character_display_scale: float | None = None
         self._character_fit_job: str | None = None
 
     def _report_callback_exception(
@@ -949,12 +962,14 @@ class LogWindow(ctk.CTk):
         if image is None:
             self._character_source = None
             self._character_display_size = None
+            self._character_display_scale = None
             self._character_image = None
             panel.grid_remove()
             return
 
         self._character_source = image
         self._character_display_size = None
+        self._character_display_scale = None
         self._character_image = None
         panel.grid()
         self._fit_character_art()
@@ -983,6 +998,9 @@ class LogWindow(ctk.CTk):
         if panel is None or label is None or source is None:
             return
 
+        # 面板与座右铭的 winfo_* 都是物理像素；CTkImage 的 size 是逻辑像素，
+        # 直接混用会让图片在 125%/150% 缩放下被放大两次并裁切。
+        scale = widget_scaling(panel)
         try:
             panel_width = panel.winfo_width()
             panel_height = panel.winfo_height()
@@ -992,6 +1010,8 @@ class LogWindow(ctk.CTk):
         if panel_width <= 1 or panel_height <= 1:
             size = (CHARACTER_IMAGE_WIDTH, CHARACTER_IMAGE_HEIGHT)
         else:
+            panel_width = max(1, round(panel_width / scale))
+            panel_height = max(1, round(panel_height / scale))
             reserved_height = 0
             motto_label = self.__dict__.get('_motto_label')
             if motto_label is not None:
@@ -999,7 +1019,9 @@ class LogWindow(ctk.CTk):
                     mapped = bool(motto_label.winfo_ismapped())
                     if mapped:
                         reserved_height = (
-                            motto_label.winfo_reqheight() + GAP_INLINE_SM + PAD_CARD_COMPACT
+                            round(motto_label.winfo_reqheight() / scale)
+                            + GAP_INLINE_SM
+                            + PAD_CARD_COMPACT
                         )
                 except (AttributeError, tk.TclError):
                     reserved_height = 0
@@ -1011,9 +1033,10 @@ class LogWindow(ctk.CTk):
                 CHARACTER_PANEL_PADDING,
             )
 
-        if size == self._character_display_size:
+        if size == self._character_display_size and scale == self._character_display_scale:
             return
         self._character_display_size = size
+        self._character_display_scale = scale
         self._character_image = ctk.CTkImage(
             light_image=source,
             dark_image=source,

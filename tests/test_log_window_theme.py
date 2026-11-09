@@ -60,6 +60,7 @@ class FakePanel:
         self.shown = 0
         self.width = 264
         self.height = 400
+        self.scaling = 1.0
 
     def grid_remove(self) -> None:
         self.removed += 1
@@ -72,6 +73,9 @@ class FakePanel:
 
     def winfo_height(self) -> int:
         return self.height
+
+    def _get_widget_scaling(self) -> float:
+        return self.scaling
 
 
 class FakeLabel:
@@ -114,6 +118,7 @@ class ThemeArtTests(unittest.TestCase):
         window._motto_label = motto
         window._character_source = None
         window._character_display_size = None
+        window._character_display_scale = None
         window._character_fit_job = None
         window._character_image = None
         return window, panel, label, motto
@@ -166,6 +171,96 @@ class CharacterFitTests(unittest.TestCase):
 
     def test_zero_native_size_is_clamped(self):
         self.assertEqual(log_window.fit_character_size((0, 0), 264, 400, 56, 4), (1, 1))
+
+
+class WidgetScalingTests(unittest.TestCase):
+    def test_missing_getter_falls_back_to_one(self):
+        self.assertEqual(log_window.widget_scaling(object()), 1.0)
+
+    def test_non_positive_scaling_falls_back_to_one(self):
+        class Panel:
+            def _get_widget_scaling(self) -> float:
+                return 0
+
+        self.assertEqual(log_window.widget_scaling(Panel()), 1.0)
+
+
+class CharacterScalingTests(unittest.TestCase):
+    """winfo_* 返回物理像素，CTkImage 的尺寸是逻辑像素，不能混用。"""
+
+    def make_window(
+        self,
+        *,
+        scaling: float,
+        panel_size: tuple[int, int],
+        motto_height: int,
+    ) -> tuple[LogWindow, FakePanel, FakeLabel]:
+        window = object.__new__(LogWindow)
+        panel = FakePanel()
+        panel.scaling = scaling
+        panel.width, panel.height = panel_size
+        label = FakeLabel()
+        motto = FakeLabel()
+        motto.reqheight = motto_height
+        window._character_panel = panel
+        window._character_label = label
+        window._motto_label = motto
+        window._character_source = SimpleNamespace(size=(528, 704))
+        window._character_display_size = None
+        window._character_display_scale = None
+        window._character_fit_job = None
+        window._character_image = None
+        return window, panel, motto
+
+    def test_150_percent_converts_physical_panel_to_logical(self):
+        window, _, _ = self.make_window(
+            scaling=1.5,
+            panel_size=(396, 618),
+            motto_height=60,
+        )
+
+        with patch.object(log_window.ctk, 'CTkImage', FakeCTkImage):
+            window._fit_character_art()
+
+        self.assertEqual(window._character_display_size, (256, 341))
+
+    def test_125_percent_converts_physical_panel_to_logical(self):
+        window, _, _ = self.make_window(
+            scaling=1.25,
+            panel_size=(330, 515),
+            motto_height=50,
+        )
+
+        with patch.object(log_window.ctk, 'CTkImage', FakeCTkImage):
+            window._fit_character_art()
+
+        self.assertEqual(window._character_display_size, (256, 341))
+
+    def test_scaling_change_rebuilds_image_when_logical_size_is_unchanged(self):
+        window, panel, motto = self.make_window(
+            scaling=1.0,
+            panel_size=(264, 400),
+            motto_height=40,
+        )
+        created: list[FakeCTkImage] = []
+
+        def make_image(**kwargs: object) -> FakeCTkImage:
+            image = FakeCTkImage(**kwargs)
+            created.append(image)
+            return image
+
+        with patch.object(log_window.ctk, 'CTkImage', make_image):
+            window._fit_character_art()
+            self.assertEqual(window._character_display_size, (252, 336))
+            self.assertEqual(len(created), 1)
+
+            panel.scaling = 2.0
+            panel.width, panel.height = 528, 800
+            motto.reqheight = 80
+            window._fit_character_art()
+
+        self.assertEqual(window._character_display_size, (252, 336))
+        self.assertEqual(len(created), 2)
 
 
 class ThemeBindingTests(unittest.TestCase):
