@@ -28,7 +28,7 @@ class PackagingTests(unittest.TestCase):
         spec_path = ROOT / "launcher.spec"
         text = spec_path.read_text(encoding="utf-8")
 
-        ast.parse(text)
+        tree = ast.parse(text)
         self.assertIn("'main.py'", text)
         self.assertIn("name='Luker-Launcher'", text)
         self.assertIn("console=False", text)
@@ -36,12 +36,19 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("version='version_info.txt'", text)
         for name in ("main.py", "icon.ico", "version_info.txt"):
             self.assertTrue((ROOT / name).is_file(), name)
-        for name in (
-            "luker_launcher/assets/deepseek/card.png",
-            "luker_launcher/assets/deepseek/character.png",
+
+        datas_nodes = [
+            node for node in ast.walk(tree) if isinstance(node, ast.keyword) and node.arg == "datas"
+        ]
+        self.assertTrue(datas_nodes, "launcher.spec 缺少 datas 配置")
+        datas = ast.literal_eval(datas_nodes[0].value)
+        for source, target in (
+            ("icon.ico", "."),
+            ("luker_launcher/assets/deepseek/card.png", "luker_launcher/assets/deepseek"),
+            ("luker_launcher/assets/deepseek/character.png", "luker_launcher/assets/deepseek"),
         ):
-            self.assertIn(name, text)
-            self.assertTrue((ROOT / name).is_file(), name)
+            self.assertIn((source, target), datas)
+            self.assertTrue((ROOT / source).is_file(), source)
 
     def test_check_bat_keeps_all_quality_gates(self):
         text = (ROOT / "check.bat").read_text(encoding="utf-8")
@@ -101,6 +108,37 @@ class BuildScriptBehaviorTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("Done!", result.stdout)
         self.assertFalse(build_dir_remains)
+
+
+@unittest.skipUnless(os.name == "nt", "check.bat 只在 Windows 上执行")
+class CheckScriptBehaviorTests(unittest.TestCase):
+    def test_python_failure_propagates_and_is_reported(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work = Path(temp_dir)
+            (work / "check.bat").write_bytes((ROOT / "check.bat").read_bytes())
+            # 当前目录优先于 PATH，让 check.bat 的第一道门禁直接失败
+            (work / "python.bat").write_text(
+                "@echo off\r\nexit /b 1\r\n",
+                encoding="ascii",
+            )
+            env = os.environ.copy()
+            env["PATH"] = str(work) + os.pathsep + env.get("PATH", "")
+            completed = subprocess.run(
+                [os.environ.get("COMSPEC", "cmd.exe"), "/c", "check.bat"],
+                cwd=work,
+                env=env,
+                input="\n",
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+            )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("Check failed", completed.stdout)
+        self.assertNotIn("All checks passed", completed.stdout)
 
 
 if __name__ == "__main__":

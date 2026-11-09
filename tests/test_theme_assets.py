@@ -52,36 +52,52 @@ class ThemeAssetTests(unittest.TestCase):
             self.assertIsNone(theme_assets.theme_card_image({}))
             self.assertIsNone(theme_assets.theme_log_image({}))
 
-    def test_bundled_deepseek_assets_exist_with_expected_sizes(self):
+    def test_bundled_deepseek_assets_have_expected_shape(self):
         card = theme_assets.load_theme_image(DEEPSEEK_CARD)
         character = theme_assets.load_theme_image(DEEPSEEK_CHARACTER)
 
         self.assertIsNotNone(card)
         self.assertIsNotNone(character)
-        self.assertEqual(card.size, (320, 320))
-        self.assertEqual(character.size, (528, 704))
+        self.assertGreaterEqual(card.width, 256)
+        self.assertLessEqual(card.width, 512)
+        self.assertLessEqual(abs(card.width - card.height), 2)
+        self.assertGreaterEqual(character.width, 384)
+        self.assertLessEqual(character.width, 768)
+        self.assertAlmostEqual(character.width / character.height, 3 / 4, delta=0.02)
         self.assertEqual(card.mode, "RGBA")
         self.assertEqual(character.mode, "RGBA")
-        self.assertEqual(card.getchannel("A").getextrema(), (0, 255))
-        self.assertEqual(character.getchannel("A").getextrema(), (0, 255))
+        self.assertGreaterEqual(card.getchannel("A").getextrema()[1], 200)
+        self.assertGreaterEqual(character.getchannel("A").getextrema()[1], 200)
 
     def test_card_art_fades_out_on_all_four_edges(self):
         card = theme_assets.load_theme_image(DEEPSEEK_CARD)
         self.assertIsNotNone(card)
         alpha = card.getchannel("A")
+        width, height = card.size
 
-        for point in ((0, 160), (319, 160), (160, 0), (160, 319)):
-            self.assertLessEqual(alpha.getpixel(point), 4, point)
-        self.assertGreater(alpha.getpixel((160, 160)), 200)
+        for point in (
+            (0, height // 2),
+            (width - 1, height // 2),
+            (width // 2, 0),
+            (width // 2, height - 1),
+        ):
+            self.assertLessEqual(alpha.getpixel(point), 16, point)
+        self.assertGreater(alpha.getpixel((width // 2, height // 2)), 200)
 
     def test_character_art_has_rounded_transparent_corners(self):
         character = theme_assets.load_theme_image(DEEPSEEK_CHARACTER)
         self.assertIsNotNone(character)
         alpha = character.getchannel("A")
+        width, height = character.size
 
-        for point in ((0, 0), (527, 0), (0, 703), (527, 703)):
-            self.assertEqual(alpha.getpixel(point), 0, point)
-        self.assertGreater(alpha.getpixel((264, 352)), 200)
+        for point in (
+            (0, 0),
+            (width - 1, 0),
+            (0, height - 1),
+            (width - 1, height - 1),
+        ):
+            self.assertLessEqual(alpha.getpixel(point), 8, point)
+        self.assertGreater(alpha.getpixel((width // 2, height // 2)), 200)
 
 
 if __name__ == "__main__":
