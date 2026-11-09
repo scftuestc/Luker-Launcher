@@ -5,6 +5,35 @@ from luker_launcher.application import launcher as launcher_app
 from luker_launcher.application.launcher import LukerLauncher
 
 
+class EarlyCallbackProcess:
+    """构造过程中立即触发三个状态回调，模拟构造顺序回归。"""
+
+    def __init__(self, **kwargs: object) -> None:
+        self.kwargs = kwargs
+        for key in ("on_status_reset", "on_manager_replaced", "on_finished"):
+            kwargs[key]()
+
+
+class ProcessCallbackWiringTests(unittest.TestCase):
+    def test_process_callbacks_during_construction_are_safe(self):
+        with patch.object(launcher_app, "ProcessCoordinator", EarlyCallbackProcess):
+            launcher = LukerLauncher()
+
+        self.assertIsInstance(launcher._process, EarlyCallbackProcess)
+
+    def test_process_callbacks_delegate_when_status_exists(self):
+        launcher = object.__new__(LukerLauncher)
+        launcher._status = Mock()
+
+        launcher._on_process_status_reset()
+        launcher._on_process_manager_replaced()
+        launcher._on_process_finished()
+
+        launcher._status.reset.assert_called_once_with()
+        launcher._status.clear_last_state.assert_called_once_with()
+        launcher._status.update.assert_called_once_with()
+
+
 class LauncherCompositionTests(unittest.TestCase):
     def test_coordinators_share_the_same_runtime_objects(self):
         launcher = LukerLauncher()

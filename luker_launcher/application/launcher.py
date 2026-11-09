@@ -53,9 +53,9 @@ class LukerLauncher:
             post_ui=self._ui,
             log=self._on_log,
             lifecycle=self._lifecycle,
-            on_status_reset=lambda: self._status.reset(),
-            on_manager_replaced=lambda: self._status.clear_last_state(),
-            on_finished=lambda: self._status.update(),
+            on_status_reset=self._on_process_status_reset,
+            on_manager_replaced=self._on_process_manager_replaced,
+            on_finished=self._on_process_finished,
         )
         self._status = StatusCoordinator(
             process=self._process,
@@ -105,6 +105,22 @@ class LukerLauncher:
         # 最近一次托盘点击位置，用于把设置窗口放到点击所在显示器
         self._tray_anchor: tuple[int, int] | None = None
         self.settings_window: SettingsWindow | None = None
+
+    def _on_process_status_reset(self) -> None:
+        """进程启动前清理状态；构造期间回调时状态协调器可能尚未创建。"""
+        status = getattr(self, '_status', None)
+        if status is not None:
+            status.reset()
+
+    def _on_process_manager_replaced(self) -> None:
+        status = getattr(self, '_status', None)
+        if status is not None:
+            status.clear_last_state()
+
+    def _on_process_finished(self) -> None:
+        status = getattr(self, '_status', None)
+        if status is not None:
+            status.update()
 
     def _schedule_ui(self, delay_ms: int, callback: Callable[[], None]) -> None:
         """在 Tk 主线程安排下一次 UI 泵；窗口不可用时停止续排。"""
