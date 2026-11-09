@@ -492,6 +492,10 @@ class LogWindow(ctk.CTk):
         if reveal_job is not None:
             self._cancel_after_job(reveal_job)
             self._error_reveal_job = None
+        fit_job = self.__dict__.get('_character_fit_job')
+        if fit_job is not None:
+            self._cancel_after_job(fit_job)
+            self._character_fit_job = None
         self.search.cancel_pending()
 
     def destroy(self) -> None:

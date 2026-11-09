@@ -173,6 +173,15 @@ class AnimationJobTests(unittest.TestCase):
         self.assertIsNone(window._glow_job)
         self.assertIsNone(window._pulse_job)
 
+    def test_cancel_animation_jobs_cancels_character_fit(self):
+        window, canceled = self.make_window()
+        window._character_fit_job = 'fit'
+
+        window._cancel_animation_jobs()
+
+        self.assertIn('fit', canceled)
+        self.assertIsNone(window._character_fit_job)
+
     def test_destroy_cancels_jobs_stops_logs_and_unregisters_callbacks(self):
         window, canceled = self.make_window()
         window._glow_job = 'glow'
