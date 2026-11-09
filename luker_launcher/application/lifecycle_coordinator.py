@@ -187,8 +187,12 @@ class LifecycleCoordinator:
             self.post_ui.post(self.finish_exit, self.exit_key)
 
         if not self.task_runner.run(worker):
-            logger.error("启动退出线程失败")
-            self.finish_exit()
+            # 线程起不来时主线程同步停止，确保退出后不残留 Luker 进程
+            logger.error("启动退出线程失败，改为同步停止 Luker")
+            try:
+                self.process.stop_all()
+            finally:
+                self.finish_exit()
 
     def finish_exit(self) -> None:
         """停止托盘并结束 Tk 主循环。"""

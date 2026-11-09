@@ -327,13 +327,14 @@ class LifecycleCoordinatorTests(unittest.TestCase):
         self.assertEqual(len(self.poster.posted), 1)
         self.assertEqual(self.poster.posted[0][1], "exit")
 
-    def test_exit_thread_failure_finishes_immediately(self):
+    def test_exit_thread_failure_stops_process_and_finishes_immediately(self):
         coordinator = self.make_coordinator(runner_started=False)
 
         with self.assertLogs("luker_launcher.application.lifecycle_coordinator", level="ERROR"):
             coordinator.exit()
 
         self.assertTrue(self.lifecycle.exiting)
+        self.assertEqual(self.process.stop_all_calls, 1)
         self.assertTrue(self.window.quit_called)
         self.assertEqual(self.status.stop_calls, 1)
 
