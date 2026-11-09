@@ -21,7 +21,8 @@ def load_theme_image(relative_path: str | None) -> Image.Image | None:
     try:
         with Image.open(path) as image:
             return image.convert('RGBA').copy()
-    except Exception:
+    except (OSError, ValueError):
+        # 包含 PIL.UnidentifiedImageError；真正的编程错误继续向上抛出
         logger.warning("加载主题图片失败：%s", path, exc_info=True)
         return None
 

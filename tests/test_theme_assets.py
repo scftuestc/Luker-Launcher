@@ -39,6 +39,27 @@ class ThemeAssetTests(unittest.TestCase):
             ):
                 self.assertIsNone(theme_assets.load_theme_image("missing.png"))
 
+    def test_corrupt_image_returns_none_and_logs_warning(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "broken.png"
+            path.write_bytes(b"not an image")
+            with (
+                patch.object(theme_assets, "resource_path", return_value=path),
+                self.assertLogs("luker_launcher.ui.theme_assets", level="WARNING"),
+            ):
+                self.assertIsNone(theme_assets.load_theme_image("broken.png"))
+
+    def test_unexpected_errors_are_not_swallowed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "sample.png"
+            path.write_bytes(b"placeholder")
+            with (
+                patch.object(theme_assets, "resource_path", return_value=path),
+                patch.object(theme_assets.Image, "open", side_effect=RuntimeError("bug")),
+                self.assertRaises(RuntimeError),
+            ):
+                theme_assets.load_theme_image("sample.png")
+
     def test_empty_path_returns_none(self):
         self.assertIsNone(theme_assets.load_theme_image(None))
         self.assertIsNone(theme_assets.load_theme_image(""))
