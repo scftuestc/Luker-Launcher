@@ -63,8 +63,6 @@ from luker_launcher.ui.tokens import (
     SWATCH_HEIGHT,
     THEME_CARD_ART_SIZE,
     THEME_CARD_HEIGHT,
-    THEME_CARD_HOVER_SCALE,
-    THEME_CARD_IDLE_SCALE,
     THEME_CARD_INNER_PAD,
     THEME_CARD_PREVIEW_HEIGHT,
     TITLEBAR_SETTINGS_HEIGHT,
@@ -95,7 +93,6 @@ CLOSE_BEHAVIOR_OPTIONS = (
 )
 THEME_HOVER_STEPS = MOTION_HOVER_STEPS
 THEME_HOVER_INTERVAL_MS = MOTION_HOVER_INTERVAL_MS
-THEME_HOVER_VERIFY_MS = 250
 BUTTON_FADE_STEPS = MOTION_HOVER_STEPS
 BUTTON_FADE_INTERVAL_MS = MOTION_HOVER_INTERVAL_MS
 
@@ -153,35 +150,8 @@ def theme_card_hover_colors(
     return fill, border
 
 
-def theme_card_scale(progress: float) -> float:
-    """主题卡片从静止到悬停的缩放比例。"""
-    factor = max(0.0, min(1.0, progress))
-    return THEME_CARD_IDLE_SCALE + (THEME_CARD_HOVER_SCALE - THEME_CARD_IDLE_SCALE) * factor
-
-
-def theme_card_art_size(progress: float) -> int:
-    """主题卡片图片随卡片一起放大，返回当前帧的显示边长。"""
-    scale = theme_card_scale(progress)
-    return max(1, round(THEME_CARD_ART_SIZE * scale / THEME_CARD_IDLE_SCALE))
-
-
-def pointer_inside(widget: tk.Misc) -> bool:
-    """判断真实指针是否停在控件或其任意后代上。"""
-    try:
-        x, y = widget.winfo_pointerxy()
-        target = widget.winfo_containing(x, y)
-    except tk.TclError:
-        return False
-
-    while target is not None:
-        if target is widget:
-            return True
-        target = target.master
-    return False
-
-
-class _ThemeCardHover:
-    """单张主题卡片的悬停状态机，负责缩放、配色和图片换帧。"""
+class _ThemeCardHighlight:
+    """单张主题卡片的颜色高亮；悬停不改变卡片几何和图片。"""
 
     def __init__(
         self,
@@ -189,58 +159,28 @@ class _ThemeCardHover:
         card: ctk.CTkFrame,
         colors: dict[str, str],
         selected: bool,
-        art_label: ctk.CTkLabel | None,
-        art_images: list[ctk.CTkImage],
     ) -> None:
         self._window = window
         self._card = card
         self._colors = colors
         self._selected = selected
-        self._art_label = art_label
-        self._art_images = art_images
         self.progress = 0
         self.target = 0
         self._job: str | None = None
-        self._final_job: str | None = None
-        self._verify_job: str | None = None
 
     def enter(self, _event: tk.Event | None = None) -> None:
-        self.reconcile()
+        self._set_target(THEME_HOVER_STEPS)
 
     def leave(self, _event: tk.Event | None = None) -> None:
-        self.reconcile()
+        self._set_target(0)
 
-    def reconcile(self) -> None:
-        """按真实指针位置校正目标，避免丢失 Enter/Leave 后卡在中间态。"""
-        if not self._card_alive():
-            return
-
-        self.target = THEME_HOVER_STEPS if pointer_inside(self._card) else 0
-        if self.progress != self.target:
+    def _set_target(self, target: int) -> None:
+        self.target = target
+        if self._job is None and self.progress != target:
             self._schedule_tick()
-        if self.target == THEME_HOVER_STEPS:
-            self._schedule_verify()
-        else:
-            self._cancel_verify()
-
-    def reset(self) -> None:
-        """取消动画并把卡片还原到静止状态。"""
-        self._cancel_jobs()
-        self.progress = 0
-        self.target = 0
-        self._apply()
-
-    def _card_alive(self) -> bool:
-        if self._window._destroyed:
-            return False
-        try:
-            return bool(self._card.winfo_exists())
-        except tk.TclError:
-            return False
 
     def _schedule_tick(self, delay_ms: int = 0) -> None:
-        self._cancel_final()
-        if self._job is not None or self.progress == self.target:
+        if self._job is not None:
             return
         try:
             self._job = self._window.after(delay_ms, self._tick)
@@ -254,85 +194,24 @@ class _ThemeCardHover:
         self._job = None
         if job is not None:
             self._window._theme_hover_jobs.discard(job)
-        if not self._card_alive():
+        if self._window._destroyed:
             return
-
-        # 每帧都用真实指针校正一次，滚动或窗口移动造成的丢失事件也能恢复
-        self.target = THEME_HOVER_STEPS if pointer_inside(self._card) else 0
         if self.progress < self.target:
             self.progress += 1
         elif self.progress > self.target:
             self.progress -= 1
         self._apply()
-
         if self.progress != self.target:
             self._schedule_tick(THEME_HOVER_INTERVAL_MS)
-        else:
-            self._schedule_final()
-        if self.target == THEME_HOVER_STEPS:
-            self._schedule_verify()
-        else:
-            self._cancel_verify()
 
     def _apply(self) -> None:
-        factor = self.progress / THEME_HOVER_STEPS
-        fill, border = theme_card_hover_colors(self._colors, self._selected, factor)
-        scale = theme_card_scale(factor)
+        fill, border = theme_card_hover_colors(
+            self._colors,
+            self._selected,
+            self.progress / THEME_HOVER_STEPS,
+        )
         with contextlib.suppress(tk.TclError):
-            self._card.place_configure(relwidth=scale, relheight=scale)
-            if self._art_label is not None and self._art_images:
-                self._art_label.configure(image=self._art_images[self.progress])
             self._card.configure(fg_color=fill, border_color=border)
-
-    def _schedule_final(self) -> None:
-        """等 CTk 处理完新的几何尺寸后再重放颜色，清除旧尺寸的边框残影。"""
-        self._cancel_final()
-        try:
-            self._final_job = self._window.after_idle(self._finalize)
-        except tk.TclError:
-            self._final_job = None
-
-    def _finalize(self) -> None:
-        self._final_job = None
-        if self._card_alive():
-            self._apply()
-
-    def _schedule_verify(self) -> None:
-        if self._verify_job is not None:
-            return
-        try:
-            self._verify_job = self._window.after(THEME_HOVER_VERIFY_MS, self._verify)
-        except tk.TclError:
-            self._verify_job = None
-
-    def _verify(self) -> None:
-        self._verify_job = None
-        if not self._card_alive():
-            return
-        self.reconcile()
-        if self.target == THEME_HOVER_STEPS:
-            self._schedule_verify()
-
-    def _cancel_verify(self) -> None:
-        if self._verify_job is not None:
-            with contextlib.suppress(tk.TclError):
-                self._window.after_cancel(self._verify_job)
-            self._verify_job = None
-
-    def _cancel_final(self) -> None:
-        if self._final_job is not None:
-            with contextlib.suppress(tk.TclError):
-                self._window.after_cancel(self._final_job)
-            self._final_job = None
-
-    def _cancel_jobs(self) -> None:
-        if self._job is not None:
-            self._window._theme_hover_jobs.discard(self._job)
-            with contextlib.suppress(tk.TclError):
-                self._window.after_cancel(self._job)
-            self._job = None
-        self._cancel_final()
-        self._cancel_verify()
 
 
 def update_button_state_colors(
@@ -370,8 +249,6 @@ class SettingsWindow(ctk.CTkToplevel):
         self._blur_job: str | None = None
         self._theme_target_colors: dict[str, str] | None = None
         self._theme_hover_jobs: set[str] = set()
-        self._theme_hover_states: list[_ThemeCardHover] = []
-        self._theme_hover_reconcile_job: str | None = None
         self._theme_card_images: list[ctk.CTkImage] = []
         self._update_button_tone: float | None = None
         self._update_button_target = 0.0
@@ -433,10 +310,6 @@ class SettingsWindow(ctk.CTkToplevel):
         self.bind('<Map>', self._on_map, add='+')
         self.bind('<Configure>', self._on_configure, add='+')
         self.bind('<Destroy>', self._on_destroy)
-        # 滚轮/拖拽滚动条会把卡片挪到静止指针下方，空闲时统一按真实位置校正
-        self.bind('<MouseWheel>', self._schedule_theme_hover_reconcile, add='+')
-        self.bind('<ButtonRelease-1>', self._schedule_theme_hover_reconcile, add='+')
-        self.bind('<Leave>', self._schedule_theme_hover_reconcile, add='+')
 
     def _on_map(self, event: tk.Event) -> None:
         # 窗口已显示时 DWM 不一定会重新取整，Map 后再补一次
@@ -496,29 +369,7 @@ class SettingsWindow(ctk.CTkToplevel):
             if self._on_close_callback is not None:
                 self._on_close_callback()
 
-    def _schedule_theme_hover_reconcile(self, _event: tk.Event | None = None) -> None:
-        if self._destroyed or self._theme_hover_reconcile_job is not None:
-            return
-        try:
-            self._theme_hover_reconcile_job = self.after_idle(self._reconcile_theme_hover)
-        except tk.TclError:
-            self._theme_hover_reconcile_job = None
-
-    def _reconcile_theme_hover(self) -> None:
-        self._theme_hover_reconcile_job = None
-        if self._destroyed:
-            return
-        for state in self._theme_hover_states:
-            state.reconcile()
-
     def _cancel_theme_hover_jobs(self) -> None:
-        reconcile_job = getattr(self, '_theme_hover_reconcile_job', None)
-        if reconcile_job is not None:
-            with contextlib.suppress(tk.TclError):
-                self.after_cancel(reconcile_job)
-            self._theme_hover_reconcile_job = None
-        for state in getattr(self, '_theme_hover_states', ()):
-            state.reset()
         for job in self._theme_hover_jobs:
             with contextlib.suppress(tk.TclError):
                 self.after_cancel(job)
@@ -863,20 +714,15 @@ class SettingsWindow(ctk.CTkToplevel):
             )
             container.grid(row=row, column=col, padx=GAP_GRID, pady=GAP_GRID, sticky="nsew")
             container.grid_propagate(False)
-            card, state = self._create_theme_card(
+            container.rowconfigure(0, weight=1)
+            container.columnconfigure(0, weight=1)
+            card = self._create_theme_card(
                 container,
                 theme_id,
                 colors,
                 current_theme == theme_id,
             )
-            self._theme_hover_states.append(state)
-            card.place(
-                relx=0.5,
-                rely=0.5,
-                anchor="center",
-                relwidth=THEME_CARD_IDLE_SCALE,
-                relheight=THEME_CARD_IDLE_SCALE,
-            )
+            card.grid(row=0, column=0, sticky="nsew")
 
             col += 1
             if col >= 3:
@@ -892,7 +738,7 @@ class SettingsWindow(ctk.CTkToplevel):
         theme_id: str,
         colors: dict[str, str],
         is_selected: bool,
-    ) -> tuple[ctk.CTkFrame, _ThemeCardHover]:
+    ) -> ctk.CTkFrame:
         card = ctk.CTkFrame(
             parent,
             fg_color=colors['card'],
@@ -912,14 +758,14 @@ class SettingsWindow(ctk.CTkToplevel):
         self._build_theme_card_header(inner, colors)
         art = theme_card_image(colors)
         if art is not None:
-            art_label, art_images = self._build_theme_card_art(inner, art)
+            self._build_theme_card_art(inner, art)
         else:
-            art_label, art_images = self._build_theme_swatches(inner, theme_id)
+            self._build_theme_swatches(inner, theme_id)
 
-        state = _ThemeCardHover(self, card, colors, is_selected, art_label, art_images)
+        highlight = _ThemeCardHighlight(self, card, colors, is_selected)
         bind_click_recursive(card, lambda _event: self._select_theme(theme_id))
-        bind_hover_recursive(card, state.enter, state.leave)
-        return card, state
+        bind_hover_recursive(card, highlight.enter, highlight.leave)
+        return card
 
     def _build_theme_card_header(self, parent: tk.Misc, colors: dict[str, str]) -> None:
         header = ctk.CTkFrame(parent, fg_color="transparent")
@@ -945,7 +791,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self,
         parent: tk.Misc,
         image: Image.Image,
-    ) -> tuple[ctk.CTkLabel, list[ctk.CTkImage]]:
+    ) -> None:
         preview = ctk.CTkFrame(
             parent,
             fg_color="transparent",
@@ -954,29 +800,25 @@ class SettingsWindow(ctk.CTkToplevel):
         preview.pack(fill="x", pady=(0, GAP_INLINE_SM))
         preview.pack_propagate(False)
 
-        ctk_images = [
-            ctk.CTkImage(
-                light_image=image,
-                dark_image=image,
-                size=(theme_card_art_size(step / THEME_HOVER_STEPS),) * 2,
-            )
-            for step in range(THEME_HOVER_STEPS + 1)
-        ]
-        self._theme_card_images.extend(ctk_images)
+        ctk_image = ctk.CTkImage(
+            light_image=image,
+            dark_image=image,
+            size=(THEME_CARD_ART_SIZE, THEME_CARD_ART_SIZE),
+        )
+        self._theme_card_images.append(ctk_image)
         label = ctk.CTkLabel(
             preview,
             text="",
-            image=ctk_images[0],
+            image=ctk_image,
             fg_color="transparent",
         )
         label.place(relx=0.5, rely=0.5, anchor="center")
-        return label, ctk_images
 
     def _build_theme_swatches(
         self,
         parent: tk.Misc,
         theme_id: str,
-    ) -> tuple[None, list[ctk.CTkImage]]:
+    ) -> None:
         preview = ctk.CTkFrame(
             parent,
             fg_color="transparent",
@@ -1000,7 +842,6 @@ class SettingsWindow(ctk.CTkToplevel):
                 padx=(0 if index == 0 else GAP_INLINE_SM, 0),
             )
             row.columnconfigure(index, weight=1)
-        return None, []
 
     def _select_theme(self, theme_id: str) -> None:
         if theme_id in PRESET_THEMES and theme_id != config.theme_name:
@@ -1023,7 +864,6 @@ class SettingsWindow(ctk.CTkToplevel):
             child.destroy()
 
         self._theme_card_images.clear()
-        self._theme_hover_states.clear()
         clear_scroll_bindings(self)
         # 透明 frame 在创建时继承根窗口背景，必须先更新根背景再重建
         self.configure(fg_color=self.COLORS['bg'])
