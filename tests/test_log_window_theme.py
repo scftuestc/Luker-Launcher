@@ -7,6 +7,7 @@ from luker_launcher.theme import PRESET_THEMES
 from luker_launcher.ui import log_window
 from luker_launcher.ui.buttons import button_colors
 from luker_launcher.ui.log_window import LogWindow
+from luker_launcher.ui.tokens import CHARACTER_MOTTO_WRAP, FONT_MOTTO
 
 COLORS = {
     'bg': '#000001',
@@ -82,7 +83,7 @@ class FakeLabel:
     def __init__(self) -> None:
         self.options: dict[str, object] = {}
         self.mapped = True
-        self.reqheight = 40
+        self.reqheight = 20
         self.removed = 0
         self.shown = 0
 
@@ -144,7 +145,14 @@ class ThemeArtTests(unittest.TestCase):
         self.assertIn('image', label.options)
         self.assertEqual(motto.options['text'], PRESET_THEMES['deepseek']['motto'])
         self.assertEqual(motto.shown, 1)
-        self.assertEqual(window._character_display_size, (252, 336))
+        self.assertEqual(window._character_display_size, (267, 356))
+
+    def test_motto_fits_in_one_line(self):
+        motto = PRESET_THEMES['deepseek']['motto']
+
+        self.assertNotIn('，', motto)
+        self.assertNotIn('。', motto)
+        self.assertLessEqual(len(motto) * FONT_MOTTO, CHARACTER_MOTTO_WRAP)
 
     def test_theme_without_art_hides_character_panel(self):
         window, panel, _, motto = self.make_window()
@@ -221,7 +229,7 @@ class CharacterScalingTests(unittest.TestCase):
         window, _, _ = self.make_window(
             scaling=1.5,
             panel_size=(480, 618),
-            motto_height=60,
+            motto_height=30,
         )
 
         with (
@@ -234,13 +242,13 @@ class CharacterScalingTests(unittest.TestCase):
         ):
             window._fit_character_art()
 
-        self.assertEqual(window._character_display_size, (261, 348))
+        self.assertEqual(window._character_display_size, (276, 368))
 
     def test_125_percent_converts_physical_panel_to_logical(self):
         window, _, _ = self.make_window(
             scaling=1.25,
             panel_size=(400, 515),
-            motto_height=50,
+            motto_height=25,
         )
 
         with (
@@ -253,13 +261,13 @@ class CharacterScalingTests(unittest.TestCase):
         ):
             window._fit_character_art()
 
-        self.assertEqual(window._character_display_size, (261, 348))
+        self.assertEqual(window._character_display_size, (276, 368))
 
     def test_scaling_change_rebuilds_image_when_logical_size_is_unchanged(self):
         window, panel, motto = self.make_window(
             scaling=1.0,
             panel_size=(320, 400),
-            motto_height=40,
+            motto_height=20,
         )
         created: list[FakeCTkImage] = []
 
@@ -277,15 +285,15 @@ class CharacterScalingTests(unittest.TestCase):
             patch.object(log_window.ctk, 'CTkImage', make_image),
         ):
             window._fit_character_art()
-            self.assertEqual(window._character_display_size, (252, 336))
+            self.assertEqual(window._character_display_size, (267, 356))
             self.assertEqual(len(created), 1)
 
             panel.scaling = 2.0
             panel.width, panel.height = 640, 800
-            motto.reqheight = 80
+            motto.reqheight = 40
             window._fit_character_art()
 
-        self.assertEqual(window._character_display_size, (252, 336))
+        self.assertEqual(window._character_display_size, (267, 356))
         self.assertEqual(len(created), 2)
 
 

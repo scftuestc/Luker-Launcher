@@ -89,7 +89,7 @@ class ThemeTests(unittest.TestCase):
         )
         self.assertEqual(
             theme["motto"],
-            "我有点笨拙，却愿意一遍遍陪你改到顺眼为止。",
+            "我有点笨拙却愿意一遍遍陪你改到顺眼为止",
         )
 
     def test_returned_theme_is_a_copy(self):
