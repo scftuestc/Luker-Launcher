@@ -3,11 +3,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from luker_launcher.services.readiness import LukerState
-from luker_launcher.theme import PRESET_THEMES
 from luker_launcher.ui import log_window
 from luker_launcher.ui.buttons import button_colors
 from luker_launcher.ui.log_window import LogWindow
-from luker_launcher.ui.tokens import CHARACTER_MOTTO_WRAP, FONT_MOTTO
 
 COLORS = {
     'bg': '#000001',
@@ -82,25 +80,9 @@ class FakePanel:
 class FakeLabel:
     def __init__(self) -> None:
         self.options: dict[str, object] = {}
-        self.mapped = True
-        self.reqheight = 20
-        self.removed = 0
-        self.shown = 0
 
     def configure(self, **options: object) -> None:
         self.options.update(options)
-
-    def winfo_ismapped(self) -> bool:
-        return self.mapped
-
-    def winfo_reqheight(self) -> int:
-        return self.reqheight
-
-    def grid(self) -> None:
-        self.shown += 1
-
-    def grid_remove(self) -> None:
-        self.removed += 1
 
 
 class FakeCTkImage:
@@ -109,57 +91,26 @@ class FakeCTkImage:
 
 
 class ThemeArtTests(unittest.TestCase):
-    def make_window(self) -> tuple[LogWindow, FakePanel, FakeLabel, FakeLabel]:
+    def make_window(self) -> tuple[LogWindow, FakePanel, FakeLabel]:
         window = object.__new__(LogWindow)
         panel = FakePanel()
         label = FakeLabel()
-        motto = FakeLabel()
         window._character_panel = panel
         window._character_label = label
-        window._motto_label = motto
         window._character_source = None
-        window._character_motto = ''
-        window._motto_font_path = None
-        window._character_render_key = None
         window._character_display_size = None
         window._character_display_scale = None
         window._character_fit_job = None
         window._character_image = None
-        window.MOTTO_FONT = '华文行楷'
-        return window, panel, label, motto
+        return window, panel, label
 
-    def test_deepseek_theme_overlays_motto_on_character(self):
-        window, panel, label, motto = self.make_window()
+    def test_deepseek_theme_shows_character_filling_the_panel(self):
+        window, panel, label = self.make_window()
         source = SimpleNamespace(size=(528, 704))
 
         with (
             patch.object(log_window, 'config', SimpleNamespace(theme_name='deepseek')),
             patch.object(log_window, 'theme_log_image', return_value=source),
-            patch.object(log_window, 'resolve_motto_font_file', return_value='fake.ttf'),
-            patch.object(
-                log_window,
-                'render_character_with_motto',
-                side_effect=lambda image, *args, **kwargs: image,
-            ),
-            patch.object(log_window.ctk, 'CTkImage', FakeCTkImage),
-        ):
-            window._apply_theme_art()
-
-        self.assertEqual(panel.shown, 1)
-        self.assertIsNotNone(window._character_image)
-        self.assertIn('image', label.options)
-        self.assertEqual(motto.options['text'], '')
-        self.assertEqual(motto.removed, 1)
-        self.assertEqual(window._character_display_size, (294, 392))
-
-    def test_deepseek_without_motto_font_keeps_motto_row(self):
-        window, panel, label, motto = self.make_window()
-        source = SimpleNamespace(size=(528, 704))
-
-        with (
-            patch.object(log_window, 'config', SimpleNamespace(theme_name='deepseek')),
-            patch.object(log_window, 'theme_log_image', return_value=source),
-            patch.object(log_window, 'resolve_motto_font_file', return_value=None),
             patch.object(
                 log_window,
                 'render_character',
@@ -170,20 +121,12 @@ class ThemeArtTests(unittest.TestCase):
             window._apply_theme_art()
 
         self.assertEqual(panel.shown, 1)
+        self.assertIsNotNone(window._character_image)
         self.assertIn('image', label.options)
-        self.assertEqual(motto.options['text'], PRESET_THEMES['deepseek']['motto'])
-        self.assertEqual(motto.shown, 1)
-        self.assertEqual(window._character_display_size, (267, 356))
-
-    def test_motto_fits_in_one_line(self):
-        motto = PRESET_THEMES['deepseek']['motto']
-
-        self.assertNotIn('，', motto)
-        self.assertNotIn('。', motto)
-        self.assertLessEqual(len(motto) * FONT_MOTTO, CHARACTER_MOTTO_WRAP)
+        self.assertEqual(window._character_display_size, (294, 392))
 
     def test_theme_without_art_hides_character_panel(self):
-        window, panel, _, motto = self.make_window()
+        window, panel, _ = self.make_window()
 
         with (
             patch.object(log_window, 'config', SimpleNamespace(theme_name='summer')),
@@ -193,25 +136,23 @@ class ThemeArtTests(unittest.TestCase):
 
         self.assertEqual(panel.removed, 1)
         self.assertIsNone(window._character_image)
-        self.assertEqual(motto.options['text'], '')
-        self.assertEqual(motto.removed, 1)
 
 
 class CharacterFitTests(unittest.TestCase):
     def test_fits_native_aspect_into_panel(self):
         self.assertEqual(
-            log_window.fit_character_size((528, 704), 264, 400, 56, 4),
-            (252, 336),
+            log_window.fit_character_size((528, 704), 264, 400, 4),
+            (256, 341),
         )
 
     def test_shrinks_when_panel_is_short(self):
         self.assertEqual(
-            log_window.fit_character_size((528, 704), 264, 188, 56, 4),
-            (93, 124),
+            log_window.fit_character_size((528, 704), 264, 188, 4),
+            (135, 180),
         )
 
     def test_zero_native_size_is_clamped(self):
-        self.assertEqual(log_window.fit_character_size((0, 0), 264, 400, 56, 4), (1, 1))
+        self.assertEqual(log_window.fit_character_size((0, 0), 264, 400, 4), (1, 1))
 
 
 class WidgetScalingTests(unittest.TestCase):
@@ -234,33 +175,25 @@ class CharacterScalingTests(unittest.TestCase):
         *,
         scaling: float,
         panel_size: tuple[int, int],
-        motto_height: int,
-    ) -> tuple[LogWindow, FakePanel, FakeLabel]:
+    ) -> tuple[LogWindow, FakePanel]:
         window = object.__new__(LogWindow)
         panel = FakePanel()
         panel.scaling = scaling
         panel.width, panel.height = panel_size
         label = FakeLabel()
-        motto = FakeLabel()
-        motto.reqheight = motto_height
         window._character_panel = panel
         window._character_label = label
-        window._motto_label = motto
         window._character_source = SimpleNamespace(size=(528, 704))
-        window._character_motto = ''
-        window._motto_font_path = None
-        window._character_render_key = None
         window._character_display_size = None
         window._character_display_scale = None
         window._character_fit_job = None
         window._character_image = None
-        return window, panel, motto
+        return window, panel
 
     def test_150_percent_converts_physical_panel_to_logical(self):
-        window, _, _ = self.make_window(
+        window, _ = self.make_window(
             scaling=1.5,
             panel_size=(480, 618),
-            motto_height=30,
         )
 
         with (
@@ -273,13 +206,12 @@ class CharacterScalingTests(unittest.TestCase):
         ):
             window._fit_character_art()
 
-        self.assertEqual(window._character_display_size, (276, 368))
+        self.assertEqual(window._character_display_size, (303, 404))
 
     def test_125_percent_converts_physical_panel_to_logical(self):
-        window, _, _ = self.make_window(
+        window, _ = self.make_window(
             scaling=1.25,
             panel_size=(400, 515),
-            motto_height=25,
         )
 
         with (
@@ -292,13 +224,12 @@ class CharacterScalingTests(unittest.TestCase):
         ):
             window._fit_character_art()
 
-        self.assertEqual(window._character_display_size, (276, 368))
+        self.assertEqual(window._character_display_size, (303, 404))
 
     def test_scaling_change_rebuilds_image_when_logical_size_is_unchanged(self):
-        window, panel, motto = self.make_window(
+        window, panel = self.make_window(
             scaling=1.0,
             panel_size=(320, 400),
-            motto_height=20,
         )
         created: list[FakeCTkImage] = []
 
@@ -316,16 +247,78 @@ class CharacterScalingTests(unittest.TestCase):
             patch.object(log_window.ctk, 'CTkImage', make_image),
         ):
             window._fit_character_art()
-            self.assertEqual(window._character_display_size, (267, 356))
+            self.assertEqual(window._character_display_size, (294, 392))
             self.assertEqual(len(created), 1)
 
             panel.scaling = 2.0
             panel.width, panel.height = 640, 800
-            motto.reqheight = 40
             window._fit_character_art()
 
-        self.assertEqual(window._character_display_size, (267, 356))
+        self.assertEqual(window._character_display_size, (294, 392))
         self.assertEqual(len(created), 2)
+
+
+class FakeScrollbar:
+    def __init__(self) -> None:
+        self.calls: list[object] = []
+
+    def set(self, first: str, last: str) -> None:
+        self.calls.append(('set', first, last))
+
+    def grid(self) -> None:
+        self.calls.append('grid')
+
+    def grid_remove(self) -> None:
+        self.calls.append('grid_remove')
+
+
+class LogScrollTests(unittest.TestCase):
+    def make_window(self) -> tuple[LogWindow, FakeScrollbar]:
+        window = object.__new__(LogWindow)
+        bar = FakeScrollbar()
+        window._log_scrollbar = bar
+        window._log_scrollbar_shown = False
+        return window, bar
+
+    def test_scrollbar_visibility_follows_content_overflow(self):
+        self.assertFalse(log_window.scrollbar_visible(0.0, 1.0))
+        self.assertTrue(log_window.scrollbar_visible(0.0, 0.5))
+        self.assertTrue(log_window.scrollbar_visible(0.2, 1.0))
+
+    def test_overflow_shows_scrollbar(self):
+        window, bar = self.make_window()
+
+        window._on_log_scroll('0.0', '0.6')
+
+        self.assertTrue(window._log_scrollbar_shown)
+        self.assertEqual(bar.calls, [('set', '0.0', '0.6'), 'grid'])
+
+    def test_all_content_visible_hides_scrollbar(self):
+        window, bar = self.make_window()
+        window._on_log_scroll('0.0', '0.6')
+        bar.calls.clear()
+
+        window._on_log_scroll('0.0', '1.0')
+
+        self.assertFalse(window._log_scrollbar_shown)
+        self.assertEqual(bar.calls, [('set', '0.0', '1.0'), 'grid_remove'])
+
+    def test_visible_state_does_not_repeat_grid_calls(self):
+        window, bar = self.make_window()
+        window._on_log_scroll('0.0', '0.6')
+        bar.calls.clear()
+
+        window._on_log_scroll('0.2', '0.8')
+
+        self.assertEqual(bar.calls, [('set', '0.2', '0.8')])
+
+    def test_invalid_fraction_is_ignored(self):
+        window, bar = self.make_window()
+
+        window._on_log_scroll('bad', '1.0')
+
+        self.assertEqual(bar.calls, [('set', 'bad', '1.0')])
+        self.assertFalse(window._log_scrollbar_shown)
 
 
 class ThemeBindingTests(unittest.TestCase):

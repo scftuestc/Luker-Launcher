@@ -63,7 +63,7 @@ class ThemeTests(unittest.TestCase):
 
         self.assertEqual(tuple(colors), THEME_COLOR_KEYS)
         self.assertEqual(THEME_COLOR_KEYS, REQUIRED_COLOR_KEYS)
-        for metadata in ("name", "short_name", "icon", "card_image", "log_image", "motto"):
+        for metadata in ("name", "short_name", "icon", "card_image", "log_image"):
             self.assertNotIn(metadata, colors)
 
     def test_legacy_aliases_point_to_existing_themes(self):
@@ -86,10 +86,6 @@ class ThemeTests(unittest.TestCase):
         self.assertEqual(
             theme["log_image"],
             "luker_launcher/assets/deepseek/character.png",
-        )
-        self.assertEqual(
-            theme["motto"],
-            "我有点笨拙却愿意一遍遍陪你改到顺眼为止",
         )
 
     def test_returned_theme_is_a_copy(self):

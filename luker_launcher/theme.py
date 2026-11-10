@@ -116,7 +116,6 @@ PRESET_THEMES: dict[str, dict[str, str]] = {
         'icon': 'wave',
         'card_image': 'luker_launcher/assets/deepseek/card.png',
         'log_image': 'luker_launcher/assets/deepseek/character.png',
-        'motto': '我有点笨拙却愿意一遍遍陪你改到顺眼为止',
         'bg': '#080f1d',
         'card': '#101c30',
         'card_hover': '#182845',

@@ -27,11 +27,7 @@ from luker_launcher.theme import (
     shade_color,
 )
 from luker_launcher.ui.buttons import ButtonRole, button_colors, make_button
-from luker_launcher.ui.character_art import (
-    render_character,
-    render_character_with_motto,
-    resolve_motto_font_file,
-)
+from luker_launcher.ui.character_art import render_character
 from luker_launcher.ui.icons import TransportIcon, toolbar_icon, transport_icon
 from luker_launcher.ui.log_view.display import LogDisplay, configure_log_tags
 from luker_launcher.ui.log_view.search import SearchBar
@@ -41,7 +37,6 @@ from luker_launcher.ui.theme_assets import theme_log_image
 from luker_launcher.ui.tokens import (
     CHARACTER_IMAGE_HEIGHT,
     CHARACTER_IMAGE_WIDTH,
-    CHARACTER_MOTTO_WRAP,
     CHARACTER_PANEL_PADDING,
     CHARACTER_PANEL_WIDTH,
     CONTROL_HEIGHT_LG,
@@ -53,13 +48,11 @@ from luker_launcher.ui.tokens import (
     FONT_BODY,
     FONT_DISPLAY,
     FONT_HEADING,
-    FONT_MOTTO,
     FONT_SMALL,
     FONT_TITLE,
     GAP_BRAND,
     GAP_GRID,
     GAP_INLINE,
-    GAP_INLINE_SM,
     GAP_SECTION,
     GAP_WINDOW,
     GAP_XS,
@@ -89,7 +82,6 @@ from luker_launcher.ui.tokens import (
 from luker_launcher.ui.window_utils import (
     apply_window_rounding,
     bind_window_drag,
-    get_motto_font,
     get_ui_font,
     sync_window_blur,
 )
@@ -137,21 +129,25 @@ def fit_character_size(
     native_size: tuple[int, int],
     panel_width: int,
     panel_height: int,
-    reserved_height: int,
     padding: int,
 ) -> tuple[int, int]:
-    """在扣除座右铭和内边距后的区域内等比缩放角色立绘。"""
+    """在内边距内等比缩放角色立绘，尽量填满右侧面板。"""
     native_width, native_height = native_size
     if native_width <= 0 or native_height <= 0:
         return (1, 1)
 
     available_width = max(1, panel_width - padding * 2)
-    available_height = max(1, panel_height - reserved_height - padding * 2)
+    available_height = max(1, panel_height - padding * 2)
     scale = min(available_width / native_width, available_height / native_height)
     return (
         max(1, round(native_width * scale)),
         max(1, round(native_height * scale)),
     )
+
+
+def scrollbar_visible(first: float, last: float) -> bool:
+    """内容超出可视区域时才显示滚动条。"""
+    return first > 0.0 or last < 1.0
 
 
 def widget_scaling(widget: object) -> float:
@@ -231,7 +227,6 @@ class LogWindow(ctk.CTk):
         config.add_theme_change_callback(self._on_theme_change)
         config.add_blur_change_callback(self._on_blur_change)
         self.UI_FONT = get_ui_font()
-        self.MOTTO_FONT = get_motto_font()
 
     def _init_window(self) -> None:
         self.withdraw()
@@ -279,9 +274,6 @@ class LogWindow(ctk.CTk):
         self._error_reveal_job: str | None = None
 
         self._character_source: Image.Image | None = None
-        self._character_motto = ''
-        self._motto_font_path: str | None = None
-        self._character_render_key: tuple[object, ...] | None = None
         self._character_display_size: tuple[int, int] | None = None
         self._character_display_scale: float | None = None
         self._character_fit_job: str | None = None
@@ -841,24 +833,8 @@ class LogWindow(ctk.CTk):
             column=0,
             sticky="nsew",
             padx=CHARACTER_PANEL_PADDING,
-            pady=(CHARACTER_PANEL_PADDING, 0),
+            pady=CHARACTER_PANEL_PADDING,
         )
-        self._motto_label = ctk.CTkLabel(
-            self._character_panel,
-            text="",
-            font=ctk.CTkFont(family=self.MOTTO_FONT, size=FONT_MOTTO),
-            text_color=self.COLORS['text_dim'],
-            justify="center",
-            wraplength=CHARACTER_MOTTO_WRAP,
-        )
-        self._motto_label.grid(
-            row=1,
-            column=0,
-            sticky="ew",
-            padx=PAD_CARD_COMPACT,
-            pady=(GAP_INLINE_SM, PAD_CARD_COMPACT),
-        )
-        self._bind_theme(self._motto_label, text_color='text_dim')
         self._character_panel.bind(
             '<Configure>',
             self._on_character_panel_configure,
@@ -913,17 +889,31 @@ class LogWindow(ctk.CTk):
             text_color=self.COLORS['text'],
             font=ctk.CTkFont(family=self.UI_FONT, size=FONT_BODY),
             corner_radius=RADIUS_CARD,
-            scrollbar_button_color=self.COLORS['border'],
-            scrollbar_button_hover_color=self.COLORS['accent'],
+            activate_scrollbars=False,
         )
         self.log_text.pack(fill="both", expand=True, padx=PAD_CARD_COMPACT, pady=PAD_CARD_COMPACT)
-        self._bind_theme(
-            self.log_text,
-            text_color='text',
-            scrollbar_button_color='border',
-            scrollbar_button_hover_color='accent',
-        )
+        self._bind_theme(self.log_text, text_color='text')
         self._get_textbox().configure(state="disabled")
+
+        # 滚动条独立放在窗口最右侧，不跟随文本区移动
+        self._log_scrollbar = ctk.CTkScrollbar(
+            body,
+            width=10,
+            fg_color=self.COLORS['card'],
+            button_color=self.COLORS['border'],
+            button_hover_color=self.COLORS['accent'],
+            command=self._get_textbox().yview,
+        )
+        self._log_scrollbar.grid(row=0, column=2, sticky="ns", padx=(GAP_GRID, 0))
+        self._log_scrollbar.grid_remove()
+        self._log_scrollbar_shown = False
+        self._bind_theme(
+            self._log_scrollbar,
+            fg_color='card',
+            button_color='border',
+            button_hover_color='accent',
+        )
+        self._get_textbox().configure(yscrollcommand=self._on_log_scroll)
 
         # 空/加载遮罩：覆盖在文本区中央，不写入 Text，避免污染搜索和计数
         self._overlay = ctk.CTkFrame(self._text_panel, fg_color="transparent")
@@ -954,52 +944,24 @@ class LogWindow(ctk.CTk):
         configure_log_tags(self._get_textbox(), self.COLORS)
 
     def _apply_theme_art(self) -> None:
-        """按当前主题显示或隐藏右侧角色立绘和座右铭。"""
+        """按当前主题显示或隐藏右侧角色立绘。"""
         panel = self.__dict__.get('_character_panel')
         label = self.__dict__.get('_character_label')
         if panel is None or label is None:
             return
 
         theme = PRESET_THEMES.get(config.theme_name, {})
-        motto = theme.get('motto', '')
         image = theme_log_image(theme)
-        motto_label = self.__dict__.get('_motto_label')
-
-        self._character_motto = ''
-        self._motto_font_path = None
-        self._character_render_key = None
-
-        if image is None:
-            self._character_source = None
-            self._character_display_size = None
-            self._character_display_scale = None
-            self._character_image = None
-            if motto_label is not None:
-                motto_label.configure(text='')
-                motto_label.grid_remove()
-            panel.grid_remove()
-            return
-
-        font_path = resolve_motto_font_file(self.MOTTO_FONT) if motto else None
-        overlay = bool(motto and font_path)
-        self._character_source = image
-        self._character_motto = motto if overlay else ''
-        self._motto_font_path = font_path if overlay else None
         self._character_display_size = None
         self._character_display_scale = None
         self._character_image = None
 
-        if motto_label is not None:
-            if overlay:
-                # 文字会烘焙进立绘，独立行不再占位
-                motto_label.configure(text='')
-                motto_label.grid_remove()
-            else:
-                motto_label.configure(text=motto)
-                if motto:
-                    motto_label.grid()
-                else:
-                    motto_label.grid_remove()
+        if image is None:
+            self._character_source = None
+            panel.grid_remove()
+            return
+
+        self._character_source = image
         panel.grid()
         self._fit_character_art()
 
@@ -1020,19 +982,14 @@ class LogWindow(ctk.CTk):
         self._fit_character_art()
 
     def _fit_character_art(self) -> None:
-        """按面板实际高度等比放大立绘，填满座右铭上方的空间。"""
+        """按面板实际尺寸等比放大立绘，填满右侧面板。"""
         panel = self.__dict__.get('_character_panel')
         label = self.__dict__.get('_character_label')
         source = self.__dict__.get('_character_source')
         if panel is None or label is None or source is None:
             return
 
-        motto = self.__dict__.get('_character_motto', '')
-        font_path = self.__dict__.get('_motto_font_path')
-        overlay = bool(motto and font_path)
-        text_color = self.__dict__.get('COLORS', {}).get('text', '#eaf4ff') if overlay else ''
-
-        # 面板与座右铭的 winfo_* 都是物理像素；CTkImage 的 size 是逻辑像素，
+        # 面板的 winfo_* 是物理像素；CTkImage 的 size 是逻辑像素，
         # 直接混用会让图片在 125%/150% 缩放下被放大两次并裁切。
         scale = widget_scaling(panel)
         try:
@@ -1046,49 +1003,18 @@ class LogWindow(ctk.CTk):
         else:
             panel_width = max(1, round(panel_width / scale))
             panel_height = max(1, round(panel_height / scale))
-            reserved_height = 0
-            motto_label = self.__dict__.get('_motto_label')
-            if not overlay and motto_label is not None:
-                try:
-                    mapped = bool(motto_label.winfo_ismapped())
-                    if mapped:
-                        reserved_height = (
-                            round(motto_label.winfo_reqheight() / scale)
-                            + GAP_INLINE_SM
-                            + PAD_CARD_COMPACT
-                        )
-                except (AttributeError, tk.TclError):
-                    reserved_height = 0
             size = fit_character_size(
                 source.size,
                 panel_width,
                 panel_height,
-                reserved_height,
                 CHARACTER_PANEL_PADDING,
             )
 
-        render_key = (size, scale, motto if overlay else '', font_path, text_color)
-        if (
-            size == self._character_display_size
-            and scale == self._character_display_scale
-            and render_key == self._character_render_key
-        ):
+        if size == self._character_display_size and scale == self._character_display_scale:
             return
         self._character_display_size = size
         self._character_display_scale = scale
-        self._character_render_key = render_key
-        if overlay and font_path is not None:
-            rendered = render_character_with_motto(
-                source,
-                size,
-                scale,
-                motto,
-                font_path,
-                text_color,
-                font_size=FONT_MOTTO,
-            )
-        else:
-            rendered = render_character(source, size, scale)
+        rendered = render_character(source, size, scale)
         self._character_image = ctk.CTkImage(
             light_image=rendered,
             dark_image=rendered,
@@ -1200,6 +1126,19 @@ class LogWindow(ctk.CTk):
     def _get_textbox(self) -> tk.Text:
         """返回 CTkTextbox 内部的 Text 控件；私有属性只在这里访问。"""
         return self.log_text._textbox
+
+    def _on_log_scroll(self, first: float, last: float) -> None:
+        """同步窗口最右侧的滚动条；内容未超出时收起，避免常驻空轨道。"""
+        with contextlib.suppress(tk.TclError, ValueError):
+            self._log_scrollbar.set(first, last)
+            visible = scrollbar_visible(float(first), float(last))
+            if visible == self._log_scrollbar_shown:
+                return
+            self._log_scrollbar_shown = visible
+            if visible:
+                self._log_scrollbar.grid()
+            else:
+                self._log_scrollbar.grid_remove()
 
     def _build_statusbar(self, parent: tk.Misc) -> None:
         self._statusbar = self._make_card(

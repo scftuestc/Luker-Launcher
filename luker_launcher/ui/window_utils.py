@@ -246,20 +246,3 @@ def get_ui_font() -> str:
         ],
         'Microsoft YaHei',
     )
-
-
-def get_motto_font() -> str:
-    """返回座右铭用的书法字体；系统缺少时回退到界面字体。"""
-    return _first_available_font(
-        [
-            '华文行楷',
-            'STXingkai',
-            '方正舒体',
-            'FZShuTi',
-            '华文楷体',
-            'STKaiti',
-            '楷体',
-            'KaiTi',
-        ],
-        get_ui_font(),
-    )
