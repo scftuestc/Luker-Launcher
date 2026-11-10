@@ -27,7 +27,11 @@ from luker_launcher.theme import (
     shade_color,
 )
 from luker_launcher.ui.buttons import ButtonRole, button_colors, make_button
-from luker_launcher.ui.character_art import render_character
+from luker_launcher.ui.character_art import (
+    render_character,
+    render_character_with_motto,
+    resolve_motto_font_file,
+)
 from luker_launcher.ui.icons import TransportIcon, toolbar_icon, transport_icon
 from luker_launcher.ui.log_view.display import LogDisplay, configure_log_tags
 from luker_launcher.ui.log_view.search import SearchBar
@@ -275,6 +279,9 @@ class LogWindow(ctk.CTk):
         self._error_reveal_job: str | None = None
 
         self._character_source: Image.Image | None = None
+        self._character_motto = ''
+        self._motto_font_path: str | None = None
+        self._character_render_key: tuple[object, ...] | None = None
         self._character_display_size: tuple[int, int] | None = None
         self._character_display_scale: float | None = None
         self._character_fit_job: str | None = None
@@ -954,28 +961,45 @@ class LogWindow(ctk.CTk):
             return
 
         theme = PRESET_THEMES.get(config.theme_name, {})
-        motto_label = self.__dict__.get('_motto_label')
         motto = theme.get('motto', '')
-        if motto_label is not None:
-            motto_label.configure(text=motto)
-            if motto:
-                motto_label.grid()
-            else:
-                motto_label.grid_remove()
-
         image = theme_log_image(theme)
+        motto_label = self.__dict__.get('_motto_label')
+
+        self._character_motto = ''
+        self._motto_font_path = None
+        self._character_render_key = None
+
         if image is None:
             self._character_source = None
             self._character_display_size = None
             self._character_display_scale = None
             self._character_image = None
+            if motto_label is not None:
+                motto_label.configure(text='')
+                motto_label.grid_remove()
             panel.grid_remove()
             return
 
+        font_path = resolve_motto_font_file(self.MOTTO_FONT) if motto else None
+        overlay = bool(motto and font_path)
         self._character_source = image
+        self._character_motto = motto if overlay else ''
+        self._motto_font_path = font_path if overlay else None
         self._character_display_size = None
         self._character_display_scale = None
         self._character_image = None
+
+        if motto_label is not None:
+            if overlay:
+                # 文字会烘焙进立绘，独立行不再占位
+                motto_label.configure(text='')
+                motto_label.grid_remove()
+            else:
+                motto_label.configure(text=motto)
+                if motto:
+                    motto_label.grid()
+                else:
+                    motto_label.grid_remove()
         panel.grid()
         self._fit_character_art()
 
@@ -1003,6 +1027,11 @@ class LogWindow(ctk.CTk):
         if panel is None or label is None or source is None:
             return
 
+        motto = self.__dict__.get('_character_motto', '')
+        font_path = self.__dict__.get('_motto_font_path')
+        overlay = bool(motto and font_path)
+        text_color = self.__dict__.get('COLORS', {}).get('text', '#eaf4ff') if overlay else ''
+
         # 面板与座右铭的 winfo_* 都是物理像素；CTkImage 的 size 是逻辑像素，
         # 直接混用会让图片在 125%/150% 缩放下被放大两次并裁切。
         scale = widget_scaling(panel)
@@ -1019,7 +1048,7 @@ class LogWindow(ctk.CTk):
             panel_height = max(1, round(panel_height / scale))
             reserved_height = 0
             motto_label = self.__dict__.get('_motto_label')
-            if motto_label is not None:
+            if not overlay and motto_label is not None:
                 try:
                     mapped = bool(motto_label.winfo_ismapped())
                     if mapped:
@@ -1038,11 +1067,28 @@ class LogWindow(ctk.CTk):
                 CHARACTER_PANEL_PADDING,
             )
 
-        if size == self._character_display_size and scale == self._character_display_scale:
+        render_key = (size, scale, motto if overlay else '', font_path, text_color)
+        if (
+            size == self._character_display_size
+            and scale == self._character_display_scale
+            and render_key == self._character_render_key
+        ):
             return
         self._character_display_size = size
         self._character_display_scale = scale
-        rendered = render_character(source, size, scale)
+        self._character_render_key = render_key
+        if overlay and font_path is not None:
+            rendered = render_character_with_motto(
+                source,
+                size,
+                scale,
+                motto,
+                font_path,
+                text_color,
+                font_size=FONT_MOTTO,
+            )
+        else:
+            rendered = render_character(source, size, scale)
         self._character_image = ctk.CTkImage(
             light_image=rendered,
             dark_image=rendered,

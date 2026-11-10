@@ -1,8 +1,16 @@
 import unittest
+from unittest.mock import patch
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
-from luker_launcher.ui.character_art import left_fade_mask, render_character, smoothstep
+from luker_launcher.ui.character_art import (
+    left_fade_mask,
+    render_character,
+    render_character_with_motto,
+    resolve_motto_font_file,
+    smoothstep,
+    split_motto_lines,
+)
 
 
 class SmoothstepTests(unittest.TestCase):
@@ -58,6 +66,65 @@ class RenderCharacterTests(unittest.TestCase):
 
         self.assertEqual(rendered.getchannel("A").getpixel((19, 0)), 0)
         self.assertEqual(rendered.getchannel("A").getpixel((19, 10)), 255)
+
+
+class MottoFontTests(unittest.TestCase):
+    def test_missing_font_returns_none(self):
+        with patch(
+            "luker_launcher.ui.character_art.ImageFont.truetype",
+            side_effect=OSError("missing"),
+        ):
+            self.assertIsNone(resolve_motto_font_file("华文行楷"))
+
+    def test_known_family_resolves_when_installed(self):
+        font = resolve_motto_font_file("华文行楷")
+        if font is None:
+            self.skipTest("当前系统没有华文行楷")
+        self.assertTrue(font)
+
+
+class MottoLayoutTests(unittest.TestCase):
+    def _font(self) -> ImageFont.FreeTypeFont:
+        file = resolve_motto_font_file("Microsoft YaHei")
+        if file is None:
+            self.skipTest("当前系统没有可用的中文字体")
+        return ImageFont.truetype(file, 15)
+
+    def test_split_motto_lines_balances_two_lines(self):
+        font = self._font()
+        draw = ImageDraw.Draw(Image.new("RGBA", (300, 100)))
+        text = "我有点笨拙，却愿意一遍遍陪你改到顺眼为止。"
+
+        lines = split_motto_lines(text, draw, font, 200)
+
+        self.assertEqual(len(lines), 2)
+        for line in lines:
+            self.assertLessEqual(draw.textlength(line, font=font), 200)
+
+    def test_overlay_adds_scrim_and_keeps_left_fade(self):
+        font_file = resolve_motto_font_file("Microsoft YaHei")
+        if font_file is None:
+            self.skipTest("当前系统没有可用的中文字体")
+        source = Image.new("RGBA", (240, 300), (20, 30, 40, 255))
+
+        plain = render_character(source, (240, 300), 1.0)
+        rendered = render_character_with_motto(
+            source,
+            (240, 300),
+            1.0,
+            "我有点笨拙，却愿意一遍遍陪你改到顺眼为止。",
+            font_file,
+            "#eaf4ff",
+            font_size=15,
+        )
+
+        self.assertEqual(rendered.size, (240, 300))
+        self.assertEqual(rendered.getchannel("A").getpixel((0, 150)), 0)
+        self.assertLess(
+            sum(rendered.getpixel((120, 290))[:3]),
+            sum(plain.getpixel((120, 290))[:3]),
+        )
+        self.assertEqual(rendered.getpixel((120, 20)), plain.getpixel((120, 20)))
 
 
 if __name__ == "__main__":

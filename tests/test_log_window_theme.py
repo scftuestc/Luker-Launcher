@@ -118,19 +118,48 @@ class ThemeArtTests(unittest.TestCase):
         window._character_label = label
         window._motto_label = motto
         window._character_source = None
+        window._character_motto = ''
+        window._motto_font_path = None
+        window._character_render_key = None
         window._character_display_size = None
         window._character_display_scale = None
         window._character_fit_job = None
         window._character_image = None
+        window.MOTTO_FONT = '华文行楷'
         return window, panel, label, motto
 
-    def test_deepseek_theme_shows_character_and_motto(self):
+    def test_deepseek_theme_overlays_motto_on_character(self):
         window, panel, label, motto = self.make_window()
         source = SimpleNamespace(size=(528, 704))
 
         with (
             patch.object(log_window, 'config', SimpleNamespace(theme_name='deepseek')),
             patch.object(log_window, 'theme_log_image', return_value=source),
+            patch.object(log_window, 'resolve_motto_font_file', return_value='fake.ttf'),
+            patch.object(
+                log_window,
+                'render_character_with_motto',
+                side_effect=lambda image, *args, **kwargs: image,
+            ),
+            patch.object(log_window.ctk, 'CTkImage', FakeCTkImage),
+        ):
+            window._apply_theme_art()
+
+        self.assertEqual(panel.shown, 1)
+        self.assertIsNotNone(window._character_image)
+        self.assertIn('image', label.options)
+        self.assertEqual(motto.options['text'], '')
+        self.assertEqual(motto.removed, 1)
+        self.assertEqual(window._character_display_size, (294, 392))
+
+    def test_deepseek_without_motto_font_keeps_motto_row(self):
+        window, panel, label, motto = self.make_window()
+        source = SimpleNamespace(size=(528, 704))
+
+        with (
+            patch.object(log_window, 'config', SimpleNamespace(theme_name='deepseek')),
+            patch.object(log_window, 'theme_log_image', return_value=source),
+            patch.object(log_window, 'resolve_motto_font_file', return_value=None),
             patch.object(
                 log_window,
                 'render_character',
@@ -141,7 +170,6 @@ class ThemeArtTests(unittest.TestCase):
             window._apply_theme_art()
 
         self.assertEqual(panel.shown, 1)
-        self.assertIsNotNone(window._character_image)
         self.assertIn('image', label.options)
         self.assertEqual(motto.options['text'], PRESET_THEMES['deepseek']['motto'])
         self.assertEqual(motto.shown, 1)
@@ -219,6 +247,9 @@ class CharacterScalingTests(unittest.TestCase):
         window._character_label = label
         window._motto_label = motto
         window._character_source = SimpleNamespace(size=(528, 704))
+        window._character_motto = ''
+        window._motto_font_path = None
+        window._character_render_key = None
         window._character_display_size = None
         window._character_display_scale = None
         window._character_fit_job = None
