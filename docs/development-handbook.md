@@ -458,7 +458,7 @@ main.py
 - 只有点击“检查更新”才访问 GitHub/`git fetch`；本地 dirty/缺 npm/路径不匹配/Git 失败都是 blocker。
 - 更新目标必须是完整 40 位 SHA；`checkout --detach` 后 npm 安装；失败回滚代码并尝试恢复依赖。
 - npm 参数与 `Start.bat` 一致，额外 `NODE_ENV=production`；只作用于 npm，不改 `node server.js`。
-- `Start.bat` 还会在 `better_sqlite3.node` 缺失时执行 `npm run storage:install-sqlite`；启动器当前未执行（P1，批次 2 补齐）。
+- `Start.bat` 还会在 `better_sqlite3.node` 缺失时执行 `npm run storage:install-sqlite`；启动器在 `_run_npm` 安装成功后执行同一条件步骤（`services/version.py`）。
 - `UpdateCoordinator` 用 `version_check_seq` 丢弃过期结果；更新阶段走 `post_control`。
 
 **日志管线**
@@ -527,7 +527,7 @@ main.py
 | ADR-04 | 就绪=连续 2 次成功 + READY 粘滞 | 进程活≠服务可用；避免呼吸灯抖动 | 不要每次探测直接 apply | `services/readiness.py` |
 | ADR-05 | 配置归一化/原子写入/BOM/端口缓存 | 手改配置、半截写入、每秒读盘 | 不要用 yaml 整体解析只取端口 | `config.py` |
 | ADR-06 | 路径切换只在停止时进行 | 运行中热切换会中断/端口冲突 | 不要运行中替换 manager | `process_coordinator.py:56-75` |
-| ADR-07 | 更新固定完整 SHA、dirty 检查、可回滚 | 防注入、防意外提交、半更新可恢复；Start.bat 的 `storage:install-sqlite` 条件步骤待补（批次 2） | 不要改 npm 参数/短 SHA/给 node 加 NODE_ENV | `services/version.py:734-808` |
+| ADR-07 | 更新固定完整 SHA、dirty 检查、可回滚 | 防注入、防意外提交、半更新可恢复；已补 Start.bat 的 `storage:install-sqlite` 条件步骤 | 不要改 npm 参数/短 SHA/给 node 加 NODE_ENV | `services/version.py:734-808` |
 | ADR-08 | 移除 GCL | 无端口探测/健康检查/多实例，接受 Luker `Start.bat` 会重复启动 | 不要重新引入 | `b840bf1` |
 | ADR-09 | 日志窗口固定尺寸 | 主题/立绘对尺寸敏感；跨屏仍适配 | 不要未经确认恢复拖拽缩放 | `log_window.py:242` |
 | ADR-10 | 主题卡片悬停放大已回滚 | 残影修复成本高；现在只颜色过渡 | 不要加回 relwidth/图片放大 | `e9bc44f` |

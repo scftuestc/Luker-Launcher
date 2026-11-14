@@ -61,7 +61,7 @@
 
 - 显示当前版本、最新正式 Release 和默认分支最新提交；完整哈希写入日志窗口，检查结果在本次运行期间保留。
 - 只有点击“检查更新”才会访问 GitHub 和 `git fetch`；更新要求 Git clone、Git 和 npm。
-- 更新会停止 Luker、检出目标提交，按 `Start.bat` 的 npm 参数安装依赖；`Start.bat` 还会在 `better-sqlite3` 原生模块缺失时执行 `npm run storage:install-sqlite`，启动器当前尚未执行该条件步骤（见文档 §6/§7）；完成后按原状态重启；有已跟踪文件的未提交修改时禁止更新。
+- 更新会停止 Luker、检出目标提交，按 `Start.bat` 的 npm 参数安装依赖；若 `better-sqlite3` 原生模块缺失，再执行 `npm run storage:install-sqlite`；完成后按原状态重启；有已跟踪文件的未提交修改时禁止更新。
 - 未跟踪的 `data/`、`node_modules/` 不会被删除；失败会尝试回滚，回滚失败时不启动 Luker；当前版本领先最新提交时禁用更新。
 
 ### 配置文件

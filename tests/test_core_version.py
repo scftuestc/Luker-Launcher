@@ -789,6 +789,7 @@ class RunNpmTests(unittest.TestCase):
         npm = "C:/Program Files/nodejs/npm.CMD"
         with (
             patch.object(version, "_npm_executable", return_value=npm),
+            patch.object(version, "_needs_storage_install", return_value=False),
             patch.object(version.subprocess, "Popen", return_value=process) as popen,
         ):
             version._run_npm(Path("C:/Luker"))
@@ -806,6 +807,7 @@ class RunNpmTests(unittest.TestCase):
         with (
             patch.dict(version.os.environ, {"LUKER_TEST_SENTINEL": "1"}),
             patch.object(version, "_npm_executable", return_value="npm.cmd"),
+            patch.object(version, "_needs_storage_install", return_value=False),
             patch.object(version.subprocess, "Popen", return_value=process) as popen,
         ):
             version._run_npm(Path("C:/Luker"))
@@ -820,6 +822,61 @@ class RunNpmTests(unittest.TestCase):
             patch.object(version, "_npm_executable", return_value="npm.cmd"),
             patch.object(version.subprocess, "Popen", return_value=process),
             self.assertRaisesRegex(VersionError, "npm install 失败"),
+        ):
+            version._run_npm(Path("C:/Luker"))
+
+    def test_needs_storage_install_checks_native_module_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            self.assertTrue(version._needs_storage_install(repo))
+            native = repo / version.SQLITE_NATIVE_PATH
+            native.parent.mkdir(parents=True)
+            native.write_bytes(b"")
+            self.assertFalse(version._needs_storage_install(repo))
+
+    def test_runs_storage_install_when_native_module_missing(self):
+        with (
+            patch.object(version, "_npm_executable", return_value="npm.cmd"),
+            patch.object(version, "_needs_storage_install", return_value=True),
+            patch.object(
+                version,
+                "_run_npm_process",
+                side_effect=[completed(), completed()],
+            ) as run,
+        ):
+            version._run_npm(Path("C:/Luker"))
+
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args_list[0].args[0][1], "install")
+        self.assertEqual(
+            run.call_args_list[1].args[0][1:],
+            ["run", "storage:install-sqlite"],
+        )
+        self.assertEqual(run.call_args_list[1].kwargs["env"]["NODE_ENV"], "production")
+
+    def test_skips_storage_install_when_native_module_present(self):
+        with (
+            patch.object(version, "_npm_executable", return_value="npm.cmd"),
+            patch.object(version, "_needs_storage_install", return_value=False),
+            patch.object(version, "_run_npm_process", return_value=completed()) as run,
+        ):
+            version._run_npm(Path("C:/Luker"))
+
+        run.assert_called_once()
+
+    def test_storage_install_failure_raises(self):
+        with (
+            patch.object(version, "_npm_executable", return_value="npm.cmd"),
+            patch.object(version, "_needs_storage_install", return_value=True),
+            patch.object(
+                version,
+                "_run_npm_process",
+                side_effect=[
+                    completed(),
+                    completed(returncode=1, stderr="sqlite boom"),
+                ],
+            ),
+            self.assertRaisesRegex(VersionError, "SQLite 存储扩展安装失败"),
         ):
             version._run_npm(Path("C:/Luker"))
 

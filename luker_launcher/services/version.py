@@ -42,6 +42,10 @@ NPM_INSTALL_ARGS = (
     "--omit=dev",
     "--ignore-scripts",
 )
+STORAGE_INSTALL_ARGS = ("run", "storage:install-sqlite")
+SQLITE_NATIVE_PATH = (
+    Path("node_modules") / "better-sqlite3" / "build" / "Release" / "better_sqlite3.node"
+)
 
 Relation = Literal["up_to_date", "ahead", "behind", "diverged", "unknown"]
 TargetKind = Literal["release", "commit"]
@@ -701,6 +705,25 @@ def _run_npm_process(
     )
 
 
+def _needs_storage_install(repo: Path) -> bool:
+    """Start.bat 只在 better-sqlite3 原生模块缺失时补装存储扩展。"""
+    return not (repo / SQLITE_NATIVE_PATH).is_file()
+
+
+def _run_storage_install(
+    repo: Path,
+    npm: str,
+    env: dict[str, str],
+) -> None:
+    command = [npm, *STORAGE_INSTALL_ARGS]
+    result = _run_npm_process(command, repo, env=env)
+    if result.returncode != 0:
+        detail = _cut(result.stderr or result.stdout)
+        raise VersionError(
+            f"SQLite 存储扩展安装失败：{detail}" if detail else "SQLite 存储扩展安装失败"
+        )
+
+
 def _run_npm(repo: Path) -> None:
     npm = _npm_executable()
     if npm is None:
@@ -713,6 +736,8 @@ def _run_npm(repo: Path) -> None:
     if result.returncode != 0:
         detail = _cut(result.stderr or result.stdout)
         raise VersionError(f"npm install 失败：{detail}" if detail else "npm install 失败")
+    if _needs_storage_install(repo):
+        _run_storage_install(repo, npm, env)
 
 
 def _rollback(repo: Path, old_head: str, old_branch: str | None) -> bool:
