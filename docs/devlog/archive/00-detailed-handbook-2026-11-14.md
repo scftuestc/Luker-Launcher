@@ -5,9 +5,9 @@
 > **结构版本**：`2.0`（2026-11-14 快照；当前主手册为 `4.0`）
 > **来源**：原 `development-history-full-2026-11-14.md` §0–§9
 > **事实截止**：2026-11-14
-> **权威性**：低于 [`../development-handbook.md`](../development-handbook.md)；冲突时以主手册、代码、测试为准。
+> **权威性**：低于 [`../../handbook/README.md`](../../handbook/README.md) 与 [`../STATUS.md`](../STATUS.md)；冲突时以代码、测试、当前手册为准。
 >
-> **快照说明**：本文件保留 2026-11-14 当时的详细正文，包括当时“本文件在 `.zcode/` 下、不进入版本库”等规则。那些规则已被主手册 §0 取代；本文件只读，不再更新。
+> **快照说明**：本文件保留 2026-11-14 当时的详细正文，包括当时“本文件在 `.zcode/` 下、不进入版本库”等规则。那些规则已被 [`../../handbook/README.md`](../../handbook/README.md) 与 [`../README.md`](../README.md) 取代；本文件只读，不再更新。
 
 ---
 
@@ -1078,5 +1078,5 @@ call pyinstaller launcher.spec --noconfirm --distpath .
 ---
 
 > 本册是 2026-11-14 的详细手册快照，只读。
-> §10 的详细日志已按版本段拆分到 `01`–`04`；提交覆盖图见 [`../development-handbook.md`](../development-handbook.md) §10.1。
-> 导航：[归档索引](README.md) · [条目索引](INDEX.md) · [主手册](../development-handbook.md)
+> §10 的详细日志已合并为 [`01-v1.0-v3.3.md`](01-v1.0-v3.3.md) 与 [`02-v3.4-v4.0.md`](02-v3.4-v4.0.md)；当前日志见 [`../current.md`](../current.md)。
+> 导航：[归档说明](README.md) · [条目索引](../INDEX.md) · [架构手册](../../handbook/README.md)

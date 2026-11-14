@@ -124,8 +124,9 @@ luker_launcher/         启动入口、Coordinator、服务、进程、日志、
 
 长期开发记录、架构决策、可复用组件、开放问题与交接日志见 [`docs/`](docs/README.md)：
 
-- 日常开发/交接：从 [`docs/development-handbook.md`](docs/development-handbook.md) 开始（唯一需要写入的文档）。
-- 历史细节：按版本段查 [`docs/archive/`](docs/archive/README.md)。
+- 架构手册（稳定知识）：从 [`docs/handbook/README.md`](docs/handbook/README.md) 开始。
+- 日常状态/待办/日志：读 [`docs/devlog/STATUS.md`](docs/devlog/STATUS.md) 和 [`docs/devlog/current.md`](docs/devlog/current.md)。
+- 历史细节：按版本段查 [`docs/devlog/archive/`](docs/devlog/archive/README.md)。
 
 ### 打包
 

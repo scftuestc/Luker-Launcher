@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the structure of docs/: append marker, IDs, links, tables, archive counts."""
+"""Validate the two-class docs layout: handbook, devlog, archive, IDs, links, tables."""
 
 from __future__ import annotations
 
@@ -9,50 +9,148 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
-HANDBOOK = DOCS / "development-handbook.md"
-ARCHIVE = DOCS / "archive"
-INDEX = ARCHIVE / "INDEX.md"
+HANDBOOK = DOCS / "handbook"
+DEVLOG = DOCS / "devlog"
+ARCHIVE = DEVLOG / "archive"
+STATUS = DEVLOG / "STATUS.md"
+CURRENT = DEVLOG / "current.md"
+INDEX = DEVLOG / "INDEX.md"
+
+REQUIRED = [
+    DOCS / "README.md",
+    HANDBOOK / "README.md",
+    *[
+        HANDBOOK / name
+        for name in [
+            "01-baseline.md",
+            "02-architecture.md",
+            "03-decisions.md",
+            "04-components.md",
+            "05-lessons.md",
+            "06-testing.md",
+            "07-reference.md",
+        ]
+    ],
+    DEVLOG / "README.md",
+    STATUS,
+    CURRENT,
+    INDEX,
+    ARCHIVE / "README.md",
+    ARCHIVE / "00-detailed-handbook-2026-11-14.md",
+    ARCHIVE / "01-v1.0-v3.3.md",
+    ARCHIVE / "02-v3.4-v4.0.md",
+]
+
+ARCHIVE_COUNTS = {
+    "01-v1.0-v3.3.md": 13,
+    "02-v3.4-v4.0.md": 10,
+}
+DEV_RE = r"DEV-\d{8}-\d{2}"
 
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def check_layout() -> list[str]:
+    errors = [
+        f"missing required file: {path.relative_to(ROOT)}" for path in REQUIRED if not path.exists()
+    ]
+    for old in [DOCS / "development-handbook.md", DOCS / "archive"]:
+        if old.exists():
+            errors.append(f"legacy path still exists: {old.relative_to(ROOT)}")
+    return errors
+
+
 def check_marker(text: str) -> str | None:
     last = next((line for line in reversed(text.splitlines()) if line.strip()), "")
     if "新开发日志追加点" not in last:
-        return f"append marker is not the last non-empty line: {last!r}"
+        return f"current.md append marker is not the last non-empty line: {last!r}"
     return None
 
 
-def check_dev_ids(text: str) -> str | None:
-    ids = re.findall(r"^#### (DEV-\d{8}-\d{2}) \|", text, re.M)
+def check_control(current: str, status: str) -> str | None:
+    ids = re.findall(rf"^#### ({DEV_RE}) \|", current, re.M)
     if not ids:
-        return "no DEV entries"
+        return "current.md has no DEV entries"
     if len(ids) != len(set(ids)):
-        return "duplicate DEV IDs in handbook"
-    latest = re.search(r"\| 最新日志条目 \| `(DEV-\d{8}-\d{2})`", text)
-    next_id = re.search(r"\| 下一条日志 ID \| `(DEV-\d{8}-\d{2})`", text)
+        return "duplicate DEV IDs in current.md"
+    latest = re.search(rf"\| 最新日志条目 \| `({DEV_RE})` \|", status)
+    next_id = re.search(rf"\| 下一条日志 ID \| `({DEV_RE})` \|", status)
     if latest is None or next_id is None:
-        return "control table latest/next missing"
+        return "STATUS.md control table latest/next missing"
     if ids[-1] != latest.group(1):
-        return f"last DEV {ids[-1]} != latest {latest.group(1)}"
+        return f"last DEV {ids[-1]} != STATUS latest {latest.group(1)}"
     last_date, last_nn = latest.group(1)[4:12], int(latest.group(1)[-2:])
     next_date, next_nn = next_id.group(1)[4:12], int(next_id.group(1)[-2:])
     if next_date == last_date:
-        if next_nn != last_nn + 1:
-            return f"next DEV {next_id.group(1)} != {last_date}-{last_nn + 1:02d}"
+        expected = last_nn + 1
+        if next_nn != expected:
+            return f"next DEV {next_id.group(1)} != {last_date}-{expected:02d}"
     elif next_nn != 1:
         return f"cross-day next DEV should end with 01, got {next_id.group(1)}"
     return None
 
 
-def check_toc_anchors(text: str) -> str | None:
-    for anchor in ["handoff", *(f"sec-{index}" for index in range(11))]:
-        if f'<a id="{anchor}"></a>' not in text:
-            return f"missing TOC anchor {anchor}"
-    if "[交接摘要](#handoff)" not in text:
-        return "TOC handoff link missing"
+def index_sections(index: str) -> tuple[str, str]:
+    if "### 当前条目" not in index:
+        raise ValueError("INDEX.md missing current-entry section")
+    archived, live = index.split("### 当前条目", 1)
+    live = live.split("## 2.", 1)[0]
+    return archived, live
+
+
+def table_dev_ids(block: str) -> list[str]:
+    return re.findall(rf"^\| ({DEV_RE}) \|", block, re.M)
+
+
+def check_index(current: str, index: str) -> str | None:
+    current_ids = re.findall(rf"^#### ({DEV_RE}) \|", current, re.M)
+    try:
+        archived_block, live_block = index_sections(index)
+    except ValueError as exc:
+        return str(exc)
+    live_ids = table_dev_ids(live_block)
+    if live_ids != current_ids:
+        return f"INDEX current rows {live_ids} != current.md {current_ids}"
+    archived_ids = table_dev_ids(archived_block)
+    if len(archived_ids) != 23:
+        return f"INDEX archived rows {len(archived_ids)} != 23"
+    return None
+
+
+def check_archive() -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    all_ids: list[str] = []
+    for name, expected in ARCHIVE_COUNTS.items():
+        path = ARCHIVE / name
+        if not path.exists():
+            continue
+        matches = re.findall(
+            rf'<a id="(dev-\d{{8}}-\d{{2}})"></a>\n### ({DEV_RE}) \|',
+            read(path),
+        )
+        anchors = [anchor for anchor, _ in matches]
+        entries = [entry for _, entry in matches]
+        if len(entries) != expected:
+            errors.append(f"{name}: {len(entries)} entries != {expected}")
+        if anchors != [entry.lower() for entry in entries]:
+            errors.append(f"{name}: anchor/entry mismatch")
+        if len(entries) != len(set(entries)):
+            errors.append(f"{name}: duplicate DEV entries")
+        all_ids.extend(entries)
+    if len(all_ids) != len(set(all_ids)):
+        errors.append("duplicate DEV IDs across archive volumes")
+    return errors, all_ids
+
+
+def check_archive_index(index: str, archive_ids: list[str]) -> str | None:
+    try:
+        archived_block, _ = index_sections(index)
+    except ValueError as exc:
+        return str(exc)
+    if table_dev_ids(archived_block) != archive_ids:
+        return "INDEX archived rows != archive volume anchors"
     return None
 
 
@@ -88,66 +186,42 @@ def check_links(path: Path, text: str) -> str | None:
         target_path = path if not file_part else (path.parent / file_part).resolve()
         if not target_path.exists():
             return f"{path.relative_to(ROOT)}: missing file {target}"
-        if anchor and f'<a id="{anchor}"></a>' not in read(target_path):
+        if anchor and f'id="{anchor}"' not in read(target_path):
             relative = target_path.relative_to(ROOT)
             return f"{path.relative_to(ROOT)}: missing anchor #{anchor} in {relative}"
     return None
 
 
-def check_archive_counts(handbook: str) -> str | None:
-    expected = {"01": 5, "02": 8, "03": 3, "04": 7}
-    actual = {}
-    for part in sorted(ARCHIVE.glob("0[1-4]-*.md")):
-        ids = re.findall(
-            r'<a id="dev-\d{8}-\d{2}"></a>\n### (DEV-\d{8}-\d{2}) \|',
-            read(part),
-        )
-        actual[part.name[:2]] = len(ids)
-    if actual != expected:
-        return f"archive counts {actual} != {expected}"
-
-    index = read(INDEX)
-    if "### 当前条目" not in index:
-        return "INDEX.md missing current-entry section"
-    archived_block, live_block = index.split("### 当前条目", 1)
-    archived_rows = len(re.findall(r"^\| DEV-\d{8}-\d{2} \|", archived_block, re.M))
-    live_rows = len(re.findall(r"^\| DEV-\d{8}-\d{2} \|", live_block, re.M))
-    if archived_rows != 23:
-        return f"INDEX archived rows {archived_rows} != 23"
-
-    handbook_live = handbook.split("**当前条目（未归档，详情见 §10.3）**：", 1)[-1]
-    handbook_live = handbook_live.split("### 10.3", 1)[0]
-    handbook_live_rows = len(re.findall(r"^\| DEV-\d{8}-\d{2} \|", handbook_live, re.M))
-    if live_rows != handbook_live_rows:
-        return f"INDEX live rows {live_rows} != handbook live rows {handbook_live_rows}"
-    return None
-
-
 def main() -> int:
-    handbook = read(HANDBOOK)
-    errors: list[str] = []
-    for check in (check_marker, check_dev_ids, check_toc_anchors):
-        error = check(handbook)
-        if error:
-            errors.append(error)
+    errors = check_layout()
+    if errors:
+        for error in errors:
+            print(f"ERROR: {error}")
+        return 1
 
-    files = [
-        DOCS / "README.md",
-        HANDBOOK,
-        ARCHIVE / "README.md",
-        INDEX,
-        *sorted(ARCHIVE.glob("*.md")),
+    current = read(CURRENT)
+    status = read(STATUS)
+    index = read(INDEX)
+
+    checks = [
+        check_marker(current),
+        check_control(current, status),
+        check_index(current, index),
     ]
-    for path in files:
+    errors.extend(check_error for check_error in checks if check_error)
+
+    archive_errors, archive_ids = check_archive()
+    errors.extend(archive_errors)
+    archive_error = check_archive_index(index, archive_ids)
+    if archive_error:
+        errors.append(archive_error)
+
+    for path in sorted(DOCS.rglob("*.md")):
         text = read(path)
         for file_check in (check_markdown, check_links):
-            error = file_check(path, text)
-            if error:
-                errors.append(error)
-
-    error = check_archive_counts(handbook)
-    if error:
-        errors.append(error)
+            file_error = file_check(path, text)
+            if file_error:
+                errors.append(file_error)
 
     if errors:
         for error in errors:
