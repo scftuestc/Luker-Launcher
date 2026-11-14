@@ -533,7 +533,7 @@ main.py
 | ADR-10 | 主题卡片悬停放大已回滚 | 残影修复成本高；现在只颜色过渡 | 不要加回 relwidth/图片放大 | `e9bc44f` |
 | ADR-11 | 座右铭已移除 | 视觉迭代最终决策 | 不要加回 | `a7a1c68` |
 | ADR-12 | 门禁只在本地 | Windows 托盘/Win32/DPI 需要 Windows 环境；提交只记录“本地执行” | 不要恢复远程 CI 并声称覆盖托盘 | `43476f0` |
-| ADR-13 | CTk 私有接口隔离 + 版本锁 | 6.0 已实测；6.1 Text 接口可能变；已接受 `_canvas`/`_draw_engine`、`_get_textbox`、`_get_widget_scaling`、`ScalingTracker.window_dpi_scaling_dict` | 不要新增分散的私有访问；集中到适配层 | `ui/ctk_adapter.py` |
+| ADR-13 | CTk 私有接口隔离 + 版本锁 | 6.0 已实测；6.1 Text 接口可能变；已接受 `_canvas`/`_draw_engine`、`_get_textbox`、`_get_widget_scaling`、`ScalingTracker.get_window_dpi_scaling`/`window_dpi_scaling_dict`，全部集中在 `ui/ctk_adapter.py` | 不要新增分散的私有访问；集中到适配层 | `ui/ctk_adapter.py` |
 | ADR-14 | 主题颜色与元数据分离 | 渐变只处理颜色，避免把 name/icon 当颜色 | 不要整个 `PRESET_THEMES` 传给渐变 | `theme.py:256-262` |
 | ADR-15 | 版本/打包一起验证，发布需确认 | v4.0 后 20 个产品提交（含 README-only `fc06d38`）未 bump；直接发布会版本重复 | 不要未经确认 bump/构建/打标签 | `config.py:25` |
 
@@ -621,7 +621,7 @@ main.py
 | 按钮 | `make_button()`/`button_colors()` | `ui/buttons.py` | 8 种角色 |
 | 图标 | `transport_icon()`/`menu_icon()`/`theme_icon()`/`toolbar_icon()` | `ui/icons.py` | 运行时绘制 |
 | 平滑开关 | `AnimatedSwitch` | `ui/switch.py` | 复用 CTk 引擎 |
-| CTk 私有接口 | `CtkSwitchAdapter` | `ui/ctk_adapter.py` | 升级只回归这里 |
+| CTk 私有接口 | `CtkSwitchAdapter` + textbox/scaling 辅助函数 | `ui/ctk_adapter.py` | switch/textbox/ScalingTracker 私有访问都集中在这里 |
 | 主题图片 | `load_theme_image()`/`theme_card_image()`/`theme_log_image()` | `ui/theme_assets.py` | 缺失返回 None |
 | 立绘 | `render_character()`/`left_fade_mask()` | `ui/character_art.py` | 不改源图 |
 | 关闭确认 | `CloseChoiceDialog`/`show_close_choice()` | `ui/dialogs.py` | 记住选择/托盘降级 |
@@ -696,12 +696,12 @@ main.py
 | OPEN-07 | P3 | `clear_scroll_bindings` 清全局绑定 | `settings_window.py:110-119` | 保留单设置窗口不变量；CTk 升级后实例级解绑 | 已知风险 |
 | OPEN-08 | P3 | `_ThemeCardHighlight` 自建动画状态机 | `settings_window.py:153-215`；已有 `StepTicker` | 下次改动画时复用 | 未开始 |
 | OPEN-09 | P3 | `settings_window.py` 1369 行、`log_window.py` 1294 行 | 文件规模 | 只在下次必然修改时小步提取 | 未开始 |
-| OPEN-10 | P3 | `LogWindow._get_textbox()` 访问 CTk 私有 | `log_window.py:1126-1128` | 保持版本锁；新增私有访问放适配层 | 已接受 |
+| OPEN-10 | P3 | CTk 私有访问已集中到 `ui/ctk_adapter.py` | 适配层 + 架构测试 | 新增私有访问必须走适配层 | 已完成 |
 | OPEN-11 | P3 | 托盘 `stop()` 极端失败路径 | `tray/icon.py:604-624` | 记录日志；实机极端验证 | 已接受 |
 | OPEN-12 | 产品 | 当前主题只用 accent 边框 | `settings_window.py:742-748` | 需要时加小徽标；不是 bug | 取舍 |
 | OPEN-13 | 合规 | DeepSeek 素材/名称授权 | `assets/deepseek/*` | 用户确认 | 待确认 |
 
-**已关闭，不要重复做**：退出失败 `707dd44`；DPI `16dbd3f`；打包/门禁测试 `3966429`；立绘任务取消 `d484c4a`；`_theme_cards` `6a1f2fb`；异常收窄 `0e6f34a`；组合根 `3ad154f`；悬停回滚 `e9bc44f`；GCL 移除 `b840bf1`；座右铭移除 `a7a1c68`；`dev` 分支删除（2026-11-14，已通过 `157f22a` 合入 `ai-gijika`）。
+**已关闭，不要重复做**：退出失败 `707dd44`；DPI `16dbd3f`；打包/门禁测试 `3966429`；立绘任务取消 `d484c4a`；`_theme_cards` `6a1f2fb`；异常收窄 `0e6f34a`；组合根 `3ad154f`；悬停回滚 `e9bc44f`；GCL 移除 `b840bf1`；座右铭移除 `a7a1c68`；`dev` 分支删除（2026-11-14，已通过 `157f22a` 合入 `ai-gijika`）；CTk 私有访问集中（2026-11-14，`ui/ctk_adapter.py` + 架构测试）。
 
 ---
 

@@ -14,6 +14,7 @@ from typing import Literal
 
 import customtkinter as ctk
 
+from luker_launcher.ui import ctk_adapter
 from luker_launcher.ui.tokens import SCREEN_MARGIN_POPUP, SCREEN_MARGIN_WINDOW
 
 logger = logging.getLogger(__name__)
@@ -342,12 +343,11 @@ def sync_window_scaling(
     """立即应用目标缩放，避免等待 CustomTkinter 的 100ms DPI 轮询。"""
     fallback = target_scale if target_scale is not None else 1.0
     try:
-        tracker = ctk.ScalingTracker
-        scale = target_scale if target_scale is not None else tracker.get_window_dpi_scaling(window)
+        scale = (
+            target_scale if target_scale is not None else ctk_adapter.get_window_dpi_scaling(window)
+        )
         # CTk 每 100ms 才轮询一次显示器 DPI；这里提前更新，避免首帧按旧缩放绘制
-        if tracker.window_dpi_scaling_dict.get(window) != scale:
-            tracker.window_dpi_scaling_dict[window] = scale
-            tracker.update_scaling_callbacks_for_window(window)
+        ctk_adapter.set_window_scaling_cache(window, scale)
         # CTk 的 _set_scaling 会把 min/max 临时锁在当前尺寸；
         # 调用方随后还要设置最终尺寸，这里恢复为不限制。
         window.wm_minsize(1, 1)
@@ -362,4 +362,4 @@ def sync_window_scaling(
 def discard_window_scaling(window: ctk.CTk | ctk.CTkToplevel) -> None:
     """移除已销毁窗口的缩放缓存，避免反复打开 Toplevel 时泄漏。"""
     with contextlib.suppress(AttributeError):
-        ctk.ScalingTracker.window_dpi_scaling_dict.pop(window, None)
+        ctk_adapter.discard_window_scaling_cache(window)

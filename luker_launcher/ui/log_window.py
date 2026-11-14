@@ -26,6 +26,7 @@ from luker_launcher.theme import (
     mix_color,
     shade_color,
 )
+from luker_launcher.ui import ctk_adapter
 from luker_launcher.ui.buttons import ButtonRole, button_colors, make_button
 from luker_launcher.ui.character_art import render_character
 from luker_launcher.ui.icons import TransportIcon, toolbar_icon, transport_icon
@@ -152,14 +153,7 @@ def scrollbar_visible(first: float, last: float) -> bool:
 
 def widget_scaling(widget: object) -> float:
     """返回控件缩放系数；Tk 的 winfo_* 是物理像素，CTkImage 尺寸是逻辑像素。"""
-    getter = getattr(widget, '_get_widget_scaling', None)
-    if not callable(getter):
-        return 1.0
-    try:
-        scale = float(getter())
-    except (AttributeError, TypeError, ValueError, tk.TclError):
-        return 1.0
-    return scale if scale > 0 else 1.0
+    return ctk_adapter.get_widget_scaling(widget)
 
 
 def error_banner_colors(colors: dict[str, str]) -> dict[str, str]:
@@ -713,7 +707,7 @@ class LogWindow(ctk.CTk):
             ui_font=self.UI_FONT,
             get_colors=lambda: self.COLORS,
             get_textbox=self._get_textbox,
-            get_scaling=self._get_widget_scaling,
+            get_scaling=self._widget_scaling,
         )
         self.search.frame.pack(side="left", fill="x", expand=True, padx=(0, GAP_INLINE))
 
@@ -1124,8 +1118,12 @@ class LogWindow(ctk.CTk):
             self._get_textbox().tag_remove("error_reveal", "1.0", "end")
 
     def _get_textbox(self) -> tk.Text:
-        """返回 CTkTextbox 内部的 Text 控件；私有属性只在这里访问。"""
-        return self.log_text._textbox
+        """返回 CTkTextbox 内部的 Text 控件；私有访问集中在 ctk_adapter。"""
+        return ctk_adapter.get_textbox(self.log_text)
+
+    def _widget_scaling(self) -> float:
+        """返回本窗口的 CTk 逻辑缩放；私有访问集中在 ctk_adapter。"""
+        return ctk_adapter.get_widget_scaling(self)
 
     def _on_log_scroll(self, first: float, last: float) -> None:
         """同步窗口最右侧的滚动条；内容未超出时收起，避免常驻空轨道。"""

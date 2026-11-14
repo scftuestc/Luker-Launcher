@@ -1,4 +1,5 @@
 import ast
+import re
 import unittest
 from pathlib import Path
 
@@ -105,6 +106,23 @@ class ArchitectureTests(unittest.TestCase):
 
     def test_ui_does_not_depend_on_application(self):
         self.assert_no_dependency("luker_launcher.ui", "luker_launcher.application")
+
+    def test_ctk_private_access_is_isolated(self):
+        patterns = (
+            r"\._textbox\b",
+            r"\._get_widget_scaling\b",
+            r"\._canvas\b",
+            r"\._draw_engine\b",
+            r"window_dpi_scaling_dict",
+            r"ScalingTracker\.get_window_dpi_scaling",
+        )
+        for path in sorted((PACKAGE / "ui").rglob("*.py")):
+            if path.name == "ctk_adapter.py":
+                continue
+            text = path.read_text(encoding="utf-8")
+            for pattern in patterns:
+                if re.search(pattern, text):
+                    self.fail(f"{path.relative_to(ROOT)} 直接访问 CTk 私有接口：{pattern}")
 
     def test_infrastructure_does_not_depend_on_application_or_presentation(self):
         for forbidden in (
