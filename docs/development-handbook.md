@@ -449,7 +449,7 @@ main.py
 **关闭/退出**
 
 - `close_behavior`：`ask`/`tray`/`exit`；更新中阻止；托盘不可用不能隐藏。
-- `exit()`：设 `exiting`，后台 `status.stop()` → `process.stop_all()` → 投递 `finish_exit`；当前走普通 `post`，批次 2 统一为 `post_control`。
+- `exit()`：设 `exiting`，后台 `status.stop()` → `process.stop_all()` → 经 `post_control` 投递 `finish_exit`。
 - 线程创建失败：主线程同步 `stop_all()`，`finally` 退出（`707dd44`）。
 - `finish_exit()` → 幂等 `shutdown()` → `window.quit()`；`shutdown()` 只停 status/UI/tray，不停 Luker；进程清理由 `exit()` 负责。
 
@@ -498,7 +498,7 @@ main.py
 
 **调度器限额**：普通队列 256 条、每 tick 最多 32 条、空闲 50ms；合并键 `visibility`/`tray_menu`/`settings`/`luker_state`；`post_control` 是独立无界队列。
 
-**不变量**：后台线程不直接碰 Tk；进程/浏览器/更新完成回调走 `post_control`；退出 `finish_exit` 当前走普通 `post`（批次 2 统一）。
+**不变量**：后台线程不直接碰 Tk；进程/浏览器/更新/退出完成回调都走 `post_control`，不会被普通队列丢弃。
 
 ### 2.6 状态归属
 
@@ -523,7 +523,7 @@ main.py
 |---|---|---|---|---|
 | ADR-01 | 用 `node server.js`，不通过 `Start.bat` | 需要传 `--browserLaunchEnabled false`；停止/日志可控 | 不要改回 `Start.bat` | `process/managers.py:339-345` |
 | ADR-02 | Job Object + 单实例 | 防止强杀后 node 占端口；防止双启动器抢端口 | 不要移除 Job Object/只 terminate 父进程 | `process/job.py`、`single_instance.py` |
-| ADR-03 | 后台线程统一经 `UiDispatcher` 回主线程 | Tk 非线程安全；完成回调不能丢 | 不要在后台直接碰 Tk/用普通队列投递完成回调；退出 `finish_exit` 当前是普通 post 例外（批次 2 统一） | `ui/dispatch.py` |
+| ADR-03 | 后台线程统一经 `UiDispatcher` 回主线程 | Tk 非线程安全；完成回调不能丢 | 不要在后台直接碰 Tk/用普通队列投递完成回调；退出 `finish_exit` 也走 `post_control` | `ui/dispatch.py` |
 | ADR-04 | 就绪=连续 2 次成功 + READY 粘滞 | 进程活≠服务可用；避免呼吸灯抖动 | 不要每次探测直接 apply | `services/readiness.py` |
 | ADR-05 | 配置归一化/原子写入/BOM/端口缓存 | 手改配置、半截写入、每秒读盘 | 不要用 yaml 整体解析只取端口 | `config.py` |
 | ADR-06 | 路径切换只在停止时进行 | 运行中热切换会中断/端口冲突 | 不要运行中替换 manager | `process_coordinator.py:56-75` |
@@ -553,7 +553,7 @@ main.py
 | 需要什么 | 现成实现 | 位置 | 注意 |
 |---|---|---|---|
 | 后台一次性任务 | `TaskRunner.run()` | `application/task_runner.py` | 线程创建失败返回 `False`；worker 异常需自行捕获 |
-| 跨线程投递 UI | `UiDispatcher.post()`/`post_control()` | `ui/dispatch.py` | 状态/幂等界面用 `post`；进程/浏览器/更新完成用 `post_control`；退出 `finish_exit` 当前例外（批次 2 统一） |
+| 跨线程投递 UI | `UiDispatcher.post()`/`post_control()` | `ui/dispatch.py` | 状态/幂等界面用 `post`；进程/浏览器/更新/退出完成用 `post_control` |
 | 共享退出标志 | `LifecycleState.exiting` | `application/lifecycle_state.py` | Lifecycle 写，其他只读 |
 | 进程启停/路径切换 | `ProcessCoordinator` | `application/process_coordinator.py` | 已处理 busy/退出/stop_all |
 | 三态就绪 | `StatusCoordinator` + `LukerReadinessMonitor` | `application/status_coordinator.py` / `services/readiness.py` | 不要自己写 HTTP 轮询 |

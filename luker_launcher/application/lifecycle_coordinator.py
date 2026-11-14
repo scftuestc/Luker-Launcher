@@ -60,7 +60,6 @@ class LifecycleCoordinator:
         set_running: Callable[[bool], None],
         close_dialog: Callable[..., None] = show_close_choice,
         messagebox_api: Any = messagebox,
-        exit_key: str = "exit",
     ) -> None:
         self.config = config
         self.process = process
@@ -79,7 +78,6 @@ class LifecycleCoordinator:
         self.set_running = set_running
         self.close_dialog = close_dialog
         self.messagebox_api = messagebox_api
-        self.exit_key = exit_key
         self._exit_dialog_open = False
         self._shutdown_done = False
 
@@ -184,7 +182,7 @@ class LifecycleCoordinator:
         def worker() -> None:
             self.status.stop()
             self.process.stop_all()
-            self.post_ui.post(self.finish_exit, self.exit_key)
+            self.post_ui.post_control(self.finish_exit)
 
         if not self.task_runner.run(worker):
             # 线程起不来时主线程同步停止，确保退出后不残留 Luker 进程

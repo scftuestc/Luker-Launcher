@@ -65,12 +65,14 @@ class FakeConfig:
 class FakePoster:
     def __init__(self) -> None:
         self.posted: list[tuple[object, object]] = []
+        self.control_posted: list[object] = []
 
     def post(self, callback, coalesce_key=None):
         self.posted.append((callback, coalesce_key))
         return True
 
     def post_control(self, callback):
+        self.control_posted.append(callback)
         return True
 
 
@@ -146,7 +148,6 @@ class LifecycleCoordinatorTests(unittest.TestCase):
             set_running=self.set_running,
             close_dialog=self.fake_show,
             messagebox_api=self.messagebox,
-            exit_key="exit",
         )
         return self.coordinator
 
@@ -166,6 +167,8 @@ class LifecycleCoordinatorTests(unittest.TestCase):
     def run_posted(self) -> None:
         while self.poster.posted:
             self.poster.posted.pop(0)[0]()
+        while self.poster.control_posted:
+            self.poster.control_posted.pop(0)()
 
     def test_ask_hide_without_remember_hides_and_keeps_setting(self):
         coordinator = self.make_coordinator()
@@ -313,7 +316,7 @@ class LifecycleCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.window.hidden, 1)
         self.assertTrue(self.lifecycle.exiting)
 
-    def test_exit_runs_worker_and_posts_finish_on_normal_channel(self):
+    def test_exit_runs_worker_and_posts_finish_on_control_channel(self):
         coordinator = self.make_coordinator()
 
         coordinator.exit()
@@ -324,8 +327,8 @@ class LifecycleCoordinatorTests(unittest.TestCase):
 
         self.runner.workers[0]()
 
-        self.assertEqual(len(self.poster.posted), 1)
-        self.assertEqual(self.poster.posted[0][1], "exit")
+        self.assertEqual(self.poster.posted, [])
+        self.assertEqual(self.poster.control_posted, [coordinator.finish_exit])
 
     def test_exit_thread_failure_stops_process_and_finishes_immediately(self):
         coordinator = self.make_coordinator(runner_started=False)
