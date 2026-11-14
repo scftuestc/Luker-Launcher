@@ -19,7 +19,7 @@
 - **最近完成**：DeepSeek 主题、角色立绘、固定日志窗口、两个 P2 修复、审查整改、最终移除座右铭并把滚动条移到最右；清除已合并的 `dev` 分支（本地+远程）。
 - **当前阻塞**：`APP_VERSION` 仍为 4.0；HEAD 未 bump、未构建 exe、未在真实 125%/150% 设备验收；是否发布需用户确认。
 - **建议下一步**：先确认是否发布；若发布，按 `TODO-01` 做版本 bump + 构建 + 100%/125%/150% 验收。不要先做大重构。
-- **不要重复**：不要重新引入 GCL；不要恢复主题卡片悬停放大；不要加回座右铭；不要恢复日志窗口拖拽缩放；不要改 npm 参数；不要重建已删除的 `dev` 分支。
+- **不要重复**：不要重新引入 GCL；不要恢复主题卡片悬停放大；不要加回座右铭；不要未经确认恢复日志窗口拖拽缩放；不要改 npm 参数；不要重建已删除的 `dev` 分支。
 - **文档入口**：先读 `docs/README.md`；日常只写 `docs/development-handbook.md`；历史按版本段查 `docs/archive/`。
 - **文档使用**：任务完成后在 §10 末尾追加 `DEV-YYYYMMDD-NN`，更新 §0.2、§6、§7，并随任务提交。
 
@@ -61,9 +61,12 @@
 | 文档位置 | `docs/development-handbook.md`（Git 跟踪） | 结构变更时 |
 | 结构版本 | `4.0` | 结构调整时 |
 | 最后更新 | `2026-11-14` | 每次追加日志 |
-| 最新日志条目 | `DEV-20261114-04` | 每次追加日志 |
-| 下一条日志 ID | `DEV-20261114-05` | 每次追加日志 |
+| 最新日志条目 | `DEV-20261114-05` | 每次追加日志 |
+| 下一条日志 ID | `DEV-20261114-06` | 每次追加日志 |
+| 当前 HEAD | `d94308d`（docs） | 每次任务结束 |
 | 代码基线 / 最后代码提交 | `ai-gijika` / `a7a1c68` | 每次任务开始/结束 |
+| 产品 / 文档提交 | 193 + 2 = 195 | 每次任务结束 |
+| 标签 | 17 本地 / 16 远程；`v3.5` 仅本地 | 发布/标签变化时 |
 | 当前版本 | `APP_VERSION = 4.0` | 版本 bump 时 |
 | 工作区状态 | clean（`docs/` 已跟踪；文档改动随任务提交） | 每次任务结束 |
 | 质量基线 | 758 tests / 74% / check.bat pass | 每次任务结束 |
@@ -75,7 +78,8 @@
 |---|---|---|
 | `[已验证]` | 代码、测试、命令或 Git 历史可直接证明 | `git rev-list --count v1.0..v1.1` = 10 |
 | `[推断]` | 根据提交信息/代码结构推断，未单独实验 | “可能是为了避免重复开浏览器” |
-| `[待确认]` | 需要用户/产品/实机确认 | “真实 150% 设备观感” |
+| `[待验证]` | 代码/测试已完成，但缺少实机或真实环境验证 | “单测通过，真实 125% 设备未跑” |
+| `[待确认]` | 需要用户/产品/实机确认 | “是否发布需用户确认” |
 
 写作规则：
 
@@ -99,19 +103,21 @@
 1. **确定 ID**：`DEV-YYYYMMDD-NN`；当天下一条见 §0.2。
 2. **在 §10 末尾追加**：复制 §0.6 模板；不要插入旧条目中间，不要重排历史。
 3. **填完整**：目标、改动、验证、决策/风险、遗留/下一步。验证必须写命令和结果。
-4. **更新 §0.2**：最后更新、最新条目、下一条 ID、HEAD、质量基线。
-5. **更新 §6/§7**：关闭/新增开放问题；更新 TODO 状态。
+4. **更新 §0.2**：最后更新、最新条目、下一条 ID、当前 HEAD、最后代码提交、质量基线。
+5. **更新 §6/§7**：§7 是唯一行动队列；关闭/新增开放问题，更新 TODO 状态。
 6. **架构/决策/组件变了**：更新 §2/§3/§4，并在 §0.9 加一行修订记录。
 7. **随任务提交本文件**：本文件在 `docs/` 下，必须随任务提交；提交作者/签名遵循仓库约束（仅 Yaoyao、GPG 签名、无 AI 署名）。不要复制回 `.zcode/`。
 8. **更新顶部“交接摘要”**：状态/阻塞/下一步变了就同步。
 9. **交接时**：填写 §0.8 检查表；在 §10 最后一条写“交接点”。
 
-**归档轮转**：当 §10 超过 30 条或一个主版本结束时，把较早条目的详细内容迁到 `docs/archive/05-...`，§10 只保留摘要和链接；不要删除历史。
+**写入契约**：日常只改主手册：§10 追加 + §0.2/§6/§7；§1–§5 仅在事实/决策/组件变化时改；归档不改，勘误写 §0.9。
+
+**归档轮转**：当 §10 未归档的详细条目超过 30 条或一个主版本结束时，把较早条目的详细内容迁到 `docs/archive/05-...`，§10 只保留摘要和链接；不要删除历史。
 
 ### 0.6 开发日志条目模板（可直接复制）
 
 ```markdown
-### DEV-YYYYMMDD-NN | 一句话标题
+#### DEV-YYYYMMDD-NN | 一句话标题
 
 | 字段 | 值 |
 |---|---|
@@ -208,7 +214,16 @@
 | 2026-11-14 | 3.0 | ZCode | 精简主文档；完整细节归档到 `development-history-full-2026-11-14.md` |
 | 2026-11-14 | 4.0 | 文档维护 | 迁入 `docs/` 并纳入 Git；主文档改名 `development-handbook.md`；完整归档拆为 00–04 只读分册；明确唯一写入目标。原“文件需 gitignore”的要求已被本次用户决定取代。 |
 
-> 勘误格式：`日期 | 影响条目 | 原内容 | 更正`。
+**勘误**（只追加，不改旧日志正文）：
+
+| 日期 | 影响条目 | 原内容 | 更正 |
+|---|---|---|---|
+| 2026-11-14 | §1.5 `v1.1` | `206c1d1..38be292` 写 10 个 | 10 是 `v1.0..v1.1` 区间计数；`206c1d1` 之后是 9 个提交，加前一条 `DEV-20261002-02` 才是 10 |
+| 2026-11-14 | §1.5 `v2.0` / `v3.5` | 日期分别写 2026-10-19 / 2026-11-03 | 条目跨日：v2.0 为 2026-10-18~19；v3.5 为 2026-11-03~04 |
+| 2026-11-14 | §1.6 | `ruff format` 106 个文件 | 最新门禁日志为 114 个文件；以 `check.bat` 实测为准 |
+| 2026-11-14 | §1.4 | “17 个标签”未区分本地/远程 | 17 本地 / 16 远程；`v3.5` 仅本地，`v3.5.0` 远程，同提交 `ec0b561` |
+| 2026-11-14 | ADR-15 | “v4.0 后 19 提交未 bump” | `v4.0..a7a1c68` 共 20 个产品提交（含 README-only `fc06d38`；其中 19 个 ai-gijika 代码提交） |
+| 2026-11-14 | §0.9 / §10.3 | `development-history-full-2026-11-14.md` | 已拆为 `docs/archive/00-...`（§0–§9 快照）+ `01`–`04`（§10 日志） |
 
 ---
 
@@ -256,36 +271,36 @@ Luker 是基于 SillyTavern 的 LLM 前端；启动器只要求目录包含 `Sta
 | 分支/标签 | 指向 | 说明 |
 |---|---|---|
 | `main` | `fc06d38` | 已发布主线；`v4.0` 之后只有 README 精简 |
-| `ai-gijika` | `a7a1c68` + 文档提交 | 当前工作分支；`fc06d38` 之后有 19 个代码提交（`64f1a06` 起至 `a7a1c68`）和文档提交（`2e4da28` 起） |
-| `origin/ai-gijika` | 与本地同步 | 远程同名分支；文档提交已推送 |
+| `ai-gijika` | `d94308d`（HEAD；最后代码提交 `a7a1c68`） | 当前工作分支；`fc06d38` 之后 19 个 ai-gijika 代码提交、2 个文档提交（`2e4da28`、`d94308d`） |
+| `origin/ai-gijika` | `d94308d` | 与本地同步 |
 | `v4.0` | `a66f873` | 最新正式标签；GitHub 已发布 |
-| `v3.5` / `v3.5.0` | `ec0b561` | 重复标签，历史遗留 |
+| `v3.5` / `v3.5.0` | `ec0b561` | 同提交；`v3.5` 仅本地，`v3.5.0` 远程 |
 
 > `ai-gijika` 的代码提交没有 bump 版本，也没有重新发布。根目录现有 exe 是 4.0 时期构建，不代表 HEAD。`main` 不包含这些提交；`dev`（`a512226`）已通过 `157f22a` 合入 `ai-gijika`，并于 2026-11-14 删除本地与远程分支，不丢提交。不要自行 merge/rebase；推送/发布先问用户。
 
 ### 1.5 版本坐标（提交范围含端点）
 
-| 版本 | 日期 | 提交范围 | 数量 | 一句话 |
+| 版本 | 日期 | 提交范围（Git `A..B`，不含 A） | 数量 | 一句话 |
 |---|---|---|---:|---|
 | `v1.0` | 2026-10-02 | `cb75d8b` | 1 | 导入原型（14 文件 / 3,733 行） |
-| `v1.1` | 2026-10-18 | `206c1d1..38be292` | 10 | 日志/GCL/进程/PWA/托盘第一轮修复 |
-| `v1.2` | 2026-10-18 | `6343f3e..5cfb3b3` | 6 | 日志/界面资源优化、自动路径、清空队列 |
-| `v2.0` | 2026-10-19 | `4c32010..4e98b09` | 10 | 合并进程管理器、拆日志/主题/配置、UI 队列、单实例/Job Object、文件日志、首批测试 |
-| `v2.1` | 2026-10-19 | `71a73e3..c224c69` | 7 | ruff/CI/LICENSE、托盘菜单/设置窗口拆分、类型注解 |
-| `v2.2` | 2026-10-19 | `34f95d2..34d01e3` | 6 | 高 DPI 跨屏、托盘/进程生命周期 |
-| `v2.3` | 2026-10-20~21 | `b5993f0..aad0cad` | 10 | GCL/PWA 竞态、APPX 校验、日志窗口最小尺寸、队列/重放上限 |
-| `v2.4` | 2026-10-21 | `b69d47d..3729554` | 17 | 日志队列/搜索/显示/重放拆分、窗口缩放、UI 调度器 |
-| `v3.0` | 2026-10-22~23 | `24f9db0..b480684` | 20 | 主题/毛玻璃/圆角/按钮/呼吸 logo/关闭确认/托盘图标 |
-| `v3.1` | 2026-10-24~25 | `fe149c4..c778e3b` | 20 | 应用主体拆分、日志/搜索拆分、目录分包 |
-| `v3.2` | 2026-10-25~27 | `43476f0..523764c` | 14 | 关闭行为记忆、版本检查/更新、设置页、本地门禁 |
-| `v3.3` | 2026-10-30 | `3260c48..5f9e402` | 9 | 托盘句柄、配置边界、构建失败、npm 生产环境 |
-| `v3.4` | 2026-11-02 | `2b9ebdb..16e97be` | 8 | 设计令牌、窗口淡入、日志状态、托盘键盘、**移除 GCL** |
-| `v3.4.1` | 2026-11-03 | `ca08bb9` | 1 | 版本号补丁 |
-| `v3.5` | 2026-11-03~04 | `5f95490..ec0b561` | 16 | 雾灰关闭毛玻璃、图标/字体、配置 BOM、Win32 声明、CTk 适配层 |
-| `v4.0` | 2026-11-05 | `547160a..a66f873` | 18 | **Coordinator 架构 + 单一 `luker_launcher/` 包 + 架构测试** |
-| `v4.0+` | 2026-11-05~10 | `fc06d38` + `64f1a06..a7a1c68` | 20 | DeepSeek 主题、立绘、DPI/退出修复、审查整改、布局迭代 |
+| `v1.1` | 2026-10-18 | `v1.0..v1.1` | 10 | 日志/GCL/进程/PWA/托盘第一轮修复 |
+| `v1.2` | 2026-10-18 | `v1.1..v1.2` | 6 | 日志/界面资源优化、自动路径、清空队列 |
+| `v2.0` | 2026-10-18~19 | `v1.2..v2.0` | 10 | 合并进程管理器、拆日志/主题/配置、UI 队列、单实例/Job Object、文件日志、首批测试 |
+| `v2.1` | 2026-10-19 | `v2.0..v2.1` | 7 | ruff/CI/LICENSE、托盘菜单/设置窗口拆分、类型注解 |
+| `v2.2` | 2026-10-19 | `v2.1..v2.2` | 6 | 高 DPI 跨屏、托盘/进程生命周期 |
+| `v2.3` | 2026-10-20~21 | `v2.2..v2.3` | 10 | GCL/PWA 竞态、APPX 校验、日志窗口最小尺寸、队列/重放上限 |
+| `v2.4` | 2026-10-21 | `v2.3..v2.4` | 17 | 日志队列/搜索/显示/重放拆分、窗口缩放、UI 调度器 |
+| `v3.0` | 2026-10-22~23 | `v2.4..v3.0` | 20 | 主题/毛玻璃/圆角/按钮/呼吸 logo/关闭确认/托盘图标 |
+| `v3.1` | 2026-10-24~25 | `v3.0..v3.1` | 20 | 应用主体拆分、日志/搜索拆分、目录分包 |
+| `v3.2` | 2026-10-25~27 | `v3.1..v3.2` | 14 | 关闭行为记忆、版本检查/更新、设置页、本地门禁 |
+| `v3.3` | 2026-10-30 | `v3.2..v3.3` | 9 | 托盘句柄、配置边界、构建失败、npm 生产环境 |
+| `v3.4` | 2026-11-02 | `v3.3..v3.4` | 8 | 设计令牌、窗口淡入、日志状态、托盘键盘、**移除 GCL** |
+| `v3.4.1` | 2026-11-03 | `v3.4..v3.4.1` | 1 | 版本号补丁 |
+| `v3.5` | 2026-11-03~04 | `v3.4.1..v3.5` | 16 | 雾灰关闭毛玻璃、图标/字体、配置 BOM、Win32 声明、CTk 适配层 |
+| `v4.0` | 2026-11-05 | `v3.5..v4.0` | 18 | **Coordinator 架构 + 单一 `luker_launcher/` 包 + 架构测试** |
+| `v4.0+` | 2026-11-05~10 | `v4.0..a7a1c68` | 20 | DeepSeek 主题、立绘、DPI/退出修复、审查整改、布局迭代 |
 
-> 总计 **193** 个产品提交（另有 `2e4da28` 起的文档维护提交）。`v3.5.0` 与 `v3.5` 同提交，统计只算一次。
+> 总计 **193** 个产品提交；另有 2 个文档提交（`2e4da28`、`d94308d`），当前 HEAD `d94308d`。`v3.5`/`v3.5.0` 同提交，统计只算一次。
 
 ### 1.6 质量基线（2026-11-14 实测）
 
@@ -293,18 +308,18 @@ Luker 是基于 SillyTavern 的 LLM 前端；启动器只要求目录包含 `Sta
 |---|---|
 | `python -m unittest discover -s tests -q` | **758 项通过**，约 2 秒 |
 | 覆盖率 | **74%**（门槛 65%） |
-| `ruff format --check .` | 106 个文件已格式化 |
+| `ruff format --check .` | 114 个文件已格式化 |
 | `ruff check .` | 通过 |
 | `mypy .` | 55 个源文件无问题 |
 | 工作区 | 干净；`docs/` 已跟踪；本地仍有被忽略的 `.coverage`、`.zcode/` 报告、根目录 exe/log |
-| 提交签名 | 193 个提交中 187 个 `G`；6 个 v1.1 时期提交为 `N`（历史事实） |
+| 提交签名 | 193 个产品提交中 187 个 `G`；6 个 v1.1–v1.2 时期提交为 `N`（历史事实）；2 个文档提交为 `G` |
 | 作者/提交者 | 全部 Yaoyao；无 AI 署名 |
 
 > 6 个未签名提交：`38be292`、`6343f3e`、`9ab1fa9`、`fab4cb8`、`60b7690`、`224c7ba`。之后的提交全部 GPG 签名。
 
 ### 1.7 审查结论
 
-- 本轮审查与上一轮全仓库审查均未发现 P0/P1。
+- 本轮审查与上一轮全仓库审查均未发现 P0/P1 **缺陷**；工作优先级另见 §7（TODO-01 是 P1 发布任务，不等于存在 P1 缺陷）。
 - 上一轮确认并修复 2 个 P2：
   - 退出线程创建失败可能残留 Luker/Node（`707dd44`）；
   - 高 DPI 立绘物理/逻辑尺寸混用（`16dbd3f`）。
@@ -338,21 +353,24 @@ main.py
 强制规则（`tests/test_architecture.py`）：
 
 - `services/`、`log/`、`infrastructure/`、`process/` 不得导入 `application/`、`ui/`、`tray/` 或 Tk/CTk。
-- `config` 不得导入 `application/`、`ui/`、`tray/`；当前只依赖标准库与纯数据 `theme`。
+- `config` 不得导入 `application/`、`ui/`、`tray/`；可依赖标准库、`paths`、纯数据 `theme`。
 - `ui/` 不得导入 `application/`。
 - `theme.py`、`paths.py` 只允许标准库。
-- 只有 `luker_launcher.__main__` 可以导入 `bootstrap`。
-- 根目录只能有 `main.py` 一个 Python 文件；`main.py` 只导入 `bootstrap.entrypoint`。
+- 根 `main.py` 和 `luker_launcher.__main__` 是仅有的两个允许导入 `bootstrap` 的入口；包内其他模块不得导入。
+- 根目录只能有 `main.py` 一个 Python 文件；`main.py` 只导入 `bootstrap.entrypoint`；`python -m luker_launcher` 走同一入口。
 - 不允许 import cycle。
 
 ### 2.2 模块地图
 
+> 下表包内路径省略 `luker_launcher/`；根文件写 `main.py`。
+
 | 路径 | 职责 | 关键入口 |
 |---|---|---|
-| `main.py` | 薄入口 | `main()` |
+| `main.py` | 根目录薄入口（`python main.py`） | `main()` |
+| `luker_launcher/__main__.py` | 包入口（`python -m luker_launcher`） | `main()` |
 | `bootstrap/entrypoint.py` | 日志、配置错误补报、DPI、单实例、主循环 | `main()`、`setup_dpi_awareness()` |
 | `application/launcher.py` | 组装根：UI/托盘/Coordinator、首次运行、主循环 | `LukerLauncher.run()` |
-| `application/task_runner.py` | 后台守护线程，失败返回 `False` | `TaskRunner.run()` |
+| `application/task_runner.py` | 启动守护线程；线程创建失败返回 `False`；worker 异常不捕获 | `TaskRunner.run()` |
 | `application/lifecycle_state.py` | 共享 `exiting` 标志 | `LifecycleState` |
 | `application/protocols.py` | `LogSink`、`UiPoster`、`SettingsView` | 协议 |
 | `application/process_coordinator.py` | 启停/重启/路径切换/忙碌/`stop_all()` | `ProcessCoordinator` |
@@ -395,6 +413,7 @@ main.py
 
 ### 2.3 启动顺序
 
+0. `python main.py` 或 `python -m luker_launcher` → `bootstrap.entrypoint.main()`。
 1. `logging_setup.setup_logging()`：写 `launcher.log`（不可写则 `%TEMP%`），安装全局异常钩子。
 2. `config.report_load_error()`：配置在 import 阶段读取，日志就绪后补报。
 3. `setup_dpi_awareness()`：Per-Monitor V2 → Per-Monitor → System。
@@ -430,20 +449,21 @@ main.py
 **关闭/退出**
 
 - `close_behavior`：`ask`/`tray`/`exit`；更新中阻止；托盘不可用不能隐藏。
-- `exit()`：设 `exiting`，后台 `status.stop()` → `process.stop_all()` → `finish_exit`。
+- `exit()`：设 `exiting`，后台 `status.stop()` → `process.stop_all()` → 投递 `finish_exit`；当前走普通 `post`，批次 2 统一为 `post_control`。
 - 线程创建失败：主线程同步 `stop_all()`，`finally` 退出（`707dd44`）。
-- `finish_exit()` → 幂等 `shutdown()` → `window.quit()`；主循环返回后再兜底。
+- `finish_exit()` → 幂等 `shutdown()` → `window.quit()`；`shutdown()` 只停 status/UI/tray，不停 Luker；进程清理由 `exit()` 负责。
 
 **版本检查/更新**
 
 - 只有点击“检查更新”才访问 GitHub/`git fetch`；本地 dirty/缺 npm/路径不匹配/Git 失败都是 blocker。
 - 更新目标必须是完整 40 位 SHA；`checkout --detach` 后 npm 安装；失败回滚代码并尝试恢复依赖。
 - npm 参数与 `Start.bat` 一致，额外 `NODE_ENV=production`；只作用于 npm，不改 `node server.js`。
+- `Start.bat` 还会在 `better_sqlite3.node` 缺失时执行 `npm run storage:install-sqlite`；启动器当前未执行（P1，批次 2 补齐）。
 - `UpdateCoordinator` 用 `version_check_seq` 丢弃过期结果；更新阶段走 `post_control`。
 
 **日志管线**
 
-- `LogStore`：每源 3000 条 / 8 MB；`BoundedLogQueue`：5000 条 / 8 MB。
+- `LogStore`：单一日志源 3000 条 / 8 MB；`BoundedLogQueue`：5000 条 / 8 MB；时间戳在队列取出时生成。
 - 每轮最多 10 行；可见 100ms、隐藏 500ms、积压 10ms。
 - 重放 200 条/批、让出 1ms；重放期间新日志进 tail。
 - 搜索最多 5000 结果，250ms 防抖；实时日志保留当前结果和视口。
@@ -461,7 +481,7 @@ main.py
 - Per-Monitor V2；`winfo_*`/Win32 坐标是物理像素，CTk `geometry` 宽高/`CTkImage(size)` 是逻辑像素。
 - `ui/dpi.py`：`plan_window_placement()`、`format_geometry()`（负坐标 `+-100`）、`sync_window_scaling()`。
 - 日志窗口固定 960×640（按工作区适配）；设置窗口 600×720，内部滚动。
-- 立绘：`winfo_*` ÷ `_get_widget_scaling()` → 逻辑尺寸；`render_character()` 按物理像素渲染；`CTkImage(size=逻辑)` 再缩放一次。
+- 立绘：`winfo_*` ÷ `_get_widget_scaling()` → 逻辑尺寸；`render_character()` 按物理像素渲染；`CTkImage(size=逻辑)` 再缩放一次；CTk 私有访问清单见 ADR-13。
 - 角色面板 320 逻辑像素，左侧 16% alpha 渐隐；无座右铭。
 
 ### 2.5 线程模型
@@ -476,13 +496,15 @@ main.py
 | 进程/更新/浏览器/退出 worker | `TaskRunner.run()` | 启停/Git/npm/打开/清理 | `post_ui`/`post_control` |
 | 窗口动画 | Tk `after`/`StepTicker` | 淡入、渐变、呼吸灯 | 主线程 |
 
-**不变量**：后台线程不直接碰 Tk；生命周期完成回调走 `post_control`，不会被普通队列丢弃。
+**调度器限额**：普通队列 256 条、每 tick 最多 32 条、空闲 50ms；合并键 `visibility`/`tray_menu`/`settings`/`luker_state`；`post_control` 是独立无界队列。
+
+**不变量**：后台线程不直接碰 Tk；进程/浏览器/更新完成回调走 `post_control`；退出 `finish_exit` 当前走普通 `post`（批次 2 统一）。
 
 ### 2.6 状态归属
 
 | 状态 | 所有者 | 主要读者 |
 |---|---|---|
-| `config` | `config.py` 全局单例 | 所有层只读 |
+| `config` | `config.py` 全局单例 | UI 通过公开 setter 写入；其他层只读 |
 | `LifecycleState.exiting` | `LifecycleCoordinator` | 所有 Coordinator |
 | `ProcessCoordinator.manager/busy` | `ProcessCoordinator` | Status/Update/Lifecycle |
 | `StatusCoordinator.last_state` | `StatusCoordinator` | LogWindow/TrayMenu |
@@ -501,19 +523,19 @@ main.py
 |---|---|---|---|---|
 | ADR-01 | 用 `node server.js`，不通过 `Start.bat` | 需要传 `--browserLaunchEnabled false`；停止/日志可控 | 不要改回 `Start.bat` | `process/managers.py:339-345` |
 | ADR-02 | Job Object + 单实例 | 防止强杀后 node 占端口；防止双启动器抢端口 | 不要移除 Job Object/只 terminate 父进程 | `process/job.py`、`single_instance.py` |
-| ADR-03 | 后台线程统一经 `UiDispatcher` 回主线程 | Tk 非线程安全；完成回调不能丢 | 不要在后台直接碰 Tk/用普通队列投递完成回调 | `ui/dispatch.py` |
+| ADR-03 | 后台线程统一经 `UiDispatcher` 回主线程 | Tk 非线程安全；完成回调不能丢 | 不要在后台直接碰 Tk/用普通队列投递完成回调；退出 `finish_exit` 当前是普通 post 例外（批次 2 统一） | `ui/dispatch.py` |
 | ADR-04 | 就绪=连续 2 次成功 + READY 粘滞 | 进程活≠服务可用；避免呼吸灯抖动 | 不要每次探测直接 apply | `services/readiness.py` |
 | ADR-05 | 配置归一化/原子写入/BOM/端口缓存 | 手改配置、半截写入、每秒读盘 | 不要用 yaml 整体解析只取端口 | `config.py` |
 | ADR-06 | 路径切换只在停止时进行 | 运行中热切换会中断/端口冲突 | 不要运行中替换 manager | `process_coordinator.py:56-75` |
-| ADR-07 | 更新固定完整 SHA、dirty 检查、可回滚 | 防注入、防意外提交、半更新可恢复 | 不要改 npm 参数/短 SHA/给 node 加 NODE_ENV | `services/version.py:734-808` |
+| ADR-07 | 更新固定完整 SHA、dirty 检查、可回滚 | 防注入、防意外提交、半更新可恢复；Start.bat 的 `storage:install-sqlite` 条件步骤待补（批次 2） | 不要改 npm 参数/短 SHA/给 node 加 NODE_ENV | `services/version.py:734-808` |
 | ADR-08 | 移除 GCL | 无端口探测/健康检查/多实例，接受 Luker `Start.bat` 会重复启动 | 不要重新引入 | `b840bf1` |
 | ADR-09 | 日志窗口固定尺寸 | 主题/立绘对尺寸敏感；跨屏仍适配 | 不要未经确认恢复拖拽缩放 | `log_window.py:242` |
 | ADR-10 | 主题卡片悬停放大已回滚 | 残影修复成本高；现在只颜色过渡 | 不要加回 relwidth/图片放大 | `e9bc44f` |
 | ADR-11 | 座右铭已移除 | 视觉迭代最终决策 | 不要加回 | `a7a1c68` |
 | ADR-12 | 门禁只在本地 | Windows 托盘/Win32/DPI 需要 Windows 环境；提交只记录“本地执行” | 不要恢复远程 CI 并声称覆盖托盘 | `43476f0` |
-| ADR-13 | CTk 私有接口隔离 + 版本锁 | 6.0 已实测；6.1 Text 接口可能变 | 不要到处直接访问私有属性 | `ui/ctk_adapter.py` |
+| ADR-13 | CTk 私有接口隔离 + 版本锁 | 6.0 已实测；6.1 Text 接口可能变；已接受 `_canvas`/`_draw_engine`、`_get_textbox`、`_get_widget_scaling`、`ScalingTracker.window_dpi_scaling_dict` | 不要新增分散的私有访问；集中到适配层 | `ui/ctk_adapter.py` |
 | ADR-14 | 主题颜色与元数据分离 | 渐变只处理颜色，避免把 name/icon 当颜色 | 不要整个 `PRESET_THEMES` 传给渐变 | `theme.py:256-262` |
-| ADR-15 | 版本/打包一起验证，发布需确认 | v4.0 后 19 提交未 bump；直接发布会版本重复 | 不要未经确认 bump/构建/打标签 | `config.py:25` |
+| ADR-15 | 版本/打包一起验证，发布需确认 | v4.0 后 20 个产品提交（含 README-only `fc06d38`）未 bump；直接发布会版本重复 | 不要未经确认 bump/构建/打标签 | `config.py:25` |
 
 **补充说明**：
 
@@ -530,8 +552,8 @@ main.py
 
 | 需要什么 | 现成实现 | 位置 | 注意 |
 |---|---|---|---|
-| 后台一次性任务 | `TaskRunner.run()` | `application/task_runner.py` | 失败返回 `False`，调用方复位状态 |
-| 跨线程投递 UI | `UiDispatcher.post()`/`post_control()` | `ui/dispatch.py` | 完成回调必须 `post_control` |
+| 后台一次性任务 | `TaskRunner.run()` | `application/task_runner.py` | 线程创建失败返回 `False`；worker 异常需自行捕获 |
+| 跨线程投递 UI | `UiDispatcher.post()`/`post_control()` | `ui/dispatch.py` | 状态/幂等界面用 `post`；进程/浏览器/更新完成用 `post_control`；退出 `finish_exit` 当前例外（批次 2 统一） |
 | 共享退出标志 | `LifecycleState.exiting` | `application/lifecycle_state.py` | Lifecycle 写，其他只读 |
 | 进程启停/路径切换 | `ProcessCoordinator` | `application/process_coordinator.py` | 已处理 busy/退出/stop_all |
 | 三态就绪 | `StatusCoordinator` + `LukerReadinessMonitor` | `application/status_coordinator.py` / `services/readiness.py` | 不要自己写 HTTP 轮询 |
@@ -610,9 +632,9 @@ main.py
 | 需要什么 | 现成实现 | 位置 | 注意 |
 |---|---|---|---|
 | 托盘图标/消息循环 | `TrayIcon.run_detached()`/`stop()` | `tray/icon.py` | 消息循环必须在托盘线程 |
-| 托盘状态 | `update_status()`/`set_window_visible()` | `tray/icon.py` | 通过消息转交 |
+| 托盘状态 | `update_status()`/`set_window_visible()` | `tray/icon.py` | `update_status` 通过消息；`set_window_visible` 直接赋值布尔 |
 | 托盘菜单 | `TrayMenu` | `tray/menu.py` | 键盘/焦点/无激活 |
-| Win32 声明 | `infrastructure/win32.py` | 集中声明 | 新增调用先声明 |
+| Win32 声明 | `infrastructure/win32.py` | 集中声明主要 API | 局部 ctypes 仍在 `tray/icon.py`、`ui/dpi.py`、`process/job.py`、`process/single_instance.py` |
 | 文件日志 | `setup_logging()`/`add_ui_log_sink()` | `infrastructure/logging_setup.py` | 不可写回退 `%TEMP%` |
 | 全局异常 | `sys.excepthook`/`threading.excepthook` | `infrastructure/logging_setup.py` | 已安装，不要覆盖 |
 
@@ -620,12 +642,12 @@ main.py
 
 | 需要什么 | 现成实现 | 位置 | 注意 |
 |---|---|---|---|
-| 架构边界 | `tests/test_architecture.py` | 测试 | 新增包/导入后跑 |
+| 架构边界 | `tests/test_architecture.py` | `tests/test_architecture.py` | 新增包/导入后跑 |
 | 批处理行为 | `BuildScriptBehaviorTests`/`CheckScriptBehaviorTests` | `tests/test_packaging.py` | Windows-only/临时目录 |
-| 应用组合 | `tests/test_application_launcher_composition.py` | 测试 | 构造期回调/接线 |
-| UI 特征 | `tests/test_log_window_*.py`/`test_settings_window.py` | 测试 | fake 控件 |
-| 本地冒烟 | `.zcode/smoke_*.py` | 本地未跟踪 | 不要当生产代码 |
-| 假 Luker | `.zcode/build/dummy-luker/` | 本地未跟踪 | 临时 E2E |
+| 应用组合 | `tests/test_application_launcher_composition.py` | `tests/test_application_launcher_composition.py` | 构造期回调/接线 |
+| UI 特征 | `tests/test_log_window_*.py`/`test_settings_window.py` | `tests/` | fake 控件 |
+| 本地冒烟 | `.zcode/smoke_*.py` | `.zcode/` | 可能不存在；不要当生产代码 |
+| 假 Luker | 临时目录 + `server.js`/`Start.bat`/`config.yaml` | `tests/test_process_managers.py:15-17`、`tests/test_config.py:253-255` | 不要用 `.zcode/build/dummy-luker/`（不存在） |
 
 ---
 
@@ -793,7 +815,7 @@ check.bat
 | `pwa_app_id` | string | `""` | Edge PWA App ID（可选） |
 | `pwa_appx_family_name` | string | `""` | APPX PackageFamilyName（可选） |
 
-未知键/错误类型丢弃；字符串去空白；theme/close_behavior 白名单。
+未知键/错误类型丢弃；`luker_path` 等 `_STRING_KEYS` 去空白；`theme`/`close_behavior` 走白名单，带空白会回退默认值。
 
 ### 9.3 关键提交速查
 
@@ -835,7 +857,7 @@ check.bat
 - `README.md`、`pyproject.toml`、`check.bat`、`build.bat`、`launcher.spec`、`version_info.txt`。
 - `docs/development-handbook.md`：本文件，当前事实与决策。
 - `docs/archive/`：`00` 详细手册快照；`01`–`04` 版本段历史日志。
-- 本地工作记录（`.zcode/reports/`，不随仓库分发）：`review-2026-11-09.md`、`review-fixes-2026-11-09.md`、`implementation-2026-11-05.md`、`launcher-refactor-and-package-plan-2026-11-05.md`、`ai-gijika-deepseek-2026-11-08.md`、`ai-gijika-polish-2026-11-09.md`；其结论已并入本手册/归档。
+- 本地工作记录（`.zcode/reports/`，不随仓库分发，可能不存在）：`review-2026-11-09.md`、`review-fixes-2026-11-09.md`、`implementation-2026-11-05.md`、`launcher-refactor-and-package-plan-2026-11-05.md`、`ai-gijika-deepseek-2026-11-08.md`、`ai-gijika-polish-2026-11-09.md` 等；其结论已并入本手册/归档。
 - Git：193 个产品提交 + 文档维护提交、17 标签、`git log --stat`、`git diff`、`git show`。
 
 ---
@@ -849,27 +871,27 @@ check.bat
 
 ### 10.1 提交覆盖图
 
-| 版本段 | 提交范围（含端点） | 数量 | 日志条目 | 分册 |
+| 版本段 | 提交范围（Git `A..B`，不含 A） | 数量 | 日志条目 | 分册 |
 |---|---|---:|---|---|
 | v1.0 | `cb75d8b` | 1 | DEV-20261002-01 | 01 |
-| v1.0 → v1.1 | `206c1d1..38be292` | 10 | DEV-20261002-02、DEV-20261018-01 | 01 |
-| v1.1 → v1.2 | `6343f3e..5cfb3b3` | 6 | DEV-20261018-02 | 01 |
-| v1.2 → v2.0 | `4c32010..4e98b09` | 10 | DEV-20261018-03 | 01 |
-| v2.0 → v2.1 | `71a73e3..c224c69` | 7 | DEV-20261019-01 | 02 |
-| v2.1 → v2.2 | `34f95d2..34d01e3` | 6 | DEV-20261019-02 | 02 |
-| v2.2 → v2.3 | `b5993f0..aad0cad` | 10 | DEV-20261020-01 | 02 |
-| v2.3 → v2.4 | `b69d47d..3729554` | 17 | DEV-20261021-01 | 02 |
-| v2.4 → v3.0 | `24f9db0..b480684` | 20 | DEV-20261022-01 | 02 |
-| v3.0 → v3.1 | `fe149c4..c778e3b` | 20 | DEV-20261024-01 | 02 |
-| v3.1 → v3.2 | `43476f0..523764c` | 14 | DEV-20261025-01 | 02 |
-| v3.2 → v3.3 | `3260c48..5f9e402` | 9 | DEV-20261030-01 | 02 |
-| v3.3 → v3.4 | `2b9ebdb..16e97be` | 8 | DEV-20261102-01 | 03 |
-| v3.4 → v3.4.1 | `ca08bb9` | 1 | DEV-20261103-01 | 03 |
-| v3.4.1 → v3.5 | `5f95490..ec0b561` | 16 | DEV-20261103-02 | 03 |
-| v3.5 → v4.0 | `547160a..a66f873` | 18 | DEV-20261105-01 | 04 |
-| v4.0 → HEAD | `fc06d38`, `64f1a06..a7a1c68` | 20 | DEV-20261108-01 … DEV-20261110-01 | 04 |
+| v1.0 → v1.1 | `v1.0..v1.1` | 10 | DEV-20261002-02、DEV-20261018-01 | 01 |
+| v1.1 → v1.2 | `v1.1..v1.2` | 6 | DEV-20261018-02 | 01 |
+| v1.2 → v2.0 | `v1.2..v2.0` | 10 | DEV-20261018-03 | 01 |
+| v2.0 → v2.1 | `v2.0..v2.1` | 7 | DEV-20261019-01 | 02 |
+| v2.1 → v2.2 | `v2.1..v2.2` | 6 | DEV-20261019-02 | 02 |
+| v2.2 → v2.3 | `v2.2..v2.3` | 10 | DEV-20261020-01 | 02 |
+| v2.3 → v2.4 | `v2.3..v2.4` | 17 | DEV-20261021-01 | 02 |
+| v2.4 → v3.0 | `v2.4..v3.0` | 20 | DEV-20261022-01 | 02 |
+| v3.0 → v3.1 | `v3.0..v3.1` | 20 | DEV-20261024-01 | 02 |
+| v3.1 → v3.2 | `v3.1..v3.2` | 14 | DEV-20261025-01 | 02 |
+| v3.2 → v3.3 | `v3.2..v3.3` | 9 | DEV-20261030-01 | 02 |
+| v3.3 → v3.4 | `v3.3..v3.4` | 8 | DEV-20261102-01 | 03 |
+| v3.4 → v3.4.1 | `v3.4..v3.4.1` | 1 | DEV-20261103-01 | 03 |
+| v3.4.1 → v3.5 | `v3.4.1..v3.5` | 16 | DEV-20261103-02 | 03 |
+| v3.5 → v4.0 | `v3.5..v4.0` | 18 | DEV-20261105-01 | 04 |
+| v4.0 → 最后代码提交 | `v4.0..a7a1c68` | 20 | DEV-20261108-01 … DEV-20261110-01 | 04 |
 
-> 合计 193 个产品提交；文档维护提交另计。回填条目根据 Git/提交信息/测试/本地报告整理；无法证明的已标 `[待确认]`。
+> 合计 193 个产品提交；文档提交 `2e4da28`、`d94308d` 另计。回填条目根据 Git/提交信息/测试/本地报告整理；无法证明的已标 `[待确认]`。
 > `DEV-20261114-01` 起为文档维护条目，不对应产品代码提交。
 
 ### 10.2 历史条目摘要
@@ -902,6 +924,7 @@ check.bat
 | DEV-20261114-02 | 2026-11-14 | 未提交 | docs | 已完成 | 精简主文档；完整细节归档 | 结构/表格校验 |
 | DEV-20261114-03 | 2026-11-14 | 随本次 docs 提交 | docs | 已完成 | 文档迁入 docs；归档拆分 00–04；明确唯一写入目标 | 8 文件/23 条目/链接与 check.bat |
 | DEV-20261114-04 | 2026-11-14 | 随本次 docs 提交 | chore/docs | 已完成 | 删除本地/远程 `dev`；更新分支表与交接状态 | 758 tests/74%；远端仅 main/ai-gijika |
+| DEV-20261114-05 | 2026-11-14 | 随本次 docs 提交 | docs | 已完成 | 追加点/读写契约/架构事实/版本坐标修正 | 围栏/表格/check.bat |
 
 ### 10.3 最近详细条目
 
@@ -1069,12 +1092,6 @@ check.bat
 - §10 超过 30 条或主版本结束时，按 §0.5 轮转规则新增 `05+` 分册。
 - 发布/DPI/构建仍是 OPEN-01/02/03、TODO-01/02/03。
 
----
-
-> 下一条日志 ID：`DEV-20261114-05`。追加后请更新 §0.2 控制表、§6/§7 状态，并在 §0.9 加一行文档修订记录。
-
-<!-- ===== 新开发日志追加点：请在本行之后追加下一条 DEV 记录（复制 §0.6 模板） ===== -->
-
 #### DEV-20261114-04 | 清除已合并的 dev 分支并同步文档
 
 | 字段 | 值 |
@@ -1117,3 +1134,57 @@ check.bat
 
 - 发布验证仍待用户确认（TODO-01）；真实高 DPI、完整构建为 TODO-02/03。
 - 下一条日志 `DEV-20261114-05`。
+
+#### DEV-20261114-05 | 修正文档追加点、读写契约与架构事实
+
+| 字段 | 值 |
+|---|---|
+| 日期 | 2026-11-14 |
+| 分支 | ai-gijika |
+| 提交 | 随本次 `docs:` 提交（见 `git log -- docs/development-handbook.md`） |
+| 类型 | docs |
+| 状态 | 已完成 |
+| 关联 | §0、§1、§2、§3、§4、§9、§10 |
+| 证据等级 | [已验证] |
+
+**目标/背景**
+
+- 追加点位于 `DEV-20261114-04` 之前，下一个 Agent 会插错位置。
+- `docs/README.md` 的“只写 §10”与 §0.5 的更新流程矛盾。
+- §2.1 的 config/bootstrap 规则与 `config.py:12`、`main.py:3`、`__main__.py:3`、`tests/test_architecture.py:137-156` 不符。
+- §1.4/§1.5/§1.6 的 HEAD、标签、提交范围、日期与实测不一致。
+
+**改动**
+
+- 追加点/页脚移到文件 EOF；模板 `###` 改 `####`；§0.2 增加当前 HEAD/提交数/标签。
+- 统一写入契约：§10 追加 + §0.2/§6/§7；§1–§5 仅在变化时改；归档不改。
+- 修正 §2.1/§2.2/§2.3：`config` 可依赖 `paths`/`theme`；`main.py` 与 `__main__.py` 都允许导入 bootstrap；补 `python -m luker_launcher`。
+- 修正 §2.4/§2.5/§2.6/§4.1：lifecycle 当前普通 post 例外、shutdown 不停止 Luker、日志单源、调度器限额、config 写入者。
+- 修正 §4.6/§4.7：托盘状态/局部 ctypes、测试工具四列 schema、假 Luker 配方。
+- §1.4/§1.5/§10.1 改用 tag 区间；v2.0/v3.5 日期、v1.1 计数、ruff 114、标签本地/远程、ADR-15 20 提交。
+- §0.9 增加勘误表；§9.2 修正 trim；§9.4 标注本地报告可能不存在。
+- 根 README 标注 Start.bat `storage:install-sqlite` 缺口（批次 2 修复）。
+
+**验证**
+
+- Markdown 代码围栏 6 个成对；表格列数检查 0 异常；追加标记是最后一个非空行。
+- `check.bat` 通过；docs-only，代码基线不变（758 tests / 74%）。
+- 未修改生产代码/测试；未改 `launcher_config.json`。
+
+**决策/风险**
+
+- 批次 1 只改文档；Start.bat 缺口、lifecycle 通道在批次 2 用独立提交修复。
+- 旧日志正文不修改；旧文件名/计数用 §0.9 勘误解释。
+
+**遗留/下一步**
+
+- 批次 2：lifecycle `post_control`、Start.bat storage 步骤、CTk 适配层、日志注释。
+- 下一条 `DEV-20261114-06`。
+
+---
+
+> 下一条日志 ID：`DEV-20261114-06`。追加后请更新 §0.2 控制表、§6/§7 状态；只有结构/事实变化时才在 §0.9 记录。
+>
+> **追加点（本行之后）**：
+
+<!-- ===== 新开发日志追加点：请在本行之后追加下一条 DEV 记录（复制 §0.6 模板） ===== -->
