@@ -72,7 +72,7 @@
 | [`README.md`](README.md) | 本文件：文档入口、阅读路径、写入契约 | 只读；结构变更时更新 |
 | [`development-handbook.md`](development-handbook.md) | 主手册：稳定知识 + 风险/TODO + 只追加日志 | **唯一日常写入目标** |
 | [`archive/README.md`](archive/README.md) | 归档契约、分册导航、快照边界、轮转清单 | 只读；轮转时更新 |
-| `archive/INDEX.md` | DEV/提交/决策索引（批次 5 新增） | 只读；轮转时更新 |
+| [`archive/INDEX.md`](archive/INDEX.md) | DEV/提交/决策索引 | 只读；轮转时更新 |
 | [`archive/00-detailed-handbook-2026-11-14.md`](archive/00-detailed-handbook-2026-11-14.md) | 2026-11-14 详细手册快照（§0–§9） | 只读 |
 | [`archive/01-v1.0-v2.0-foundation.md`](archive/01-v1.0-v2.0-foundation.md) | v1.0–v2.0 基座期日志 | 只读 |
 | [`archive/02-v2.1-v3.3-engineering.md`](archive/02-v2.1-v3.3-engineering.md) | v2.1–v3.3 工程化与视觉日志 | 只读 |

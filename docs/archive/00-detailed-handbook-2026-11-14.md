@@ -2,6 +2,7 @@
 
 > **文档类型**：历史归档 · 详细手册快照（只读）
 > **文档编号**：`LH-LUKER-ARCH-00`
+> **结构版本**：`2.0`（2026-11-14 快照；当前主手册为 `4.0`）
 > **来源**：原 `development-history-full-2026-11-14.md` §0–§9
 > **事实截止**：2026-11-14
 > **权威性**：低于 [`../development-handbook.md`](../development-handbook.md)；冲突时以主手册、代码、测试为准。
@@ -401,6 +402,7 @@ main.py
    - 进入 Tk `mainloop()`；
    - 返回后 `LifecycleCoordinator.shutdown()` 幂等清理。
 
+<a id="a00-flows"></a>
 ### 2.4 关键运行流程
 
 #### 进程启动/停止/重启
@@ -573,6 +575,7 @@ main.py
 | ADR-14 | 主题颜色与元数据分离 | 有效 | `theme.py:256-262` |
 | ADR-15 | 版本/打包一起验证，发布需确认 | 有效 | `config.py:25`、`launcher.spec` |
 
+<a id="adr-01"></a>
 ### ADR-01 用 `node server.js`，不通过 `Start.bat`
 
 - **决策**：启动器直接 `node server.js`；PWA 模式追加 `--browserLaunchEnabled false`。
@@ -580,6 +583,7 @@ main.py
 - **后果**：启动器依赖 `node` 在 PATH；`Start.bat` 里的其他环境准备不会自动执行。
 - **不要**：为了“更贴近 Start.bat”改成 `Start.bat`；会失去参数控制，历史 GCL 也因此出过重复启动问题。
 
+<a id="adr-02"></a>
 ### ADR-02 Job Object + 单实例
 
 - **决策**：子进程加入 `KILL_ON_JOB_CLOSE` 的 Job Object；同一 Windows 会话只允许一个启动器。
@@ -587,6 +591,7 @@ main.py
 - **后果**：Job 句柄随启动器进程关闭；单实例互斥体创建失败时放行，不能阻止用户使用。
 - **不要**：移除 Job Object 或只 `terminate()` 父进程；node 子进程树会残留。
 
+<a id="adr-03"></a>
 ### ADR-03 后台线程统一经 `UiDispatcher` 回主线程
 
 - **决策**：托盘/进程/就绪/版本线程都不直接碰 Tk；普通 UI 请求可合并/丢弃，生命周期完成走 `post_control`。
@@ -594,6 +599,7 @@ main.py
 - **后果**：`post()` 返回 `False` 表示 UI 泵已停止，调用方必须复位 busy。
 - **不要**：从后台线程直接 `root.after()`；不要用普通队列投递“必须执行”的完成回调。
 
+<a id="adr-04"></a>
 ### ADR-04 就绪 = 连续成功 + READY 粘滞
 
 - **决策**：进程存活 + 连续 2 次 HTTP 成功才 READY；READY 后保持到进程退出。
@@ -601,6 +607,7 @@ main.py
 - **后果**：就绪回调只投递 `refresh`，由主线程重新计算；避免旧 STARTING 覆盖新 READY。
 - **不要**：每次探测都直接 apply 状态；会状态回退。
 
+<a id="adr-05"></a>
 ### ADR-05 配置归一化/原子写入/BOM/端口缓存
 
 - **决策**：只保留已知键；字符串去空白；bool 只接受真 bool；theme/close_behavior 白名单；`utf-8-sig`；临时文件 + `fsync` + `os.replace`；端口按 stat 缓存。
@@ -608,6 +615,7 @@ main.py
 - **后果**：未知键/错误类型被丢弃；端口读取失败回退 8000。
 - **不要**：用 `yaml` 整体解析 `config.yaml`（只需顶层 `port:`）；不要把嵌套 `browserLaunch.port` 当端口。
 
+<a id="adr-06"></a>
 ### ADR-06 路径切换只在停止时进行
 
 - **决策**：`ensure_manager()` 发现路径变化且旧管理器仍在运行 → 保留旧管理器；`restart()` 才停旧换新；退出中拒绝接管。
@@ -615,6 +623,7 @@ main.py
 - **后果**：用户改路径后需要重启（或 restart）才生效。
 - **不要**：运行中直接替换 manager。
 
+<a id="adr-07"></a>
 ### ADR-07 更新固定完整 SHA、dirty 检查、可回滚
 
 - **决策**：目标必须是完整 40 位 SHA；有已跟踪修改（dirty）禁止更新；失败回滚代码并尝试恢复依赖；回滚失败不自动启动。
@@ -622,6 +631,7 @@ main.py
 - **后果**：更新流程较慢但可恢复；未跟踪的 `data/`、`node_modules/` 不动。
 - **不要**：改 npm 参数；不要用短 SHA/分支名 checkout；不要给 `node server.js` 加 `NODE_ENV`。
 
+<a id="adr-08"></a>
 ### ADR-08 移除 GCL 联动
 
 - **决策**：v3.4 删除 GCL 的设置页、托盘菜单、日志源、配置项和实现。
@@ -629,6 +639,7 @@ main.py
 - **后果**：配置里的 `gcl_*` 键会被归一化丢弃；README 不再提 GCL。
 - **不要**：重新引入 GCL 联动；如果未来要做，先设计独立健康检查/端口/实例模型。
 
+<a id="adr-09"></a>
 ### ADR-09 日志窗口固定尺寸
 
 - **决策**：`WindowResizer(resizable=False)`；名义 960×640 逻辑像素，按工作区适配；跨屏重新锁定。
@@ -636,6 +647,7 @@ main.py
 - **后果**：不能拖拽缩放；`resizing.py` 仍保留 `resizable=True` 分支（P3 死代码）。
 - **不要**：未经产品确认恢复拖拽缩放。
 
+<a id="adr-10"></a>
 ### ADR-10 主题卡片悬停放大已回滚
 
 - **决策**：当前只做 6 帧/18ms 的颜色过渡，不改几何/图片。
@@ -643,6 +655,7 @@ main.py
 - **后果**：卡片视觉更稳定；`_ThemeCardHighlight` 仍自建动画状态机（P3）。
 - **不要**：重新加回 `relwidth`/图片放大；如果要做，先解决指针校准和残影测试。
 
+<a id="adr-11"></a>
 ### ADR-11 座右铭已移除
 
 - **决策**：当前无座右铭；`theme.py` 的 DeepSeek 元数据没有 `motto`；`character_art.py` 只做缩放和左侧渐隐。
@@ -650,6 +663,7 @@ main.py
 - **后果**：日志窗口高度全部给文本/立绘；字体探测 helper 已删除。
 - **不要**：重新加回座右铭，除非用户明确要求。
 
+<a id="adr-12"></a>
 ### ADR-12 门禁只在本地，不恢复远程 CI
 
 - **决策**：`check.bat` 五道门禁；删除 `.github/workflows/ci.yml`。
@@ -657,6 +671,7 @@ main.py
 - **后果**：没有远程绿灯；合并前必须本地跑 `check.bat`。
 - **不要**：重新加 GitHub Actions 并声称覆盖托盘；除非配置 Windows runner。
 
+<a id="adr-13"></a>
 ### ADR-13 CTk 私有接口隔离 + 版本锁
 
 - **决策**：`customtkinter>=5.2,<6.1`；`_textbox`/`_get_widget_scaling`/`_canvas`/`_draw_engine` 访问集中/隔离。
@@ -664,6 +679,7 @@ main.py
 - **后果**：升级 CTk 需要回归日志窗口、DPI、开关动画、主题渐变。
 - **不要**：在业务代码里到处新增直接私有属性访问。
 
+<a id="adr-14"></a>
 ### ADR-14 主题颜色与元数据分离
 
 - **决策**：`PRESET_THEMES` 存颜色 + 元数据；`get_theme_colors()` 只返回 `THEME_COLOR_KEYS`。
@@ -671,6 +687,7 @@ main.py
 - **后果**：新增主题必须同时更新 `THEME_SWATCH_KEYS` 和 `LEGACY_THEME_ALIASES`（如适用）。
 - **不要**：把整个 `PRESET_THEMES[theme]` 直接传给渐变/控件。
 
+<a id="adr-15"></a>
 ### ADR-15 版本/打包一起验证，发布需确认
 
 - **决策**：`APP_VERSION` 与 `version_info.txt` 同步；发布前构建 exe、验证资源与 DPI；发布动作必须用户确认。
@@ -932,6 +949,7 @@ call pyinstaller launcher.spec --noconfirm --distpath .
 
 失败时不清理 `build/`、不打印 `Done!`、返回非零；成功才清理 `build/`。
 
+<a id="a00-test-gaps"></a>
 ### 8.3 覆盖到/没覆盖到什么
 
 **覆盖较好：**
@@ -968,6 +986,7 @@ call pyinstaller launcher.spec --noconfirm --distpath .
 7. 托盘：左键切换、双击显示、右键菜单键盘导航、Explorer 重启后恢复。
 8. 退出：正常退出、托盘不可用降级、更新中阻止退出。
 
+<a id="a00-test-data"></a>
 ### 8.5 测试数据规则
 
 - 不修改根目录 `launcher_config.json`。
@@ -1060,4 +1079,4 @@ call pyinstaller launcher.spec --noconfirm --distpath .
 
 > 本册是 2026-11-14 的详细手册快照，只读。
 > §10 的详细日志已按版本段拆分到 `01`–`04`；提交覆盖图见 [`../development-handbook.md`](../development-handbook.md) §10.1。
-> 导航：[归档索引](README.md) · [主手册](../development-handbook.md)
+> 导航：[归档索引](README.md) · [条目索引](INDEX.md) · [主手册](../development-handbook.md)
