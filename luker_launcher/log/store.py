@@ -1,4 +1,4 @@
-"""日志存储：按来源保存有上限的历史日志，供界面重放和切换日志源。"""
+"""日志存储：保存单一日志源的有上限历史，供界面重放。"""
 
 import datetime
 from collections import deque
@@ -6,9 +6,9 @@ from dataclasses import dataclass
 
 from luker_launcher.log.classify import get_tag_for_line
 
-# 每个日志源在内存中保留的最大条数
+# 单一日志源在内存中保留的最大条数
 MAX_LOG_ENTRIES = 3000
-# 单个日志源的文本上限，防止少量超长行占满内存
+# 单一日志源的文本上限，防止少量超长行占满内存
 MAX_LOG_BYTES = 8 * 1024 * 1024
 
 

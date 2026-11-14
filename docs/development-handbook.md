@@ -7,7 +7,7 @@
 > **事实截止**：`2026-11-14`
 > **代码分支 / 最后代码提交**：`ai-gijika` / `a7a1c68`（文档提交见 `git log -- docs/development-handbook.md`）
 > **当前版本**：`APP_VERSION = 4.0`（HEAD 未 bump，未重新发布）
-> **质量基线**：758 tests / 74% / `check.bat` pass
+> **质量基线**：771 tests / 75% / `check.bat` pass
 > **完整历史归档**：`docs/archive/README.md`（00–04 分册，只读）
 > **维护方式**：每个任务结束后，在 **§10 末尾追加** 一条 `DEV-YYYYMMDD-NN`，更新 §0.2、§6、§7，并随任务提交。
 
@@ -15,7 +15,7 @@
 
 ## 交接摘要（每次交接更新）
 
-- **当前状态**：`ai-gijika`（最后代码提交 `a7a1c68`，另有文档提交）；`origin/ai-gijika` 已同步；工作区 clean；758 tests / 74% / `check.bat` pass。
+- **当前状态**：`ai-gijika`（最后代码提交 `a7a1c68`，另有文档提交）；`origin/ai-gijika` 已同步；工作区 clean；771 tests / 75% / `check.bat` pass。
 - **最近完成**：DeepSeek 主题、角色立绘、固定日志窗口、两个 P2 修复、审查整改、最终移除座右铭并把滚动条移到最右；清除已合并的 `dev` 分支（本地+远程）。
 - **当前阻塞**：`APP_VERSION` 仍为 4.0；HEAD 未 bump、未构建 exe、未在真实 125%/150% 设备验收；是否发布需用户确认。
 - **建议下一步**：先确认是否发布；若发布，按 `TODO-01` 做版本 bump + 构建 + 100%/125%/150% 验收。不要先做大重构。
@@ -61,15 +61,15 @@
 | 文档位置 | `docs/development-handbook.md`（Git 跟踪） | 结构变更时 |
 | 结构版本 | `4.0` | 结构调整时 |
 | 最后更新 | `2026-11-14` | 每次追加日志 |
-| 最新日志条目 | `DEV-20261114-05` | 每次追加日志 |
-| 下一条日志 ID | `DEV-20261114-06` | 每次追加日志 |
+| 最新日志条目 | `DEV-20261114-06` | 每次追加日志 |
+| 下一条日志 ID | `DEV-20261114-07` | 每次追加日志 |
 | 当前 HEAD | `d94308d`（docs） | 每次任务结束 |
 | 代码基线 / 最后代码提交 | `ai-gijika` / `a7a1c68` | 每次任务开始/结束 |
 | 产品 / 文档提交 | 193 + 2 = 195 | 每次任务结束 |
 | 标签 | 17 本地 / 16 远程；`v3.5` 仅本地 | 发布/标签变化时 |
 | 当前版本 | `APP_VERSION = 4.0` | 版本 bump 时 |
 | 工作区状态 | clean（`docs/` 已跟踪；文档改动随任务提交） | 每次任务结束 |
-| 质量基线 | 758 tests / 74% / check.bat pass | 每次任务结束 |
+| 质量基线 | 771 tests / 75% / check.bat pass | 每次任务结束 |
 | 完整历史归档 | `docs/archive/README.md`（只读，00–04 分册） | 不再更新（只读参考） |
 
 ### 0.3 事实等级与写作规则
@@ -306,9 +306,9 @@ Luker 是基于 SillyTavern 的 LLM 前端；启动器只要求目录包含 `Sta
 
 | 检查 | 结果 |
 |---|---|
-| `python -m unittest discover -s tests -q` | **758 项通过**，约 2 秒 |
-| 覆盖率 | **74%**（门槛 65%） |
-| `ruff format --check .` | 114 个文件已格式化 |
+| `python -m unittest discover -s tests -q` | **771 项通过**，约 2 秒 |
+| 覆盖率 | **75%**（门槛 65%） |
+| `ruff format --check .` | 115 个文件已格式化 |
 | `ruff check .` | 通过 |
 | `mypy .` | 55 个源文件无问题 |
 | 工作区 | 干净；`docs/` 已跟踪；本地仍有被忽略的 `.coverage`、`.zcode/` 报告、根目录 exe/log |
@@ -582,7 +582,7 @@ main.py
 | 需要什么 | 现成实现 | 位置 | 注意 |
 |---|---|---|---|
 | 日志级别 | `get_tag_for_line()` | `log/classify.py` | 错误/警告/信息/默认 |
-| 有界历史 | `LogStore` | `log/store.py` | 3000 条/8 MB |
+| 有界历史（单源） | `LogStore` | `log/store.py` | 3000 条/8 MB |
 | 有界队列 | `BoundedLogQueue` | `log/pipeline.py` | 条数 + UTF-8 字节 |
 | 分块重放 | `LogReplay` | `log/pipeline.py` | 200 条/批；tail |
 | 日志控制器 | `LogController` | `log/pipeline.py` | 泵/重放/清空/隐藏 |
@@ -749,10 +749,11 @@ main.py
 | `test_application_status_coordinator.py` | 14 | 三态/轮询/过期回调 |
 | `test_tray_icon.py` | 14 | 句柄/图标/消息循环 |
 | `test_dialogs.py` | 14 | 关闭框/路径/定位 |
-| `test_architecture.py` | 13 | 依赖方向/根目录/import cycle |
+| `test_architecture.py` | 14 | 依赖方向/根目录/import cycle/CTk 私有访问 |
+| `test_ctk_adapter.py` | 8 | CTk 适配层 |
 | 其余 | — | 日志存储/显示、进程、托盘键盘、主题、Win32 API |
 
-> 总计 **758**。`test_architecture.py` 不是可选检查。
+> 总计 **771**。`test_architecture.py` 不是可选检查。
 
 ### 8.2 门禁命令
 
@@ -925,6 +926,7 @@ check.bat
 | DEV-20261114-03 | 2026-11-14 | 随本次 docs 提交 | docs | 已完成 | 文档迁入 docs；归档拆分 00–04；明确唯一写入目标 | 8 文件/23 条目/链接与 check.bat |
 | DEV-20261114-04 | 2026-11-14 | 随本次 docs 提交 | chore/docs | 已完成 | 删除本地/远程 `dev`；更新分支表与交接状态 | 758 tests/74%；远端仅 main/ai-gijika |
 | DEV-20261114-05 | 2026-11-14 | 随本次 docs 提交 | docs | 已完成 | 追加点/读写契约/架构事实/版本坐标修正 | 围栏/表格/check.bat |
+| DEV-20261114-06 | 2026-11-14 | `c8cf48d`、`c0c96bb`、`f3ffd54` 等 | fix/refactor | 已完成 | lifecycle 控制通道、Start.bat SQLite 步骤、CTk 私有访问集中 | 771 tests/75%/115 files |
 
 ### 10.3 最近详细条目
 
@@ -1181,9 +1183,55 @@ check.bat
 - 批次 2：lifecycle `post_control`、Start.bat storage 步骤、CTk 适配层、日志注释。
 - 下一条 `DEV-20261114-06`。
 
+#### DEV-20261114-06 | 修复 lifecycle、更新依赖与 CTk 私有访问不一致
+
+| 字段 | 值 |
+|---|---|
+| 日期 | 2026-11-14 |
+| 分支 | ai-gijika |
+| 提交 | `c8cf48d`、`c0c96bb`、`f3ffd54` + 本条 docs 提交 |
+| 类型 | fix / refactor |
+| 状态 | 已完成 |
+| 关联 | ADR-03、ADR-07、ADR-13、OPEN-10、§2.4/§2.5/§4.1/§4.5 |
+| 证据等级 | [已验证] |
+
+**目标/背景**
+
+- 退出完成回调走普通 post，可能被普通队列丢弃；文档却要求 `post_control`。
+- 更新依赖只执行 npm install，漏掉 Start.bat 在 `better_sqlite3.node` 缺失时的 `storage:install-sqlite`。
+- CTk 私有访问分散在 `log_window.py`/`dpi.py`，ADR-13 的隔离承诺不成立。
+- `log/store.py` 仍写“按来源”，实际只有一个 Luker 日志源。
+
+**改动**
+
+- `lifecycle_coordinator.exit()` 改 `post_control`；移除 `exit_key`；测试断言控制通道。
+- `services/version.py` 增加 `SQLITE_NATIVE_PATH`、`_needs_storage_install()`、`_run_storage_install()`；npm install 后条件执行 `npm run storage:install-sqlite`。
+- `ui/ctk_adapter.py` 增加 textbox/scaling/ScalingTracker 辅助函数；`log_window.py`/`dpi.py` 不再直接访问私有属性；`tests/test_architecture.py` 增加隔离检查。
+- `log/store.py` 注释改为单一日志源。
+- 更新 ADR-03/07/13、OPEN-10、§2.4/§2.5/§4.1/§4.5、§8.1、README。
+
+**验证**
+
+- `check.bat`：771 tests / 75% / 115 files；ruff format/check、mypy 通过。
+- lifecycle 18 项、version 64 项、CTk 8 项、architecture 14 项、DPI 26 项、log search 26 项通过。
+- `test_architecture.py::test_ctk_private_access_is_isolated` 通过；`ui/` 下仅适配层访问 CTk 私有属性。
+- Start.bat 真实更新未在用户主安装上执行；单测覆盖存在/缺失/失败三条路径，真实副本验证仍见 TODO-04。
+
+**决策/风险**
+
+- `post_control` 是无界控制队列，退出回调不再被普通队列丢弃；`lifecycle.exiting` 防重复。
+- storage 步骤只在原生模块缺失时执行，不改 `NPM_INSTALL_ARGS`，不影响正常启动。
+- CTk 适配层保持行为不变；DPI 测试和架构测试锁定访问边界。
+
+**遗留/下一步**
+
+- 批次 3：词表、ID registry、§6/§7 工作队列。
+- 真实 Start.bat 更新（一次性副本）仍为 TODO-04；真实 125/150% 仍为 TODO-02。
+- 下一条 `DEV-20261114-07`。
+
 ---
 
-> 下一条日志 ID：`DEV-20261114-06`。追加后请更新 §0.2 控制表、§6/§7 状态；只有结构/事实变化时才在 §0.9 记录。
+> 下一条日志 ID：`DEV-20261114-07`。追加后请更新 §0.2 控制表、§6/§7 状态；只有结构/事实变化时才在 §0.9 记录。
 >
 > **追加点（本行之后）**：
 
