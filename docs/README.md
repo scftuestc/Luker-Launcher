@@ -12,7 +12,7 @@
 | 提交数 | 193 产品 + 2 文档 = 195 |
 | 标签 | 17 本地 / 16 远程（`v3.5` 仅本地） |
 | 版本 | `APP_VERSION = 4.0`（未 bump、未重新发布） |
-| 质量基线 | 771 tests / 75% / `check.bat` pass |
+| 质量基线 | 772 tests / 75% / `check.bat` pass |
 
 ## 先读哪一份
 
@@ -78,7 +78,7 @@
 | [`archive/02-v2.1-v3.3-engineering.md`](archive/02-v2.1-v3.3-engineering.md) | v2.1–v3.3 工程化与视觉日志 | 只读 |
 | [`archive/03-v3.4-v3.5-visual-reliability.md`](archive/03-v3.4-v3.5-visual-reliability.md) | v3.4–v3.5 设计令牌与可靠性日志 | 只读 |
 | [`archive/04-v4.0-coordinator-themes-ui.md`](archive/04-v4.0-coordinator-themes-ui.md) | v4.0+ Coordinator/主题/UI 日志 | 只读 |
-| `tools/check_docs.py` | 文档结构校验器（批次 6 新增） | 只读 |
+| [`tools/check_docs.py`](tools/check_docs.py) | 文档结构校验器；由 `tests/test_docs.py` 纳入门禁 | 只读 |
 
 ## 维护规则
 
