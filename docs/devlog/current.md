@@ -489,9 +489,48 @@
 
 - 下一条 `DEV-20261114-13`。
 
+<a id="dev-20261114-13"></a>
+#### DEV-20261114-13 | 同步推送本地提交到远程
+
+| 字段 | 值 |
+|---|---|
+| 日期 | 2026-11-14 |
+| 分支 | ai-gijika |
+| 提交 | `5c65144`（推送范围 `d94308d..5c65144`；本记录随后续 docs 提交） |
+| 类型 | docs / chore |
+| 状态 | 已完成 |
+| 关联 | `STATUS.md`、`01-baseline.md` |
+| 证据等级 | [已验证] |
+
+**目标/背景**
+
+- 用户明确要求把当前提交同步推送到远程；此前“不推送”约束只适用于未获授权的任务。
+
+**改动**
+
+- 推送 `ai-gijika` 的 12 个提交到 `origin/ai-gijika`（`d94308d..5c65144`）。
+- 未推送标签、未创建 Release、未 bump 版本。
+- 更新 `01-baseline.md` 与 `STATUS.md` 的远程状态。
+
+**验证**
+
+- `git push origin ai-gijika`：`d94308d..5c65144  ai-gijika -> ai-gijika`。
+- `git status -sb`：本地与 `origin/ai-gijika` 同步。
+- `git ls-remote --heads origin ai-gijika`：`5c65144`。
+- 最新提交签名 `G`，作者 `Yaoyao <jiayinyao24@outlook.com>`；未推送标签。
+
+**决策/风险**
+
+- 本次按用户明确授权推送；后续任务仍默认不推送，除非用户再次确认。
+- 只同步分支，不涉及标签、Release、版本号或用户配置。
+
+**遗留/下一步**
+
+- 下一条 `DEV-20261114-14`。
+
 ---
 
-> 下一条日志 ID：`DEV-20261114-13`。追加后请更新 [`STATUS.md`](STATUS.md) 和 [`INDEX.md`](INDEX.md)；只有稳定知识变化时才改 [`../handbook/`](../handbook/README.md)。
+> 下一条日志 ID：`DEV-20261114-14`。追加后请更新 [`STATUS.md`](STATUS.md) 和 [`INDEX.md`](INDEX.md)；只有稳定知识变化时才改 [`../handbook/`](../handbook/README.md)。
 >
 > **追加点（本行之后）**：
 

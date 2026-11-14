@@ -39,7 +39,7 @@
 
 | 前缀 | 含义 | 正文位置 | 下一个 | 分配规则 |
 |---|---|---|---|---|
-| `DEV-YYYYMMDD-NN` | 开发日志 | [`current.md`](current.md) | `DEV-20261114-13` | 当天从 01 开始，跨天重置；追加，不跳号 |
+| `DEV-YYYYMMDD-NN` | 开发日志 | [`current.md`](current.md) | `DEV-20261114-14` | 当天从 01 开始，跨天重置；追加，不跳号 |
 | `ADR-NN` | 设计决策 | [`../handbook/03-decisions.md`](../handbook/03-decisions.md) | `ADR-16` | 追加，不重排；被取代时新增并标注 |
 | `LSN-NN` | 经验教训 | [`../handbook/05-lessons.md`](../handbook/05-lessons.md) | `LSN-24` | 追加，不删除旧条目 |
 | `OPEN-NN` | 未排期风险/技术债 | [`STATUS.md`](STATUS.md) | `OPEN-14` | 追加；排期后写 `tracked as TODO-xx` |
