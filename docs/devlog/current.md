@@ -450,9 +450,48 @@
 - 发布验证/真实 DPI/真实更新仍为 TODO-01/02/04。
 - 下一条 `DEV-20261114-12`。
 
+<a id="dev-20261114-12"></a>
+#### DEV-20261114-12 | 固化 Agent 开工说明到 AGENTS.md
+
+| 字段 | 值 |
+|---|---|
+| 日期 | 2026-11-14 |
+| 分支 | ai-gijika |
+| 提交 | 随本次 `docs:` 提交（见 `git log -- AGENTS.md`） |
+| 类型 | docs |
+| 状态 | 已完成 |
+| 关联 | `AGENTS.md`、`docs/README.md` |
+| 证据等级 | [已验证] |
+
+**目标/背景**
+
+- 用户每次交接都要重复交代阅读顺序、约束和收尾要求；需要一份 agent 自动读取的默认说明。
+
+**改动**
+
+- 新增根 `AGENTS.md`：必读顺序、工作方式、完成标准、提交约束、5 项回报、任务路由、文档边界。
+- `docs/README.md` 顶部增加指向 `AGENTS.md` 的入口。
+- 只做路由和约束，不复制架构正文，避免第二份事实源。
+
+**验证**
+
+- `python docs/tools/check_docs.py`：`docs structure: OK`。
+- `python -m unittest tests.test_docs -v`：通过。
+- `git diff --check`：无空白错误。
+- 未改生产代码/测试/配置。
+
+**决策/风险**
+
+- `AGENTS.md` 是“工作协议”，不替代 `handbook/` 和 `STATUS.md`；事实仍以 docs 为准。
+- 以后修改工作流只改 `AGENTS.md` 的协议部分，不在多个文档重复同一规则。
+
+**遗留/下一步**
+
+- 下一条 `DEV-20261114-13`。
+
 ---
 
-> 下一条日志 ID：`DEV-20261114-12`。追加后请更新 [`STATUS.md`](STATUS.md) 和 [`INDEX.md`](INDEX.md)；只有稳定知识变化时才改 [`../handbook/`](../handbook/README.md)。
+> 下一条日志 ID：`DEV-20261114-13`。追加后请更新 [`STATUS.md`](STATUS.md) 和 [`INDEX.md`](INDEX.md)；只有稳定知识变化时才改 [`../handbook/`](../handbook/README.md)。
 >
 > **追加点（本行之后）**：
 

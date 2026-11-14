@@ -93,7 +93,7 @@ Luker 是基于 SillyTavern 的 LLM 前端；启动器只要求目录包含 `Sta
 |---|---|
 | `python -m unittest discover -s tests -q` | **772 项通过**，约 2 秒 |
 | 覆盖率 | **75%**（门槛 65%） |
-| `ruff format --check .` | 126 个文件已格式化 |
+| `ruff format --check .` | 通过（文件计数以 `check.bat` 输出为准） |
 | `ruff check .` | 通过 |
 | `mypy .` | 56 个源文件无问题 |
 | 工作区 | 干净；`docs/` 已跟踪；本地仍有被忽略的 `.coverage`、`.zcode/` 报告、根目录 exe/log |
